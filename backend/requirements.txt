@@ -5,3 +5,4 @@ pydantic
 SQLAlchemy
 python-dotenv
 openai
+chromadb

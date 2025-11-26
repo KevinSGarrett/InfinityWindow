@@ -10,6 +10,9 @@ from app.db.base import Base
 from app.db.session import engine, get_db
 from app.db import models
 from app.llm.openai_client import generate_reply_from_history
+from app.llm.embeddings import get_embedding
+from app.vectorstore.chroma_store import add_message_embedding
+
 
 # Create tables on import (simple approach for now; later we can use migrations)
 Base.metadata.create_all(bind=engine)
@@ -230,7 +233,7 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
     # Include the current user message
     chat_history.append({"role": "user", "content": payload.message})
 
-    # 5) Call OpenAI to generate a reply
+        # 5) Call OpenAI to generate a reply
     reply_text = generate_reply_from_history(chat_history)
 
     # 6) Save assistant message
@@ -241,10 +244,42 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
     )
     db.add(assistant_message)
 
-    # 7) Commit everything
+    # 7) Flush so that user_message and assistant_message get IDs
+    db.flush()
+
+    # 8) Create embeddings and index in Chroma
+    try:
+        # User message embedding
+        user_embedding = get_embedding(payload.message)
+        add_message_embedding(
+            message_id=user_message.id,
+            conversation_id=conversation.id,
+            project_id=conversation.project_id,
+            role="user",
+            content=payload.message,
+            embedding=user_embedding,
+        )
+
+        # Assistant message embedding
+        assistant_embedding = get_embedding(reply_text)
+        add_message_embedding(
+            message_id=assistant_message.id,
+            conversation_id=conversation.id,
+            project_id=conversation.project_id,
+            role="assistant",
+            content=reply_text,
+            embedding=assistant_embedding,
+        )
+    except Exception as e:
+        # For now, don't fail the whole request if vector indexing fails.
+        # Later we can add proper logging.
+        print(f"[WARN] Failed to index messages in Chroma: {e!r}")
+
+    # 9) Commit everything
     db.commit()
 
     return ChatResponse(
         conversation_id=conversation.id,
         reply=reply_text,
     )
+
