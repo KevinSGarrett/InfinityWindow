@@ -9,12 +9,19 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.db import models
 from app.llm.embeddings import get_embedding
-from app.vectorstore.chroma_store import query_similar_messages
+from app.vectorstore.chroma_store import (
+    query_similar_messages,
+    query_similar_document_chunks,
+)
 
 router = APIRouter(
     prefix="/search",
     tags=["search"],
 )
+
+# ---------------------------------------------------------------------------
+# Message search
+# ---------------------------------------------------------------------------
 
 
 class MessageSearchRequest(BaseModel):
@@ -112,3 +119,98 @@ def search_messages(
         )
 
     return MessageSearchResponse(hits=hits)
+
+
+# ---------------------------------------------------------------------------
+# Document chunk search
+# ---------------------------------------------------------------------------
+
+
+class DocSearchRequest(BaseModel):
+    project_id: int
+    query: str
+    document_id: Optional[int] = None
+    limit: int = 5
+
+
+class DocSearchHit(BaseModel):
+    chunk_id: int
+    document_id: int
+    project_id: int
+    chunk_index: int
+    content: str
+    distance: float
+
+
+class DocSearchResponse(BaseModel):
+    hits: List[DocSearchHit]
+
+
+@router.post("/docs", response_model=DocSearchResponse)
+def search_docs(
+    payload: DocSearchRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Semantic search over document chunks using Chroma.
+
+    - Required: project_id, query
+    - Optional: document_id (to restrict results to a single document)
+    - 'limit' controls how many results to return.
+    """
+
+    # 1) Verify project exists
+    project = db.get(models.Project, payload.project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    # 2) If document_id is provided, verify it exists and belongs to project
+    if payload.document_id is not None:
+        document = db.get(models.Document, payload.document_id)
+        if document is None:
+            raise HTTPException(
+                status_code=404, detail="Document not found."
+            )
+        if document.project_id != payload.project_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Document does not belong to the given project.",
+            )
+
+    # 3) Create embedding for the query
+    query_emb = get_embedding(payload.query)
+
+    # 4) Query Chroma
+    results = query_similar_document_chunks(
+        project_id=payload.project_id,
+        query_embedding=query_emb,
+        document_id=payload.document_id,
+        n_results=payload.limit,
+    )
+
+    ids_nested = results.get("ids", [[]])
+    docs_nested = results.get("documents", [[]])
+    metas_nested = results.get("metadatas", [[]])
+    dists_nested = results.get("distances", [[]])
+
+    ids = ids_nested[0] if ids_nested else []
+    docs = docs_nested[0] if docs_nested else []
+    metas = metas_nested[0] if metas_nested else []
+    dists = dists_nested[0] if dists_nested else []
+
+    hits: List[DocSearchHit] = []
+
+    for _id, doc, meta, dist in zip(ids, docs, metas, dists):
+        # meta contains: document_id, project_id, chunk_id, chunk_index
+        hits.append(
+            DocSearchHit(
+                chunk_id=int(meta["chunk_id"]),
+                document_id=int(meta["document_id"]),
+                project_id=int(meta["project_id"]),
+                chunk_index=int(meta["chunk_index"]),
+                content=doc,
+                distance=float(dist),
+            )
+        )
+
+    return DocSearchResponse(hits=hits)
