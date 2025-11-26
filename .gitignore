@@ -5,8 +5,10 @@ __pycache__/
 *.pyd
 *.pyd
 *.so
+*.db
 *.egg
 *.egg-info/
+*.env
 dist/
 build/
 
@@ -24,3 +26,6 @@ env/
 # OS junk
 .DS_Store
 Thumbs.db
+
+backend/.env
+

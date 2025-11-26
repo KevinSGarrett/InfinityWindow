@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, List, Dict
 
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict
@@ -9,15 +9,15 @@ from sqlalchemy.orm import Session
 from app.db.base import Base
 from app.db.session import engine, get_db
 from app.db import models
+from app.llm.openai_client import generate_reply_from_history
 
-
-# Create tables on startup (for now; later we might use migrations)
+# Create tables on import (simple approach for now; later we can use migrations)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="InfinityWindow Backend",
-    description="Backend service for InfinityWindow personal AI workbench.",
-    version="0.2.0",
+    description="Backend service for the InfinityWindow personal AI workbench.",
+    version="0.3.0",
 )
 
 
@@ -51,11 +51,12 @@ class ConversationRead(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    conversation_id: int
+    conversation_id: Optional[int] = None
     message: str
 
 
 class ChatResponse(BaseModel):
+    conversation_id: int
     reply: str
 
 
@@ -70,7 +71,7 @@ def health():
     return {
         "status": "ok",
         "service": "InfinityWindow",
-        "version": "0.2.0",
+        "version": "0.3.0",
     }
 
 
@@ -139,38 +140,111 @@ def create_conversation(
 @app.post("/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest, db: Session = Depends(get_db)):
     """
-    Chat within a specific conversation.
+    Chat within a specific conversation, backed by OpenAI.
 
-    For now, this is still a placeholder that just echoes what you said,
-    but we *do* store both the user message and the assistant response
-    into the database.
+    - If conversation_id is provided, we continue that conversation.
+    - If conversation_id is omitted/null, we'll:
+        * use the first project if it exists, or
+        * create a 'Default Project', then
+        * create a new conversation under it.
 
-    Later we'll replace the placeholder logic with real LLM calls + memory.
+    We:
+      1. Load conversation history from the DB.
+      2. Append the new user message.
+      3. Call OpenAI with the full message list.
+      4. Save the assistant's reply back to the DB.
     """
-    conversation = db.get(models.Conversation, payload.conversation_id)
-    if not conversation:
-        raise HTTPException(
-            status_code=404, detail="Conversation not found."
-        )
 
-    # Store user message
+    # 1) Resolve or create conversation
+    if payload.conversation_id is not None:
+        conversation = db.get(models.Conversation, payload.conversation_id)
+        if conversation is None:
+            raise HTTPException(
+                status_code=404, detail="Conversation not found."
+            )
+    else:
+        # Get or create a default project
+        project = (
+            db.query(models.Project)
+            .order_by(models.Project.id)
+            .first()
+        )
+        if project is None:
+            project = models.Project(
+                name="Default Project",
+                description="Auto-created default project.",
+            )
+            db.add(project)
+            db.commit()
+            db.refresh(project)
+
+        # Create a new conversation
+        conversation = models.Conversation(
+            project_id=project.id,
+            title="Chat conversation",
+        )
+        db.add(conversation)
+        db.commit()
+        db.refresh(conversation)
+
+    # 2) Load existing messages for this conversation as history
+    existing_messages = (
+        db.query(models.Message)
+        .filter(models.Message.conversation_id == conversation.id)
+        .order_by(models.Message.id.asc())
+        .all()
+    )
+
+    # 3) Save the new user message
     user_message = models.Message(
-        conversation_id=payload.conversation_id,
+        conversation_id=conversation.id,
         role="user",
         content=payload.message,
     )
     db.add(user_message)
+    db.flush()  # ensures user_message gets an ID before we commit
 
-    # Placeholder assistant reply
-    reply_text = f"(placeholder) You said: {payload.message}"
+    # 4) Build the message list for OpenAI
+    chat_history: List[Dict[str, str]] = []
 
+    # System prompt to define behavior
+    chat_history.append(
+        {
+            "role": "system",
+            "content": (
+                "You are InfinityWindow, a helpful AI assistant. "
+                "You work inside a long-lived project workspace with persistent memory. "
+                "Be clear, concise, and helpful."
+            ),
+        }
+    )
+
+    for m in existing_messages:
+        chat_history.append(
+            {
+                "role": m.role,
+                "content": m.content,
+            }
+        )
+
+    # Include the current user message
+    chat_history.append({"role": "user", "content": payload.message})
+
+    # 5) Call OpenAI to generate a reply
+    reply_text = generate_reply_from_history(chat_history)
+
+    # 6) Save assistant message
     assistant_message = models.Message(
-        conversation_id=payload.conversation_id,
+        conversation_id=conversation.id,
         role="assistant",
         content=reply_text,
     )
     db.add(assistant_message)
 
+    # 7) Commit everything
     db.commit()
 
-    return ChatResponse(reply=reply_text)
+    return ChatResponse(
+        conversation_id=conversation.id,
+        reply=reply_text,
+    )
