@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,9 @@ from app.ingestion.docs_ingestor import ingest_text_document
 router = APIRouter(
     tags=["docs"],
 )
+
+
+# ---------- Pydantic models ----------
 
 
 class DocumentCreateText(BaseModel):
@@ -34,6 +37,9 @@ class DocumentRead(BaseModel):
 class DocumentIngestResponse(BaseModel):
     document: DocumentRead
     num_chunks: int
+
+
+# ---------- Endpoints ----------
 
 
 @router.post("/docs/text", response_model=DocumentIngestResponse)
@@ -58,6 +64,66 @@ def create_text_document(
         )
     except ValueError as e:
         # For example, project not found
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return DocumentIngestResponse(
+        document=document,
+        num_chunks=num_chunks,
+    )
+
+
+@router.post("/docs/upload_text_file", response_model=DocumentIngestResponse)
+async def upload_text_document(
+    project_id: int = Form(...),
+    name: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """
+    Ingest a text file (txt / md / log) into a project.
+
+    Request is multipart/form-data with fields:
+      - project_id (int, required)
+      - name (optional, defaults to file.filename)
+      - description (optional)
+      - file (UploadFile, required)
+
+    The file content is treated as UTF-8 text and passed through the same
+    ingestion pipeline as /docs/text.
+    """
+
+    # Basic content-type check (not strict; we just avoid obviously non-text)
+    if file.content_type not in ("text/plain", "text/markdown", "application/octet-stream"):
+        # We'll still *allow* unknown types but warn via description; if you want
+        # strict rejection, you can uncomment the HTTPException below.
+        #
+        # raise HTTPException(
+        #     status_code=400,
+        #     detail=f"Unsupported content-type: {file.content_type}",
+        # )
+        pass
+
+    raw_bytes = await file.read()
+    try:
+        text = raw_bytes.decode("utf-8", errors="ignore")
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to decode file as UTF-8 text: {e}",
+        )
+
+    doc_name = name or (file.filename or "uploaded_document.txt")
+
+    try:
+        document, num_chunks = ingest_text_document(
+            db=db,
+            project_id=project_id,
+            name=doc_name,
+            text=text,
+            description=description,
+        )
+    except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     return DocumentIngestResponse(

@@ -6,3 +6,4 @@ SQLAlchemy
 python-dotenv
 openai
 chromadb
+python-multipart
