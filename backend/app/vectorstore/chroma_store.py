@@ -71,14 +71,27 @@ def query_similar_messages(
     """
     Query messages similar to the query_embedding.
 
-    By default limits to the given project_id.
-    If conversation_id is provided, restrict to that conversation as well.
+    - Always filters by project_id.
+    - If conversation_id is provided, also filters by that conversation.
+
+    Uses Chroma's newer filter syntax:
+      - Single-field filter: {"field": {"$eq": value}}
+      - Multi-field filter: {"$and": [ {...}, {...} ]}
     """
     collection = get_messages_collection()
 
-    where: Dict[str, Any] = {"project_id": project_id}
-    if conversation_id is not None:
-        where["conversation_id"] = conversation_id
+    # Build the "where" filter in the format Chroma expects
+    if conversation_id is None:
+        where: Dict[str, Any] = {
+            "project_id": {"$eq": project_id}
+        }
+    else:
+        where = {
+            "$and": [
+                {"project_id": {"$eq": project_id}},
+                {"conversation_id": {"$eq": conversation_id}},
+            ]
+        }
 
     results = collection.query(
         query_embeddings=[query_embedding],

@@ -12,6 +12,8 @@ from app.db import models
 from app.llm.openai_client import generate_reply_from_history
 from app.llm.embeddings import get_embedding
 from app.vectorstore.chroma_store import add_message_embedding
+from app.api.search import router as search_router
+
 
 
 # Create tables on import (simple approach for now; later we can use migrations)
@@ -22,6 +24,8 @@ app = FastAPI(
     description="Backend service for the InfinityWindow personal AI workbench.",
     version="0.3.0",
 )
+
+app.include_router(search_router)
 
 
 # ---------- Pydantic Schemas ----------
