@@ -13,7 +13,13 @@ from app.llm.openai_client import generate_reply_from_history
 from app.llm.embeddings import get_embedding
 from app.vectorstore.chroma_store import add_message_embedding
 from app.api.search import router as search_router
+from app.api.docs import router as docs_router
 
+
+# NOTE:
+# Later, when we add the docs API, we'll also import:
+#   from app.api.docs import router as docs_router
+# and include it via app.include_router(docs_router)
 
 
 # Create tables on import (simple approach for now; later we can use migrations)
@@ -26,6 +32,9 @@ app = FastAPI(
 )
 
 app.include_router(search_router)
+app.include_router(docs_router)
+
+# When docs API is added, we'll also call: app.include_router(docs_router)
 
 
 # ---------- Pydantic Schemas ----------
@@ -237,7 +246,7 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
     # Include the current user message
     chat_history.append({"role": "user", "content": payload.message})
 
-        # 5) Call OpenAI to generate a reply
+    # 5) Call OpenAI to generate a reply
     reply_text = generate_reply_from_history(chat_history)
 
     # 6) Save assistant message
@@ -286,4 +295,3 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
         conversation_id=conversation.id,
         reply=reply_text,
     )
-
