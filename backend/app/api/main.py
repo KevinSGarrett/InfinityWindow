@@ -11,16 +11,13 @@ from app.db.session import engine, get_db
 from app.db import models
 from app.llm.openai_client import generate_reply_from_history
 from app.llm.embeddings import get_embedding
-from app.vectorstore.chroma_store import add_message_embedding
+from app.vectorstore.chroma_store import (
+    add_message_embedding,
+    query_similar_messages,
+    query_similar_document_chunks,
+)
 from app.api.search import router as search_router
 from app.api.docs import router as docs_router
-
-
-# NOTE:
-# Later, when we add the docs API, we'll also import:
-#   from app.api.docs import router as docs_router
-# and include it via app.include_router(docs_router)
-
 
 # Create tables on import (simple approach for now; later we can use migrations)
 Base.metadata.create_all(bind=engine)
@@ -33,8 +30,6 @@ app = FastAPI(
 
 app.include_router(search_router)
 app.include_router(docs_router)
-
-# When docs API is added, we'll also call: app.include_router(docs_router)
 
 
 # ---------- Pydantic Schemas ----------
@@ -156,7 +151,8 @@ def create_conversation(
 @app.post("/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest, db: Session = Depends(get_db)):
     """
-    Chat within a specific conversation, backed by OpenAI.
+    Chat within a specific conversation, backed by OpenAI, with automatic
+    retrieval from stored messages and ingested documents.
 
     - If conversation_id is provided, we continue that conversation.
     - If conversation_id is omitted/null, we'll:
@@ -164,11 +160,16 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
         * create a 'Default Project', then
         * create a new conversation under it.
 
-    We:
-      1. Load conversation history from the DB.
-      2. Append the new user message.
-      3. Call OpenAI with the full message list.
-      4. Save the assistant's reply back to the DB.
+    Steps:
+      1. Resolve or create the conversation.
+      2. Load conversation history from the DB.
+      3. Store the new user message.
+      4. Embed the user message and retrieve:
+         - relevant past messages from this conversation
+         - relevant document chunks from the same project
+      5. Build the message list for OpenAI with a memory context.
+      6. Call OpenAI to generate a reply.
+      7. Store the assistant reply + index both messages in Chroma.
     """
 
     # 1) Resolve or create conversation
@@ -211,7 +212,7 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
         .all()
     )
 
-    # 3) Save the new user message
+    # 3) Save the new user message (but don't commit yet)
     user_message = models.Message(
         conversation_id=conversation.id,
         role="user",
@@ -220,7 +221,77 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
     db.add(user_message)
     db.flush()  # ensures user_message gets an ID before we commit
 
-    # 4) Build the message list for OpenAI
+    # 4) Retrieval: embed user message and pull relevant messages & docs
+    retrieval_context_text = ""
+    user_embedding = None
+
+    try:
+        user_embedding = get_embedding(payload.message)
+
+        # 4a) Similar messages in this project's conversation
+        msg_results = query_similar_messages(
+            project_id=conversation.project_id,
+            query_embedding=user_embedding,
+            conversation_id=conversation.id,
+            n_results=5,
+        )
+
+        msg_docs_nested = msg_results.get("documents", [[]])
+        msg_metas_nested = msg_results.get("metadatas", [[]])
+        msg_docs = msg_docs_nested[0] if msg_docs_nested else []
+        msg_metas = msg_metas_nested[0] if msg_metas_nested else []
+
+        msg_snippets: List[str] = []
+        for doc, meta in zip(msg_docs, msg_metas):
+            role = meta.get("role", "unknown")
+            msg_snippets.append(f"[{role} message] {doc}")
+
+        # 4b) Similar document chunks in this project
+        doc_results = query_similar_document_chunks(
+            project_id=conversation.project_id,
+            query_embedding=user_embedding,
+            document_id=None,
+            n_results=5,
+        )
+
+        doc_docs_nested = doc_results.get("documents", [[]])
+        doc_metas_nested = doc_results.get("metadatas", [[]])
+        doc_docs = doc_docs_nested[0] if doc_docs_nested else []
+        doc_metas = doc_metas_nested[0] if doc_metas_nested else []
+
+        doc_snippets: List[str] = []
+        for doc_text, meta in zip(doc_docs, doc_metas):
+            document_id = meta.get("document_id")
+            chunk_index = meta.get("chunk_index")
+            doc_snippets.append(
+                f"[Document {document_id}, chunk {chunk_index}] {doc_text}"
+            )
+
+        context_parts: List[str] = []
+        if msg_snippets:
+            context_parts.append(
+                "Relevant past messages:\n" + "\n\n".join(msg_snippets)
+            )
+        if doc_snippets:
+            context_parts.append(
+                "Relevant document excerpts:\n" + "\n\n".join(doc_snippets)
+            )
+
+        if context_parts:
+            retrieval_context_text = (
+                "You have access to the following retrieved memory and document excerpts.\n"
+                "Use them to ground your answer to the user's latest question. "
+                "If anything conflicts with the user's most recent instructions, "
+                "follow the user.\n\n"
+                + "\n\n---\n\n".join(context_parts)
+            )
+
+    except Exception as e:
+        # Retrieval should never break the chat flow
+        print(f"[WARN] Retrieval failed: {e!r}")
+        user_embedding = None
+
+    # 5) Build the message list for OpenAI
     chat_history: List[Dict[str, str]] = []
 
     # System prompt to define behavior
@@ -235,6 +306,16 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
         }
     )
 
+    # Optional retrieval context as an additional system message
+    if retrieval_context_text:
+        chat_history.append(
+            {
+                "role": "system",
+                "content": retrieval_context_text,
+            }
+        )
+
+    # Previous messages
     for m in existing_messages:
         chat_history.append(
             {
@@ -243,27 +324,27 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
             }
         )
 
-    # Include the current user message
+    # Current user message
     chat_history.append({"role": "user", "content": payload.message})
 
-    # 5) Call OpenAI to generate a reply
+    # 6) Call OpenAI to generate a reply
     reply_text = generate_reply_from_history(chat_history)
 
-    # 6) Save assistant message
+    # 7) Save assistant message
     assistant_message = models.Message(
         conversation_id=conversation.id,
         role="assistant",
         content=reply_text,
     )
     db.add(assistant_message)
-
-    # 7) Flush so that user_message and assistant_message get IDs
-    db.flush()
+    db.flush()  # ensure assistant_message.id exists
 
     # 8) Create embeddings and index in Chroma
     try:
-        # User message embedding
-        user_embedding = get_embedding(payload.message)
+        # Reuse user embedding if we have it, otherwise compute now
+        if user_embedding is None:
+            user_embedding = get_embedding(payload.message)
+
         add_message_embedding(
             message_id=user_message.id,
             conversation_id=conversation.id,
@@ -284,8 +365,7 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
             embedding=assistant_embedding,
         )
     except Exception as e:
-        # For now, don't fail the whole request if vector indexing fails.
-        # Later we can add proper logging.
+        # Do not fail the request if indexing fails
         print(f"[WARN] Failed to index messages in Chroma: {e!r}")
 
     # 9) Commit everything
