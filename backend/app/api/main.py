@@ -61,6 +61,15 @@ class ConversationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class MessageRead(BaseModel):
+    id: int
+    conversation_id: int
+    role: str
+    content: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ChatRequest(BaseModel):
     conversation_id: Optional[int] = None
     message: str
@@ -125,6 +134,30 @@ def list_projects(db: Session = Depends(get_db)):
     return projects
 
 
+@app.get(
+    "/projects/{project_id}/conversations",
+    response_model=list[ConversationRead],
+)
+def list_project_conversations(
+    project_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    List all conversations under a given project.
+    """
+    project = db.get(models.Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    conversations = (
+        db.query(models.Conversation)
+        .filter(models.Conversation.project_id == project_id)
+        .order_by(models.Conversation.id)
+        .all()
+    )
+    return conversations
+
+
 @app.post("/conversations", response_model=ConversationRead)
 def create_conversation(
     payload: ConversationCreate, db: Session = Depends(get_db)
@@ -146,6 +179,32 @@ def create_conversation(
     db.commit()
     db.refresh(conversation)
     return conversation
+
+
+@app.get(
+    "/conversations/{conversation_id}/messages",
+    response_model=list[MessageRead],
+)
+def list_conversation_messages(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    List all messages in a conversation, in chronological order.
+    """
+    conversation = db.get(models.Conversation, conversation_id)
+    if conversation is None:
+        raise HTTPException(
+            status_code=404, detail="Conversation not found."
+        )
+
+    messages = (
+        db.query(models.Message)
+        .filter(models.Message.conversation_id == conversation_id)
+        .order_by(models.Message.id.asc())
+        .all()
+    )
+    return messages
 
 
 @app.post("/chat", response_model=ChatResponse)
