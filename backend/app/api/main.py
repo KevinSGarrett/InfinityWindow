@@ -18,6 +18,7 @@ from app.vectorstore.chroma_store import (
 )
 from app.api.search import router as search_router
 from app.api.docs import router as docs_router
+from app.api.github import router as github_router
 
 # Create tables on import (simple approach for now; later we can use migrations)
 Base.metadata.create_all(bind=engine)
@@ -30,6 +31,7 @@ app = FastAPI(
 
 app.include_router(search_router)
 app.include_router(docs_router)
+app.include_router(github_router)
 
 
 # ---------- Pydantic Schemas ----------
