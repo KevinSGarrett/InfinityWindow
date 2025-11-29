@@ -1,8 +1,4 @@
-import React, {
-  useEffect,
-  useState,
-  KeyboardEvent,
-} from "react";
+import React, { useEffect, useState, KeyboardEvent } from "react";
 import "./App.css";
 
 // ---------- Types ----------
@@ -49,6 +45,13 @@ type DocSearchHit = {
   distance: number;
 };
 
+type ProjectDocument = {
+  id: number;
+  project_id: number;
+  name: string;
+  description?: string | null;
+};
+
 const BACKEND_BASE = "http://127.0.0.1:8000";
 
 function App() {
@@ -69,25 +72,85 @@ function App() {
   // Chat input + mode
   const [chatInput, setChatInput] = useState("");
   const [isSending, setIsSending] = useState(false);
-const [chatMode, setChatMode] = useState<
-  "auto" | "fast" | "deep" | "budget" | "research" | "code"
->("auto");
+  const [chatMode, setChatMode] = useState<
+    "auto" | "fast" | "deep" | "budget" | "research" | "code"
+  >("auto");
 
+  // Project documents
+  const [projectDocs, setProjectDocs] = useState<ProjectDocument[]>([]);
 
+  // Text doc ingestion
+  const [newDocName, setNewDocName] = useState("");
+  const [newDocDescription, setNewDocDescription] = useState("");
+  const [newDocText, setNewDocText] = useState("");
+  const [isIngestingTextDoc, setIsIngestingTextDoc] = useState(false);
+
+  // Repo ingestion
+  const [repoRootPath, setRepoRootPath] = useState("C:\\InfinityWindow");
+  const [repoNamePrefix, setRepoNamePrefix] = useState("InfinityWindow/");
+  const [isIngestingRepo, setIsIngestingRepo] = useState(false);
 
   // Search
   const [searchTab, setSearchTab] = useState<"messages" | "docs">("messages");
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
-  const [searchMessageHits, setSearchMessageHits] = useState<MessageSearchHit[]>(
-    []
-  );
+  const [searchMessageHits, setSearchMessageHits] = useState<
+    MessageSearchHit[]
+  >([]);
   const [searchDocHits, setSearchDocHits] = useState<DocSearchHit[]>([]);
 
   // Convenience
-  const selectedProject = projects.find((p) => p.id === selectedProjectId) ?? null;
+  const selectedProject =
+    projects.find((p) => p.id === selectedProjectId) ?? null;
   const selectedConversation =
     conversations.find((c) => c.id === selectedConversationId) ?? null;
+
+  // ---------- Helpers ----------
+
+  const loadProjectDocs = async (projectId: number) => {
+    try {
+      const res = await fetch(`${BACKEND_BASE}/projects/${projectId}/docs`);
+      if (!res.ok) return;
+      const docsJson: ProjectDocument[] = await res.json();
+      setProjectDocs(docsJson);
+    } catch (e) {
+      console.error("Fetching project docs failed:", e);
+    }
+  };
+
+  const refreshConversations = async (projectId: number) => {
+    try {
+      const res = await fetch(
+        `${BACKEND_BASE}/projects/${projectId}/conversations`
+      );
+      if (!res.ok) return;
+      const convs: Conversation[] = await res.json();
+      setConversations(convs);
+
+      if (convs.length > 0) {
+        const existing = convs.find((c) => c.id === selectedConversationId);
+        setSelectedConversationId(existing ? existing.id : convs[0].id);
+      } else {
+        setSelectedConversationId(null);
+        setMessages([]);
+      }
+    } catch (e) {
+      console.error("Fetching conversations failed:", e);
+    }
+  };
+
+  const refreshMessages = async (conversationId: number) => {
+    try {
+      const res = await fetch(
+        `${BACKEND_BASE}/conversations/${conversationId}/messages`
+      );
+      if (!res.ok) return;
+      const msgs: Message[] = await res.json();
+      setMessages(msgs);
+    } catch (e) {
+      console.error("Fetching messages failed:", e);
+    }
+  };
 
   // ---------- Initial load (health + projects) ----------
 
@@ -109,7 +172,11 @@ const [chatMode, setChatMode] = useState<
           const projJson: Project[] = await projRes.json();
           setProjects(projJson);
           if (projJson.length > 0) {
-            setSelectedProjectId(projJson[0].id);
+            const firstId = projJson[0].id;
+            setSelectedProjectId(firstId);
+            // Preload conversations + docs for first project
+            refreshConversations(firstId);
+            loadProjectDocs(firstId);
           }
         }
       } catch (e) {
@@ -118,58 +185,32 @@ const [chatMode, setChatMode] = useState<
     };
 
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---------- When project changes, load its conversations ----------
+  // ---------- When project changes, load its conversations + docs ----------
 
   useEffect(() => {
-    const loadConversations = async (projectId: number) => {
-      try {
-        const res = await fetch(
-          `${BACKEND_BASE}/projects/${projectId}/conversations`
-        );
-        if (!res.ok) return;
-        const convs: Conversation[] = await res.json();
-        setConversations(convs);
-
-        if (convs.length > 0) {
-          const existing = convs.find((c) => c.id === selectedConversationId);
-          setSelectedConversationId(existing ? existing.id : convs[0].id);
-        } else {
-          setSelectedConversationId(null);
-          setMessages([]);
-        }
-      } catch (e) {
-        console.error("Fetching conversations failed:", e);
-      }
-    };
-
-    if (selectedProjectId != null) {
-      loadConversations(selectedProjectId);
+    if (selectedProjectId == null) {
+      setConversations([]);
+      setMessages([]);
+      setProjectDocs([]);
+      return;
     }
+    refreshConversations(selectedProjectId);
+    loadProjectDocs(selectedProjectId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProjectId]);
 
   // ---------- When conversation changes, load its messages ----------
 
   useEffect(() => {
-    const loadMessages = async (conversationId: number) => {
-      try {
-        const res = await fetch(
-          `${BACKEND_BASE}/conversations/${conversationId}/messages`
-        );
-        if (!res.ok) return;
-        const msgs: Message[] = await res.json();
-        setMessages(msgs);
-      } catch (e) {
-        console.error("Fetching messages failed:", e);
-      }
-    };
-
     if (selectedConversationId != null) {
-      loadMessages(selectedConversationId);
+      refreshMessages(selectedConversationId);
     } else {
       setMessages([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedConversationId]);
 
   // ---------- Chat handlers ----------
@@ -204,6 +245,7 @@ const [chatMode, setChatMode] = useState<
           conversation_id: convIdBefore,
           message: userText,
           mode: chatMode,
+          model: null,
         }),
       });
 
@@ -220,32 +262,11 @@ const [chatMode, setChatMode] = useState<
         setSelectedConversationId(convId);
 
         if (selectedProjectId != null) {
-          try {
-            const convRes = await fetch(
-              `${BACKEND_BASE}/projects/${selectedProjectId}/conversations`
-            );
-            if (convRes.ok) {
-              const convJson: Conversation[] = await convRes.json();
-              setConversations(convJson);
-            }
-          } catch (e) {
-            console.error("Refreshing conversations failed:", e);
-          }
+          await refreshConversations(selectedProjectId);
         }
       }
 
-      // Reload messages from backend
-      try {
-        const msgRes = await fetch(
-          `${BACKEND_BASE}/conversations/${convId}/messages`
-        );
-        if (msgRes.ok) {
-          const msgs: Message[] = await msgRes.json();
-          setMessages(msgs);
-        }
-      } catch (e) {
-        console.error("Refreshing messages failed:", e);
-      }
+      await refreshMessages(convId);
     } catch (e) {
       console.error("Chat request threw:", e);
       alert("Unexpected error talking to backend. See console.");
@@ -277,9 +298,98 @@ const [chatMode, setChatMode] = useState<
       setConversations([]);
       setSelectedConversationId(null);
       setMessages([]);
+      setProjectDocs([]);
       return;
     }
     setSelectedProjectId(parseInt(val, 10));
+  };
+
+  // ---------- Text doc ingestion handlers ----------
+
+  const handleIngestTextDoc = async () => {
+    if (!selectedProjectId) {
+      alert("No project selected.");
+      return;
+    }
+    if (!newDocName.trim()) {
+      alert("Please enter a document name.");
+      return;
+    }
+    if (!newDocText.trim()) {
+      alert("Please enter some document text.");
+      return;
+    }
+
+    setIsIngestingTextDoc(true);
+    try {
+      const res = await fetch(`${BACKEND_BASE}/docs/text`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_id: selectedProjectId,
+          name: newDocName.trim(),
+          description: newDocDescription.trim() || null,
+          text: newDocText,
+        }),
+      });
+
+      if (!res.ok) {
+        console.error("Ingest text doc failed:", res.status);
+        alert("Text document ingestion failed; see backend logs.");
+        return;
+      }
+
+      // Clear fields and refresh docs
+      setNewDocName("");
+      setNewDocDescription("");
+      setNewDocText("");
+      await loadProjectDocs(selectedProjectId);
+    } catch (e) {
+      console.error("Ingest text doc threw:", e);
+      alert("Unexpected error while ingesting text document.");
+    } finally {
+      setIsIngestingTextDoc(false);
+    }
+  };
+
+  // ---------- Repo ingestion handlers ----------
+
+  const handleIngestRepo = async () => {
+    if (!selectedProjectId) {
+      alert("No project selected.");
+      return;
+    }
+    if (!repoRootPath.trim()) {
+      alert("Please enter a repo root path.");
+      return;
+    }
+
+    setIsIngestingRepo(true);
+    try {
+      const res = await fetch(`${BACKEND_BASE}/github/ingest_local_repo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_id: selectedProjectId,
+          root_path: repoRootPath.trim(),
+          name_prefix: repoNamePrefix.trim() || "",
+          include_globs: null,
+        }),
+      });
+
+      if (!res.ok) {
+        console.error("Repo ingestion failed:", res.status);
+        alert("Repo ingestion failed; see backend logs.");
+        return;
+      }
+
+      await loadProjectDocs(selectedProjectId);
+    } catch (e) {
+      console.error("Repo ingestion threw:", e);
+      alert("Unexpected error while ingesting repo.");
+    } finally {
+      setIsIngestingRepo(false);
+    }
   };
 
   // ---------- Search handlers ----------
@@ -484,27 +594,26 @@ const [chatMode, setChatMode] = useState<
               <div className="chat-mode-selector">
                 <label>Mode</label>
                 <select
-  value={chatMode}
-  onChange={(e) =>
-    setChatMode(
-      e.target.value as
-        | "auto"
-        | "fast"
-        | "deep"
-        | "budget"
-        | "research"
-        | "code"
-    )
-  }
->
-  <option value="auto">Auto</option>
-  <option value="fast">Fast</option>
-  <option value="deep">Deep</option>
-  <option value="budget">Budget</option>
-  <option value="research">Research</option>
-  <option value="code">Code</option>
-</select>
-
+                  value={chatMode}
+                  onChange={(e) =>
+                    setChatMode(
+                      e.target.value as
+                        | "auto"
+                        | "fast"
+                        | "deep"
+                        | "budget"
+                        | "research"
+                        | "code"
+                    )
+                  }
+                >
+                  <option value="auto">Auto</option>
+                  <option value="fast">Fast</option>
+                  <option value="deep">Deep</option>
+                  <option value="budget">Budget</option>
+                  <option value="research">Research</option>
+                  <option value="code">Code</option>
+                </select>
               </div>
               <button
                 className="btn-primary"
@@ -518,8 +627,99 @@ const [chatMode, setChatMode] = useState<
           </div>
         </section>
 
-        {/* RIGHT: Search memory */}
+        {/* RIGHT: Docs + ingestion + search */}
         <section className="column column-right">
+          {/* Project documents */}
+          <div className="docs-header">Project documents</div>
+          <div className="project-docs-list">
+            {selectedProjectId == null ? (
+              <div className="docs-empty">No project selected.</div>
+            ) : projectDocs.length === 0 ? (
+              <div className="docs-empty">
+                No documents yet. Ingest one below.
+              </div>
+            ) : (
+              <ul>
+                {projectDocs.map((doc) => (
+                  <li key={doc.id} className="project-doc-item">
+                    <div className="project-doc-name">{doc.name}</div>
+                    {doc.description && (
+                      <div className="project-doc-description">
+                        {doc.description}
+                      </div>
+                    )}
+                    <div className="project-doc-id">Doc ID {doc.id}</div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Ingest text document */}
+          <div className="ingest-section">
+            <div className="ingest-title">Ingest text document</div>
+            <div className="ingest-textdoc-form">
+              <input
+                className="ingest-input"
+                type="text"
+                placeholder="Name"
+                value={newDocName}
+                onChange={(e) => setNewDocName(e.target.value)}
+              />
+              <input
+                className="ingest-input"
+                type="text"
+                placeholder="Description (optional)"
+                value={newDocDescription}
+                onChange={(e) => setNewDocDescription(e.target.value)}
+              />
+              <textarea
+                className="ingest-textarea"
+                placeholder="Paste document text here..."
+                value={newDocText}
+                onChange={(e) => setNewDocText(e.target.value)}
+              />
+              <button
+                className="btn-secondary"
+                type="button"
+                onClick={handleIngestTextDoc}
+                disabled={isIngestingTextDoc}
+              >
+                {isIngestingTextDoc ? "Ingesting…" : "Ingest text doc"}
+              </button>
+            </div>
+          </div>
+
+          {/* Ingest local repo */}
+          <div className="ingest-section">
+            <div className="ingest-title">Ingest local repo</div>
+            <div className="ingest-repo-form">
+              <input
+                className="ingest-input"
+                type="text"
+                placeholder="Root path (e.g. C:\\InfinityWindow)"
+                value={repoRootPath}
+                onChange={(e) => setRepoRootPath(e.target.value)}
+              />
+              <input
+                className="ingest-input"
+                type="text"
+                placeholder="Name prefix (e.g. InfinityWindow/)"
+                value={repoNamePrefix}
+                onChange={(e) => setRepoNamePrefix(e.target.value)}
+              />
+              <button
+                className="btn-secondary"
+                type="button"
+                onClick={handleIngestRepo}
+                disabled={isIngestingRepo}
+              >
+                {isIngestingRepo ? "Ingesting…" : "Ingest repo"}
+              </button>
+            </div>
+          </div>
+
+          {/* Search memory */}
           <div className="search-header">Search memory</div>
 
           <div className="search-tabs">
