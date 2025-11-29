@@ -5,7 +5,7 @@ from typing import Optional, List, Dict
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
-
+from fastapi.middleware.cors import CORSMiddleware
 from app.db.base import Base
 from app.db.session import engine, get_db
 from app.db import models
@@ -29,9 +29,24 @@ app = FastAPI(
     version="0.3.0",
 )
 
+# Allow local frontend dev (Vite default ports, etc.)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(search_router)
 app.include_router(docs_router)
 app.include_router(github_router)
+
 
 
 # ---------- Pydantic Schemas ----------
@@ -75,6 +90,17 @@ class MessageRead(BaseModel):
 class ChatRequest(BaseModel):
     conversation_id: Optional[int] = None
     message: str
+
+    # Logical mode: "auto", "fast", "deep", "budget", "research", "code", ...
+    mode: str = "auto"
+
+    # Optional explicit model name, e.g. "gpt-5.1" or "o3-deep-research".
+    # If provided, this overrides 'mode'.
+    model: Optional[str] = None
+
+    mode: Optional[str] = "auto"  # "auto" | "fast" | "deep"
+    model: Optional[str] = None   # explicit OpenAI model name (optional)
+
 
 
 class ChatResponse(BaseModel):
@@ -389,7 +415,12 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
     chat_history.append({"role": "user", "content": payload.message})
 
     # 6) Call OpenAI to generate a reply
-    reply_text = generate_reply_from_history(chat_history)
+    reply_text = generate_reply_from_history(
+    chat_history,
+    model=payload.model,
+    mode=payload.mode or "auto",
+)
+
 
     # 7) Save assistant message
     assistant_message = models.Message(

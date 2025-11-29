@@ -409,4 +409,27 @@ body {
   .memory-panel {
     margin-top: 0.75rem;
   }
+.chat-right-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.chat-mode-selector {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.75rem;
+  color: #4b5563;
+}
+
+.chat-mode-selector select {
+  margin-top: 0.25rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  border: 1px solid #d1d5db;
+  font-size: 0.75rem;
+  background-color: #f9fafb;
+}
+
 }
