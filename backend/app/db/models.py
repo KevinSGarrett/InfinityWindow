@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, Float
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -15,6 +15,10 @@ class Project(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # NEW: optional local filesystem root for this project
+    local_root_path: Mapped[Optional[str]] = mapped_column(
+        String(1024), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow
     )
@@ -28,7 +32,12 @@ class Project(Base):
     documents: Mapped[List["Document"]] = relationship(
         "Document", back_populates="project", cascade="all, delete-orphan"
     )
-
+    tasks: Mapped[List["Task"]] = relationship(
+        "Task", back_populates="project", cascade="all, delete-orphan"
+    )
+    usage_records: Mapped[List["UsageRecord"]] = relationship(
+        "UsageRecord", back_populates="project", cascade="all, delete-orphan"
+    )
 
 
 class Conversation(Base):
@@ -49,6 +58,9 @@ class Conversation(Base):
     messages: Mapped[List["Message"]] = relationship(
         "Message", back_populates="conversation", cascade="all, delete-orphan"
     )
+    usage_records: Mapped[List["UsageRecord"]] = relationship(
+        "UsageRecord", back_populates="conversation", cascade="all, delete-orphan"
+    )
 
 
 class Message(Base):
@@ -58,7 +70,8 @@ class Message(Base):
     conversation_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("conversations.id"), index=True
     )
-    role: Mapped[str] = mapped_column(String(50))  # "user" | "assistant" | "system"
+    # "user" | "assistant" | "system"
+    role: Mapped[str] = mapped_column(String(50))
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow
@@ -67,6 +80,11 @@ class Message(Base):
     conversation: Mapped[Conversation] = relationship(
         "Conversation", back_populates="messages"
     )
+    usage_records: Mapped[List["UsageRecord"]] = relationship(
+        "UsageRecord", back_populates="message", cascade="all, delete-orphan"
+    )
+
+
 class Document(Base):
     __tablename__ = "documents"
 
@@ -140,3 +158,57 @@ class DocumentChunk(Base):
         "DocumentSection", back_populates="chunks"
     )
 
+
+class Task(Base):
+    __tablename__ = "tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("projects.id"), index=True
+    )
+    description: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="open")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    project: Mapped["Project"] = relationship(
+        "Project", back_populates="tasks"
+    )
+
+
+class UsageRecord(Base):
+    __tablename__ = "usage_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("projects.id"), index=True
+    )
+    conversation_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("conversations.id"), nullable=True, index=True
+    )
+    message_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("messages.id"), nullable=True, index=True
+    )
+    model: Mapped[str] = mapped_column(String(255))
+    tokens_in: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    tokens_out: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    cost_estimate: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, index=True
+    )
+
+    project: Mapped["Project"] = relationship(
+        "Project", back_populates="usage_records"
+    )
+    conversation: Mapped[Optional["Conversation"]] = relationship(
+        "Conversation", back_populates="usage_records"
+    )
+    message: Mapped[Optional["Message"]] = relationship(
+        "Message", back_populates="usage_records"
+    )

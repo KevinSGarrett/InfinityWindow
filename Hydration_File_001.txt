@@ -1,0 +1,975 @@
+InfinityWindow – Hydration File v1
+
+Instructions to the assistant reading this file
+
+You are helping continue work on the InfinityWindow project – a local AI workbench for long‑running projects.
+Treat everything below as source of truth project context.
+When the user says “rehydrate” or pastes this file, you should:
+
+Read this entire document.
+
+Assume the codebase and behavior described here already exist unless the user states otherwise.
+
+Ask for minimal clarification and instead propose concrete code edits and steps.
+
+Preserve the architecture & conventions described here.
+
+1. High‑level project overview
+
+Name: InfinityWindow
+Goal: A local “AI workbench” for serious, multi‑week projects.
+
+Core ideas:
+
+Work in projects, not isolated chats.
+
+Persist and search all important context:
+
+Conversations
+
+Tasks / TODOs
+
+Documents and code (via vector store)
+
+Integrate with real local files & repos (not just copy/paste).
+
+Provide a focused UI with:
+
+Project selector
+
+Conversations list
+
+Chat pane
+
+Right‑hand “workbench” with tasks, docs, search, filesystem, usage, etc.
+
+This hydration file describes the state after we:
+
+Added a local_root_path to projects.
+
+Implemented backend endpoints for filesystem browse/read/write.
+
+Wired up a Project files panel in the frontend, with:
+
+Directory listing
+
+File viewer/editor
+
+Refresh
+
+Unsaved changes indicator
+
+Optional “Show original” view (original vs edited).
+
+2. Tech stack & repo layout
+
+OS / dev environment:
+
+Windows machine
+
+Repo root: C:\InfinityWindow
+
+Backend
+
+Python, FastAPI
+
+SQLAlchemy ORM + SQLite DB: backend\infinitywindow.db
+
+Vector store: Chroma (on disk under backend\chroma_data)
+
+Location: backend\app\...
+
+Entrypoint: uvicorn app.api.main:app --reload
+
+Frontend
+
+React + TypeScript (single‑page app)
+
+Likely Vite dev server on http://127.0.0.1:5173
+
+Main component: frontend/src/App.tsx
+
+Styles in frontend/src/App.css
+
+Docs / plans
+
+Root has several project‑plan text files and README:
+
+Project_Plan_001_ORIGINAL.txt
+
+Project_Plan_002_NEW_FEATURES.txt
+
+Project_Plan_003_UPDATED.txt
+
+README.md (long, resume‑friendly description of the product)
+
+These are conceptually ingested or available as background.
+
+3. Backend data model (SQLAlchemy)
+
+File: backend/app/db/models.py
+
+Project
+class Project(Base):
+    __tablename__ = "projects"
+
+    id          : int (pk)
+    name        : str (unique, indexed)
+    description : Optional[str]
+    local_root_path: Optional[str]  # NEW – local filesystem root for this project
+    created_at  : datetime (default utcnow)
+    updated_at  : datetime (default utcnow, onupdate)
+
+    # relationships:
+    conversations : List[Conversation]
+    documents     : List[Document]
+    tasks         : List[Task]
+    usage_records : List[UsageRecord]
+
+
+Important:
+local_root_path is used to anchor filesystem browsing & editing per project.
+On the user’s machine, the primary project has:
+
+{
+  "id": 1,
+  "name": "Demo Project",
+  "description": "Main InfinityWindow playground",
+  "local_root_path": "C:\\InfinityWindow"
+}
+
+Conversation, Message, Document, Task, UsageRecord
+
+Conversation
+
+id, project_id, title, created_at
+
+belongs to a Project
+
+has many Message and UsageRecord
+
+Message
+
+id, conversation_id, role ("user" | "assistant" | "system"), content, created_at
+
+Document / DocumentSection / DocumentChunk
+
+Represent ingested docs with hierarchical sections and text chunks for retrieval.
+
+Task
+
+id, project_id, description, status ("open" / "done"), timestamps.
+
+UsageRecord
+
+Tracks model, tokens_in, tokens_out, cost_estimate, created_at; tied to project, conversation, message.
+
+Migrations note:
+The DB is created with Base.metadata.create_all(bind=engine) at import time.
+When local_root_path was added, an old DB caused:
+
+sqlite3.OperationalError: no such column: projects.local_root_path
+
+Fix was to delete backend\infinitywindow.db and let FastAPI recreate it.
+Future schema changes may require similar reset or explicit migrations.
+
+4. Backend API state
+
+File: backend/app/api/main.py (single monolithic FastAPI app).
+
+4.1 System & health
+
+GET /health
+Returns {"status": "ok", "service": "InfinityWindow", "version": "0.3.0"}
+
+CORS allows local frontends:
+
+http://localhost:5173
+
+http://127.0.0.1:5173
+
+http://localhost:3000
+
+http://127.0.0.1:3000
+
+4.2 Projects
+
+Pydantic models:
+
+ProjectCreate { name: str, description?: str, local_root_path?: str }
+
+ProjectRead { id, name, description?, local_root_path? }
+
+ProjectUpdate same fields optional.
+
+Endpoints:
+
+POST /projects → ProjectRead
+
+Creates a new project; name must be unique.
+
+GET /projects → [ProjectRead]
+
+List all projects.
+
+PATCH /projects/{project_id} → ProjectRead
+
+Update name, description, local_root_path.
+
+4.3 Conversations & messages
+
+Pydantic:
+
+ConversationCreate { project_id: int, title?: str }
+
+ConversationRead { id, project_id, title? }
+
+ConversationRenamePayload { title: str }
+
+MessageRead { id, conversation_id, role, content }
+
+Endpoints:
+
+GET /projects/{project_id}/conversations → [ConversationRead]
+
+POST /conversations → ConversationRead
+
+PATCH /conversations/{conversation_id} → ConversationRead
+
+GET /conversations/{conversation_id}/messages → [MessageRead]
+
+4.4 Tasks / TODOs
+
+Pydantic:
+
+TaskCreate { project_id, description }
+
+TaskRead { id, project_id, description, status }
+
+TaskUpdate { description?, status? }
+
+Endpoints:
+
+GET /projects/{project_id}/tasks → [TaskRead]
+
+POST /tasks → TaskRead
+
+PATCH /tasks/{task_id} → TaskRead
+
+There is also a helper:
+
+auto_update_tasks_from_conversation(db, conversation, max_messages=16)
+
+This:
+
+Pulls the last N messages for a conversation.
+
+Sends them to generate_reply_from_history with a system prompt asking for JSON:
+
+{"tasks": [{"description": "..."}]}
+
+
+Parses the JSON, deduplicates against existing open tasks, and inserts new tasks.
+
+It’s called at the end of /chat (best‑effort; errors are logged as warnings).
+
+4.5 Usage / cost tracking
+
+Pydantic UsageRecordRead and ConversationUsageSummary.
+
+Endpoint:
+
+GET /conversations/{conversation_id}/usage → ConversationUsageSummary
+
+This:
+
+Fetches all UsageRecord rows for the conversation.
+
+Sums tokens_in and tokens_out.
+
+Recomputes total cost using estimate_call_cost(model, tokens_in, tokens_out).
+
+4.6 Chat endpoint & retrieval
+
+Endpoint:
+
+POST /chat → ChatResponse { conversation_id, reply }
+
+Request body:
+
+{
+  "project_id": 1,           // optional (used when creating new conversation)
+  "conversation_id": 123,    // optional (continue existing conversation)
+  "message": "text",         // required
+  "mode": "auto|fast|deep|budget|research|code", // optional, default "auto"
+  "model": "gpt-5.1 or other",                   // optional, overrides mode
+}
+
+
+Behavior:
+
+Resolve conversation
+
+If conversation_id given: load or 404.
+
+Else:
+
+Use project_id if provided (must exist).
+
+Otherwise, use first project or create “Default Project”.
+
+Create a new Conversation with title "Chat conversation".
+
+Load existing messages for history.
+
+Insert new user Message (flush but don’t commit yet).
+
+Retrieval (wrapped in try/except so chat never fails because of it):
+
+Compute embedding for user message via get_embedding.
+
+Query Chroma for similar past messages in this project & conversation (query_similar_messages).
+
+Query Chroma for similar document chunks in this project (query_similar_document_chunks).
+
+Build a retrieval_context_text string including:
+
+“Relevant past messages: …”
+
+“Relevant document excerpts: …”
+
+Build OpenAI history:
+
+System prompt:
+
+"You are InfinityWindow, a helpful AI assistant…"
+
+Optional system message with retrieval context.
+
+All previous messages.
+
+Current user message.
+
+Call LLM via generate_reply_from_history(...), passing usage_out dict for token accounting.
+
+Save assistant message to DB.
+
+Index messages in Chroma (user & assistant) using add_message_embedding. Errors are logged, not fatal.
+
+Create UsageRecord from usage info & pricing (again best‑effort).
+
+Auto‑update tasks from conversation.
+
+Commit and return {conversation_id, reply}.
+
+5. Filesystem integration (critical for this hydrate)
+5.1 Helper functions
+
+In app/api/main.py:
+
+def _ensure_project(db: Session, project_id: int) -> models.Project:
+    project = db.get(models.Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    return project
+
+from pathlib import Path
+
+def _get_project_root(project: models.Project) -> Path:
+    if not project.local_root_path:
+        raise HTTPException(
+            status_code=400,
+            detail="Project does not have local_root_path configured.",
+        )
+    root = Path(project.local_root_path).expanduser()
+    try:
+        root = root.resolve()
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid local_root_path: {e}",
+        )
+    if not root.exists():
+        raise HTTPException(
+            status_code=400,
+            detail=f"local_root_path does not exist on disk: {root}",
+        )
+    if not root.is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail="local_root_path is not a directory.",
+        )
+    return root
+
+Safe path joining
+
+Very important for security and correctness:
+
+def _safe_join(root: Path, relative_path: str) -> Path:
+    """
+    Resolve a subpath/file_path safely under root, preventing path traversal.
+
+    Rules:
+    - 'relative_path' must be relative (no drive, no leading slash).
+    - It may not contain '..' segments.
+    - Final resolved path must still live under 'root'.
+    """
+    if not relative_path:
+        return root
+
+    rel_obj = Path(relative_path)
+
+    # Disallow absolute paths like "C:\\Windows" or "/etc"
+    if rel_obj.is_absolute():
+        raise HTTPException(
+            status_code=400,
+            detail="Path must be relative to the project local_root_path.",
+        )
+
+    # Disallow any attempt to go up with ".."
+    if any(part == ".." for part in rel_obj.parts):
+        raise HTTPException(
+            status_code=400,
+            detail="Path may not contain '..' segments.",
+        )
+
+    # Join and normalize; strict=False so non‑existent paths (for writes) are allowed
+    candidate = (root / rel_obj).resolve(strict=False)
+
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        # In case of weird symlink situations, still enforce staying under root
+        raise HTTPException(
+            status_code=400,
+            detail="Path escapes project local_root_path.",
+        )
+
+    return candidate
+
+
+Key behavior:
+
+Rejects absolute paths.
+
+Rejects any .. segments.
+
+Ensures resolved path stays under the project root.
+
+This is why calling /fs/list with subpath=..\\.. now returns HTTP 400 with "Path may not contain '..' segments."
+
+5.2 Endpoints
+GET /projects/{project_id}/fs/list
+
+Query params:
+
+subpath: str = "" (optional, relative subdirectory under root)
+
+Behavior:
+
+Validate project & root dir.
+
+Compute target = _safe_join(root, subpath or "").
+
+Require target exists and is a directory.
+
+Return JSON:
+
+{
+  "root": "C:\\InfinityWindow",
+  "path": "backend\\app",       // path relative to root (as string)
+  "entries": [
+    {
+      "name": "api",
+      "is_dir": true,
+      "size": null,
+      "modified_at": "2025-11-25T22:15:51.168425",
+      "rel_path": "backend\\app\\api"
+    },
+    {
+      "name": "README.md",
+      "is_dir": false,
+      "size": 293,
+      "modified_at": "2025-11-25T18:26:05.112265",
+      "rel_path": "backend\\README.md"
+    }
+  ]
+}
+
+
+Entry fields:
+
+name: basename
+
+is_dir: boolean
+
+size: null for directories, integer for files
+
+modified_at: ISO timestamp
+
+rel_path: path relative to root (Windows style on this machine; the frontend treats it as opaque and round‑trips it back to the backend).
+
+GET /projects/{project_id}/fs/read
+
+Query params:
+
+file_path: str (relative to root; same restrictions as _safe_join)
+
+Behavior:
+
+Validate project & root.
+
+Compute target = _safe_join(root, file_path).
+
+Require it exists and is a file.
+
+Read as UTF‑8 text; if decoding fails, 400 “File is not valid UTF‑8 text; cannot be read as text.”
+
+Return:
+
+{
+  "root": "C:\\InfinityWindow",
+  "path": "backend\\app\\api\\main.py",
+  "content": "from __future__ import annotations\n\nimport json\n..."
+}
+
+PUT /projects/{project_id}/fs/write
+
+Body (Pydantic FileWritePayload):
+
+{
+  "file_path": "scratch/test-notes.txt",
+  "content": "some text",
+  "create_dirs": false
+}
+
+
+Behavior:
+
+Validate project & root.
+
+target = _safe_join(root, file_path).
+
+Ensure parent directory exists, or if create_dirs == true, create parents.
+
+Write UTF‑8 text to the file.
+
+Return:
+
+{
+  "root": "C:\\InfinityWindow",
+  "path": "scratch\\test-notes.txt",
+  "size": 31,
+  "modified_at": "2025-11-30T01:52:06.751559"
+}
+
+
+Known usage:
+
+Project 1 has a folder scratch with test-notes.txt.
+
+We tested round‑trip:
+
+fs/list at root → shows scratch, backend, etc.
+
+fs/list with subpath=backend → shows .venv, app, etc.
+
+fs/read for backend\\app\\api\\main.py works.
+
+fs/write for scratch\\test-notes.txt works; modifications are reflected on disk and via subsequent fs/list/fs/read.
+
+6. Frontend state (React App)
+
+File: frontend/src/App.tsx with matching App.css.
+
+6.1 Overall layout
+
+Three columns:
+
+Left: Project selector + conversation list.
+
+Middle: Chat history & input.
+
+Right: Workbench column with:
+
+Project tasks
+
+Project documents
+
+Text doc ingestion
+
+Local repo ingestion
+
+Project files panel (new)
+
+Search memory (messages/docs)
+
+Usage (this conversation)
+
+6.2 Key frontend concepts & state
+
+Important types:
+
+Project { id, name, description? }
+
+Conversation { id, project_id, title? }
+
+Message { id, conversation_id, role, content }
+
+Task, ProjectDocument, UsageRecord, ConversationUsage
+
+Filesystem types: FileEntry { name, is_dir, size, modified_at, rel_path }
+
+Base URL: const BACKEND_BASE = "http://127.0.0.1:8000";
+
+State includes:
+
+Project selection: projects, selectedProjectId
+
+Conversations & messages: conversations, selectedConversationId, messages
+
+Chat: chatInput, chatMode, isSending
+
+Tasks: tasks, newTaskDescription, isSavingTask
+
+Docs ingestion: newDocName, newDocDescription, newDocText, isIngestingTextDoc
+
+Repo ingestion: repoRootPath (default "C:\\InfinityWindow"), repoNamePrefix ("InfinityWindow/"), isIngestingRepo
+
+Search: searchTab ("messages"|"docs"), searchQuery, results lists, isSearching
+
+Usage: usage, isLoadingUsage
+
+Filesystem:
+
+const [fsEntries, setFsEntries] = useState<FileEntry[]>([]);
+const [fsRoot, setFsRoot] = useState<string | null>(null);
+const [fsCurrentSubpath, setFsCurrentSubpath] = useState<string>("");
+const [fsDisplayPath, setFsDisplayPath] = useState<string>("");
+const [fsSelectedRelPath, setFsSelectedRelPath] = useState<string | null>(null);
+const [fsOriginalContent, setFsOriginalContent] = useState<string>("");
+const [fsEditedContent, setFsEditedContent] = useState<string>("");
+const [fsIsLoadingList, setFsIsLoadingList] = useState(false);
+const [fsIsLoadingFile, setFsIsLoadingFile] = useState(false);
+const [fsIsSavingFile, setFsIsSavingFile] = useState(false);
+const [fsError, setFsError] = useState<string | null>(null);
+const [fsShowOriginal, setFsShowOriginal] = useState(false);
+
+const hasUnsavedFileChanges =
+  fsSelectedRelPath != null && fsEditedContent !== fsOriginalContent;
+
+6.3 Important frontend behaviors
+Project selection & initial load
+
+On mount:
+
+GET /health → show backend version pill.
+
+GET /projects → set projects.
+
+If there’s at least one project:
+
+Select the first project.
+
+Load:
+
+Conversations (/projects/{id}/conversations)
+
+Docs (/projects/{id}/docs)
+
+Tasks (/projects/{id}/tasks)
+
+Files (/projects/{id}/fs/list at root)
+
+Changing project resets:
+
+Conversations/messages/usage
+
+Tasks/docs
+
+Filesystem (entries, selection, error state)
+
+Chat
+
+Sends POST /chat with current project & conversation id.
+
+Optimistically adds user message.
+
+On response:
+
+If new conversation was created, selects it and refreshes conversations.
+
+Then refreshes messages and usage.
+
+Supports chat modes: "auto" | "fast" | "deep" | "budget" | "research" | "code".
+
+Tasks
+
+GET /projects/{id}/tasks
+
+POST /tasks to add.
+
+PATCH /tasks/{task_id} to toggle "open" / "done".
+
+Docs
+
+List docs: GET /projects/{id}/docs
+
+Ingest text doc: POST /docs/text with { project_id, name, description?, text }.
+
+Repo ingestion
+
+POST /github/ingest_local_repo with:
+
+{
+  "project_id": ...,
+  "root_path": "C:\\InfinityWindow",
+  "name_prefix": "InfinityWindow/",
+  "include_globs": null
+}
+
+
+After completion, reloads project docs.
+
+Vector search
+
+Messages: POST /search/messages
+
+Docs: POST /search/docs
+
+Results are listed in the Search memory section.
+
+Usage panel
+
+GET /conversations/{id}/usage updates after each chat.
+
+Shows:
+
+Total tokens in/out
+
+Total cost
+
+A list of recent usage records (model name, tokens, created_at, message_id).
+
+6.4 Project files panel (new UI piece)
+
+This is the part we care most about for rehydration.
+
+UI pieces:
+
+Header: Project files
+
+Location row:
+
+Shows: Location: {fsDisplayPath || "."} (root: {fsRoot})
+
+Buttons:
+
+↑ Up → calls handleFsUp
+
+Refresh → calls handleFsRefresh
+
+Files list:
+
+Scrollable list (slightly larger than before; styled as its own panel).
+
+Each entry is a button:
+
+If is_dir:
+
+Label: 📁 name
+
+Clicking calls handleOpenFsEntry(entry) → fs/list with that rel_path.
+
+Also resets file selection/editor.
+
+If file:
+
+Label: 📄 name plus size.
+
+If fsSelectedRelPath === entry.rel_path → styled as selected.
+
+Clicking calls handleOpenFsEntry(entry) → fs/read.
+
+File editor (only if fsSelectedRelPath is set):
+
+Header:
+
+Editing: scratch/test-notes.txt ● Unsaved changes
+
+
+The ● Unsaved changes indicator appears when fsEditedContent !== fsOriginalContent.
+
+Controls:
+
+Checkbox: Show original
+
+Button: Save file
+
+Disabled if no unsaved changes or currently saving.
+
+Calls handleSaveFile → fs/write and then reloads file list.
+
+Main textarea:
+
+Bound to fsEditedContent.
+
+Monospace styling, larger than before (less cramped).
+
+Original snippet (if “Show original” is checked):
+
+A read‑only <pre> showing fsOriginalContent below the editor.
+
+Error handling:
+
+If filesystem endpoints return non‑OK status (e.g., because project has no local_root_path or user attempted .. in path), fsError is set and shown as red text inside the files panel.
+
+7. Running the system (conceptual)
+
+On the user’s machine, typical flow:
+
+Backend
+
+cd C:\InfinityWindow\backend
+# Activate venv (example)
+.\.venv\Scripts\activate
+uvicorn app.api.main:app --reload
+
+
+Backend listens on http://127.0.0.1:8000.
+
+Frontend
+
+cd C:\InfinityWindow\frontend
+# (install deps first time)
+npm install
+npm run dev
+
+
+Frontend dev server on http://127.0.0.1:5173 (CORS is configured).
+
+8. UX feedback & design intent (important context)
+
+The user’s feedback so far:
+
+Functionality is progressing well (chat, tasks, docs, search, filesystem).
+
+Current UI feels cramped, especially the Project files box:
+
+Everything is stacked vertically in the right column.
+
+It’s “a smashed together and cramped mess”.
+
+It’s getting harder to use as new features are added.
+
+Design intent:
+
+We agreed to prioritize features first, then circle back for a more thoughtful UI pass.
+
+However, new features (like the file editor) should still try not to make things worse layout‑wise.
+
+The current Project Files panel is step 1; future UI work will likely:
+
+Introduce tabs in the right column (Tasks / Docs / Files / Search / Usage).
+
+Or introduce collapsible sections / accordions.
+
+Or move some things into drawers or separate views.
+
+When suggesting future changes, keep this feedback in mind and avoid making panels even smaller or more cluttered.
+
+9. Current roadmap / next steps (rough)
+
+These are the main planned or partially planned features:
+
+Filesystem integration (current stage)
+
+✅ local_root_path on projects.
+
+✅ Backend /fs/list, /fs/read, /fs/write with safe path handling.
+
+✅ Frontend file browser + editor + refresh + unsaved indicator + original view.
+
+⬜ Optional diff‑style view (before/after) rather than just “original snippet”.
+
+⬜ Better layout for files (possibly a dedicated Files tab, tree view, or two‑pane browser).
+
+Terminal integration (planned)
+
+/terminal/run style endpoint to execute commands in project root (with strict guardrails).
+
+UI tab in right column for terminal output and pre‑approved commands.
+
+Project‑level instructions & decision log
+
+DB tables for project instructions and decisions.
+
+UI editors.
+
+Injection into chat system prompts.
+
+Memory upgrades
+
+memory_items table and associated endpoints.
+
+“Remember this” action in chat to store persistent notes.
+
+Memory tab in UI and integration into retrieval.
+
+Usage / model routing improvements
+
+More sophisticated routing between modes & models.
+
+Better display (e.g., per‑model breakdown, charting).
+
+UI/UX refactor
+
+Right column reorganized (tabs / accordion).
+
+More room for filesystem and search.
+
+Visual polish & spacing improvements so things no longer feel “cramped and smashed together”.
+
+10. Working style & preferences (for future assistant)
+
+The user prefers:
+
+Concrete, step‑by‑step instructions when changing code or running commands.
+
+When editing React or backend files, full updated file is often easier than small diffs, especially while everything is still moving.
+
+Minimal back‑and‑forth: better to propose a reasonable default than ask a ton of clarifying questions.
+
+Clear explanation of:
+
+Which file(s) to edit.
+
+Where to paste the new code.
+
+What commands to run afterwards.
+
+For risky things like DB schema changes:
+
+Explicitly mention if they must delete the SQLite DB or run a migration.
+
+When rehydrated, you should:
+
+Treat the code in this hydrate file as already present unless the user says they changed it.
+
+Ask the user to paste any modified files if you need exact current state.
+
+Keep an eye on path‑safety and Windows path quirks (backslashes etc.).
+
+Remember the project root: C:\InfinityWindow and default repo ingestion root is that path as well.
+
+11. How to “rehydrate” in a fresh chat (instructions for the user)
+
+When starting a new ChatGPT window and wanting to continue work on this project:
+
+Paste this entire hydration file.
+
+Then say something like:
+
+“You are the InfinityWindow build assistant. Read that hydrate file as the canonical state of my project, then help me with XYZ.”
+
+If you’ve made local changes to App.tsx, main.py, or other files since this hydrate version, paste the current versions so the assistant doesn’t base suggestions on outdated code.

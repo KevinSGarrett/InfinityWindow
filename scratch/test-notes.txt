@@ -1,0 +1,3 @@
+1) Implement GitHub repo ingestion (github_ingestor.py) including cloning, updating, file filtering, chunking, and embedding.
+2) Add API endpoints and Slack commands for attaching GitHub repos and searching indexed code (e.g., /github/attach, /assistant repo attach, search_code_chunks).
+3) Implement pinned memory and project instruction features, including the MemoryItem model, remember commands, and automatic injection of instructions and decisions into the system prompt.

@@ -1,16 +1,22 @@
 from __future__ import annotations
 
+import json
+import subprocess
+from datetime import datetime
+from pathlib import Path
 from typing import Optional, List, Dict
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
-from fastapi.middleware.cors import CORSMiddleware
+
 from app.db.base import Base
 from app.db.session import engine, get_db
 from app.db import models
 from app.llm.openai_client import generate_reply_from_history
 from app.llm.embeddings import get_embedding
+from app.llm.pricing import estimate_call_cost
 from app.vectorstore.chroma_store import (
     add_message_embedding,
     query_similar_messages,
@@ -48,21 +54,29 @@ app.include_router(docs_router)
 app.include_router(github_router)
 
 
-
 # ---------- Pydantic Schemas ----------
 
 
 class ProjectCreate(BaseModel):
     name: str
     description: Optional[str] = None
+    # NEW: optional local filesystem root configured at creation
+    local_root_path: Optional[str] = None
 
 
 class ProjectRead(BaseModel):
     id: int
     name: str
     description: Optional[str] = None
+    local_root_path: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ProjectUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    local_root_path: Optional[str] = None
 
 
 class ConversationCreate(BaseModel):
@@ -78,6 +92,10 @@ class ConversationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ConversationRenamePayload(BaseModel):
+    title: str
+
+
 class MessageRead(BaseModel):
     id: int
     conversation_id: int
@@ -87,25 +105,359 @@ class MessageRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class TaskCreate(BaseModel):
+    project_id: int
+    description: str
+
+
+class TaskRead(BaseModel):
+    id: int
+    project_id: int
+    description: str
+    status: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TaskUpdate(BaseModel):
+    description: Optional[str] = None
+    status: Optional[str] = None
+
+
+class UsageRecordRead(BaseModel):
+    id: int
+    project_id: int
+    conversation_id: Optional[int]
+    message_id: Optional[int]
+    model: str
+    tokens_in: Optional[int]
+    tokens_out: Optional[int]
+    cost_estimate: Optional[float]
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ConversationUsageSummary(BaseModel):
+    conversation_id: int
+    total_tokens_in: int
+    total_tokens_out: int
+    total_cost_estimate: Optional[float]
+    records: List[UsageRecordRead]
+
+
 class ChatRequest(BaseModel):
+    # project this chat belongs to (used if conversation_id is not provided)
+    project_id: Optional[int] = None
     conversation_id: Optional[int] = None
     message: str
 
     # Logical mode: "auto", "fast", "deep", "budget", "research", "code", ...
-    mode: str = "auto"
+    mode: Optional[str] = "auto"
 
     # Optional explicit model name, e.g. "gpt-5.1" or "o3-deep-research".
     # If provided, this overrides 'mode'.
     model: Optional[str] = None
 
-    mode: Optional[str] = "auto"  # "auto" | "fast" | "deep"
-    model: Optional[str] = None   # explicit OpenAI model name (optional)
-
-
 
 class ChatResponse(BaseModel):
     conversation_id: int
     reply: str
+
+
+class FileWritePayload(BaseModel):
+    """
+    Payload for writing a file in a project's local_root_path.
+    file_path is relative to the project's root.
+    """
+    file_path: str
+    content: str
+    create_dirs: bool = False
+
+
+class FileAIEditPayload(BaseModel):
+    """
+    Ask the AI to edit a file under the project's local_root_path.
+
+    - file_path: relative path under the project root.
+    - instruction: what you want changed ("convert tabs to spaces",
+      "refactor to use async", etc.).
+    - model: optional explicit model (otherwise we let mode/model routing decide).
+    - mode: logical mode; "code" is a good default for code edits.
+    - apply_changes: if True, write the edited content back to disk.
+    - conversation_id / message_id: optional linkage to a chat, for usage tracking.
+    """
+    file_path: str
+    instruction: str
+    model: Optional[str] = None
+    mode: Optional[str] = "code"
+    apply_changes: bool = False
+    conversation_id: Optional[int] = None
+    message_id: Optional[int] = None
+
+
+class TerminalRunPayload(BaseModel):
+    """
+    Run a shell command in the context of a project.
+
+    - project_id: which project's local_root_path to treat as the root.
+    - cwd: optional subdirectory under the project root (relative path).
+    - command: the shell command to run.
+    - timeout_seconds: safety timeout so commands can't hang forever.
+    """
+    project_id: int
+    command: str
+    cwd: Optional[str] = None
+    timeout_seconds: Optional[int] = 120
+
+
+# ---------- Helper: filesystem ----------
+
+
+def _ensure_project(db: Session, project_id: int) -> models.Project:
+    project = db.get(models.Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    return project
+
+
+def _get_project_root(project: models.Project) -> Path:
+    if not project.local_root_path:
+        raise HTTPException(
+            status_code=400,
+            detail="Project does not have local_root_path configured.",
+        )
+    root = Path(project.local_root_path).expanduser()
+    try:
+        root = root.resolve()
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid local_root_path: {e}",
+        )
+    if not root.exists():
+        raise HTTPException(
+            status_code=400,
+            detail=f"local_root_path does not exist on disk: {root}",
+        )
+    if not root.is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail="local_root_path is not a directory.",
+        )
+    return root
+
+
+def _safe_join(root: Path, relative_path: str) -> Path:
+    """
+    Resolve a subpath/file_path safely under root, preventing path traversal.
+
+    Rules:
+    - 'relative_path' must be relative (no drive, no leading slash).
+    - It may not contain '..' segments.
+    - Final resolved path must still live under 'root'.
+    """
+    if not relative_path:
+        return root
+
+    rel_obj = Path(relative_path)
+
+    # Disallow absolute paths like "C:\\Windows" or "/etc"
+    if rel_obj.is_absolute():
+        raise HTTPException(
+            status_code=400,
+            detail="Path must be relative to the project local_root_path.",
+        )
+
+    # Disallow any attempt to go up with ".."
+    if any(part == ".." for part in rel_obj.parts):
+        raise HTTPException(
+            status_code=400,
+            detail="Path may not contain '..' segments.",
+        )
+
+    # Join and normalize; strict=False so non‑existent paths (for writes) are allowed
+    candidate = (root / rel_obj).resolve(strict=False)
+
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        # In case of weird symlink situations, still enforce staying under root
+        raise HTTPException(
+            status_code=400,
+            detail="Path escapes project local_root_path.",
+        )
+
+    return candidate
+
+
+def _extract_ai_file_edits(reply_text: str) -> tuple[str, List[Dict[str, object]]]:
+    """
+    Look for zero or more AI file edit request blocks in the reply text.
+
+    Blocks are delimited like:
+
+        <<AI_FILE_EDIT>>
+        {"file_path": "backend/app/api/main.py",
+         "instruction": "Describe the change to make"}
+        <<END_AI_FILE_EDIT>>
+
+    Returns:
+        (cleaned_reply_text, list_of_edit_dicts)
+    """
+    edits: List[Dict[str, object]] = []
+    start_tag = "<<AI_FILE_EDIT>>"
+    end_tag = "<<END_AI_FILE_EDIT>>"
+
+    remaining = reply_text
+    while True:
+        start = remaining.find(start_tag)
+        if start == -1:
+            break
+        end = remaining.find(end_tag, start + len(start_tag))
+        if end == -1:
+            break
+
+        json_str = remaining[start + len(start_tag): end].strip()
+        try:
+            data = json.loads(json_str)
+            if isinstance(data, dict):
+                edits.append(data)
+            elif isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict):
+                        edits.append(item)
+        except json.JSONDecodeError:
+            # If parsing fails, ignore this block and continue
+            pass
+
+        # Remove this block from the visible text
+        remaining = remaining[:start].rstrip() + remaining[end + len(end_tag):]
+
+    cleaned = remaining.strip()
+    return cleaned, edits
+
+
+# ---------- Helper: AI‑assisted task extraction ----------
+
+
+def auto_update_tasks_from_conversation(
+    db: Session,
+    conversation: models.Conversation,
+    max_messages: int = 16,
+) -> None:
+    """
+    Look at the recent messages in the conversation, ask a small/fast model
+    to extract TODO items, and add any NEW open tasks to the project.
+
+    This is best‑effort and should never raise out of here.
+    """
+    # Get recent messages (most recent first, then reverse to chronological)
+    recent_messages = (
+        db.query(models.Message)
+        .filter(models.Message.conversation_id == conversation.id)
+        .order_by(models.Message.id.desc())
+        .limit(max_messages)
+        .all()
+    )
+    if not recent_messages:
+        return
+
+    recent_messages = list(reversed(recent_messages))
+
+    convo_text_lines: List[str] = []
+    for m in recent_messages:
+        who = "User" if m.role == "user" else "Assistant"
+        # keep it short-ish per line
+        content = m.content.strip()
+        if len(content) > 500:
+            content = content[:500] + "..."
+        convo_text_lines.append(f"{who}: {content}")
+
+    convo_text = "\n".join(convo_text_lines)
+
+    system_instructions = (
+        "You help maintain a TODO list for a long-running software project.\n"
+        "From the recent conversation messages below, extract any NEW, "
+        "actionable tasks that should be added to the project TODO list.\n\n"
+        "Rules:\n"
+        "- Only include tasks that clearly represent work to be done in the future.\n"
+        "- Skip questions, chit-chat, or things already clearly completed.\n"
+        "- Prefer short, imperative descriptions like "
+        "\"Add cost panel to InfinityWindow UI\".\n"
+        "- Do NOT include due dates or owners; only descriptions.\n"
+        "- If there are no new tasks, return an empty list.\n\n"
+        "Output JSON ONLY, with this exact structure (no commentary):\n"
+        '{\"tasks\": [{\"description\": \"...\"}, ...]}'
+    )
+
+    prompt: List[Dict[str, str]] = [
+        {"role": "system", "content": system_instructions},
+        {
+            "role": "user",
+            "content": f"Recent conversation:\n\n{convo_text}",
+        },
+    ]
+
+    try:
+        raw = generate_reply_from_history(
+            prompt,
+            model=None,  # let openai_client pick a cheap/fast model
+            mode="fast",
+        )
+        if not raw:
+            return
+
+        # Try to parse JSON. If the model added chatter, pull out the first {...} block.
+        text = raw.strip()
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            start = text.find("{")
+            end = text.rfind("}")
+            if start == -1 or end == -1 or end <= start:
+                return
+            snippet = text[start: end + 1]
+            data = json.loads(snippet)
+
+        tasks_data = []
+        if isinstance(data, dict) and isinstance(data.get("tasks"), list):
+            tasks_data = data["tasks"]
+        elif isinstance(data, list):
+            tasks_data = data
+        else:
+            return
+
+        for t in tasks_data:
+            if not isinstance(t, dict):
+                continue
+            desc = (t.get("description") or "").strip()
+            if not desc:
+                continue
+
+            # Check if an open task with identical description already exists.
+            existing = (
+                db.query(models.Task)
+                .filter(
+                    models.Task.project_id == conversation.project_id,
+                    models.Task.description == desc,
+                    models.Task.status == "open",
+                )
+                .first()
+            )
+            if existing:
+                continue
+
+            new_task = models.Task(
+                project_id=conversation.project_id,
+                description=desc,
+                status="open",
+            )
+            db.add(new_task)
+
+    except Exception as e:  # noqa: BLE001
+        print(f"[WARN] auto_update_tasks_from_conversation failed: {e!r}")
+        # swallow errors, chat should not fail because of this
 
 
 # ---------- Routes ----------
@@ -121,6 +473,9 @@ def health():
         "service": "InfinityWindow",
         "version": "0.3.0",
     }
+
+
+# ---------- Projects ----------
 
 
 @app.post("/projects", response_model=ProjectRead)
@@ -146,6 +501,7 @@ def create_project(
     project = models.Project(
         name=payload.name,
         description=payload.description,
+        local_root_path=payload.local_root_path,
     )
     db.add(project)
     db.commit()
@@ -160,6 +516,34 @@ def list_projects(db: Session = Depends(get_db)):
     """
     projects = db.query(models.Project).order_by(models.Project.id).all()
     return projects
+
+
+@app.patch("/projects/{project_id}", response_model=ProjectRead)
+def update_project(
+    project_id: int,
+    payload: ProjectUpdate,
+    db: Session = Depends(get_db),
+):
+    """
+    Update a project's metadata (name, description, local_root_path).
+    """
+    project = db.get(models.Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    if payload.name is not None:
+        project.name = payload.name
+    if payload.description is not None:
+        project.description = payload.description
+    if payload.local_root_path is not None:
+        project.local_root_path = payload.local_root_path
+
+    db.commit()
+    db.refresh(project)
+    return project
+
+
+# ---------- Conversations ----------
 
 
 @app.get(
@@ -209,6 +593,33 @@ def create_conversation(
     return conversation
 
 
+@app.patch(
+    "/conversations/{conversation_id}",
+    response_model=ConversationRead,
+)
+def rename_conversation(
+    conversation_id: int,
+    payload: ConversationRenamePayload,
+    db: Session = Depends(get_db),
+):
+    """
+    Rename a conversation by updating its title.
+    """
+    conv = (
+        db.query(models.Conversation)
+        .filter(models.Conversation.id == conversation_id)
+        .first()
+    )
+
+    if conv is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    conv.title = payload.title
+    db.commit()
+    db.refresh(conv)
+    return conv
+
+
 @app.get(
     "/conversations/{conversation_id}/messages",
     response_model=list[MessageRead],
@@ -235,6 +646,491 @@ def list_conversation_messages(
     return messages
 
 
+# ---------- Tasks (project TODOs) ----------
+
+
+@app.get(
+    "/projects/{project_id}/tasks",
+    response_model=list[TaskRead],
+)
+def list_project_tasks(
+    project_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    List all tasks for a given project.
+    """
+    project = db.get(models.Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    tasks = (
+        db.query(models.Task)
+        .filter(models.Task.project_id == project_id)
+        .order_by(models.Task.created_at.asc())
+        .all()
+    )
+    return tasks
+
+
+@app.post("/tasks", response_model=TaskRead)
+def create_task(
+    payload: TaskCreate,
+    db: Session = Depends(get_db),
+):
+    """
+    Create a new task for a project.
+    """
+    project = db.get(models.Project, payload.project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    task = models.Task(
+        project_id=payload.project_id,
+        description=payload.description,
+        status="open",
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+@app.patch("/tasks/{task_id}", response_model=TaskRead)
+def update_task(
+    task_id: int,
+    payload: TaskUpdate,
+    db: Session = Depends(get_db),
+):
+    """
+    Update an existing task (description and/or status).
+    """
+    task = db.get(models.Task, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found.")
+
+    if payload.description is not None:
+        task.description = payload.description
+    if payload.status is not None:
+        task.status = payload.status
+
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+# ---------- Usage (per-conversation) ----------
+
+
+@app.get(
+    "/conversations/{conversation_id}/usage",
+    response_model=ConversationUsageSummary,
+)
+def get_conversation_usage(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Return usage records (tokens, model, etc.) for a given conversation,
+    plus simple totals.
+
+    Cost is computed dynamically from tokens using the pricing table.
+    """
+    conversation = db.get(models.Conversation, conversation_id)
+    if conversation is None:
+        raise HTTPException(
+            status_code=404, detail="Conversation not found."
+        )
+
+    records = (
+        db.query(models.UsageRecord)
+        .filter(models.UsageRecord.conversation_id == conversation_id)
+        .order_by(models.UsageRecord.created_at.asc())
+        .all()
+    )
+
+    total_in = sum((r.tokens_in or 0) for r in records)
+    total_out = sum((r.tokens_out or 0) for r in records)
+
+    total_cost: Optional[float] = None
+    if records:
+        running_cost = 0.0
+        for r in records:
+            try:
+                running_cost += estimate_call_cost(
+                    model=r.model,
+                    tokens_in=r.tokens_in or 0,
+                    tokens_out=r.tokens_out or 0,
+                )
+            except Exception as e:  # noqa: BLE001
+                print(
+                    f"[WARN] estimate_call_cost failed for record {r.id}: {e!r}"
+                )
+        total_cost = running_cost
+
+    return ConversationUsageSummary(
+        conversation_id=conversation_id,
+        total_tokens_in=total_in,
+        total_tokens_out=total_out,
+        total_cost_estimate=total_cost,
+        records=records,
+    )
+
+
+# ---------- Filesystem browsing / editing ----------
+
+
+@app.get("/projects/{project_id}/fs/list")
+def list_project_files(
+    project_id: int,
+    subpath: str = "",
+    db: Session = Depends(get_db),
+):
+    """
+    List files/folders under a project's local_root_path.
+
+    - subpath: optional subdirectory under the root.
+    """
+    project = _ensure_project(db, project_id)
+    root = _get_project_root(project)
+    target = _safe_join(root, subpath or "")
+
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="Path not found.")
+    if not target.is_dir():
+        raise HTTPException(
+            status_code=400, detail="Path is not a directory."
+        )
+
+    entries = []
+    for p in sorted(
+        target.iterdir(), key=lambda p: (p.is_file(), p.name.lower())
+    ):
+        try:
+            stat = p.stat()
+        except OSError:
+            continue
+        entries.append(
+            {
+                "name": p.name,
+                "is_dir": p.is_dir(),
+                "size": None if p.is_dir() else stat.st_size,
+                "modified_at": datetime.fromtimestamp(
+                    stat.st_mtime
+                ).isoformat(),
+                "rel_path": str(p.relative_to(root)),
+            }
+        )
+
+    return {
+        "root": str(root),
+        "path": str(target.relative_to(root)),
+        "entries": entries,
+    }
+
+
+@app.get("/projects/{project_id}/fs/read")
+def read_project_file(
+    project_id: int,
+    file_path: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Read a text file under the project's local_root_path.
+    """
+    project = _ensure_project(db, project_id)
+    root = _get_project_root(project)
+    target = _safe_join(root, file_path)
+
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="File not found.")
+    if not target.is_file():
+        raise HTTPException(status_code=400, detail="Path is not a file.")
+
+    try:
+        content = target.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(
+            status_code=400,
+            detail="File is not valid UTF-8 text; cannot be read as text.",
+        )
+
+    return {
+        "root": str(root),
+        "path": str(target.relative_to(root)),
+        "content": content,
+    }
+
+
+@app.put("/projects/{project_id}/fs/write")
+def write_project_file(
+    project_id: int,
+    payload: FileWritePayload,
+    db: Session = Depends(get_db),
+):
+    """
+    Write a text file under the project's local_root_path.
+
+    - file_path: relative path under the root.
+    - content: full file contents (UTF-8).
+    - create_dirs: if True, create missing parent directories.
+    """
+    project = _ensure_project(db, project_id)
+    root = _get_project_root(project)
+    target = _safe_join(root, payload.file_path)
+
+    parent = target.parent
+    if not parent.exists():
+        if payload.create_dirs:
+            parent.mkdir(parents=True, exist_ok=True)
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Parent directory does not exist. "
+                    "Set create_dirs=true to create it."
+                ),
+            )
+
+    try:
+        target.write_text(payload.content, encoding="utf-8")
+        stat = target.stat()
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(
+            status_code=500, detail=f"Failed to write file: {e}"
+        )
+
+    return {
+        "root": str(root),
+        "path": str(target.relative_to(root)),
+        "size": stat.st_size,
+        "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+    }
+
+
+@app.post("/projects/{project_id}/fs/ai_edit")
+def ai_edit_project_file(
+    project_id: int,
+    payload: FileAIEditPayload,
+    db: Session = Depends(get_db),
+):
+    """
+    Ask the AI to rewrite a file under the project's local_root_path.
+
+    Flow:
+    - Read the file (must exist, UTF-8 text).
+    - Call OpenAI via generate_reply_from_history with clear instructions:
+      "return ONLY the updated file content, no explanation".
+    - Optionally write the edited content back to disk (apply_changes).
+    - Log usage in usage_records.
+    - Return original + edited content + basic usage info.
+
+    This is the backend building block for "AI edits this file for me".
+    The UI (or Swagger) can choose to:
+      - just preview (apply_changes=false), or
+      - auto-apply (apply_changes=true).
+    """
+    # 1) Resolve project + root + file path
+    project = _ensure_project(db, project_id)
+    root = _get_project_root(project)
+    target = _safe_join(root, payload.file_path)
+
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="File not found.")
+    if not target.is_file():
+        raise HTTPException(status_code=400, detail="Path is not a file.")
+
+    try:
+        original_content = target.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(
+            status_code=400,
+            detail="File is not valid UTF-8 text; cannot be edited as text.",
+        )
+
+    # 2) Build AI prompt
+    system_prompt = (
+        "You are an expert code and text editor.\n"
+        "You will be given a file path, editing instructions, and the current "
+        "file content.\n"
+        "Your job is to apply the instructions and return the FULL updated file "
+        "content.\n"
+        "IMPORTANT:\n"
+        "- Return ONLY the new file content.\n"
+        "- Do NOT include explanations, comments, or code fences.\n"
+    )
+
+    user_prompt = (
+        f"File path: {payload.file_path}\n\n"
+        f"Editing instructions:\n{payload.instruction}\n\n"
+        "Current file content:\n"
+        f"{original_content}"
+    )
+
+    messages: List[Dict[str, str]] = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+    # 3) Call OpenAI
+    usage_info: Dict[str, object] = {}
+    edited_content = generate_reply_from_history(
+        messages,
+        model=payload.model,
+        mode=payload.mode or "code",
+        usage_out=usage_info,
+    )
+
+    if not isinstance(edited_content, str):
+        edited_content = str(edited_content)
+
+    # 4) Optionally write back to disk
+    applied = False
+    if payload.apply_changes:
+        try:
+            target.write_text(edited_content, encoding="utf-8")
+            applied = True
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to write AI-edited file: {e}",
+            )
+
+    # 5) Log usage (best-effort)
+    try:
+        model_name = str(
+            usage_info.get("model")
+            or (payload.model or (payload.mode or "code"))
+        )
+
+        tokens_in = usage_info.get("tokens_in")
+        tokens_out = usage_info.get("tokens_out")
+
+        ti = int(tokens_in) if tokens_in is not None else None
+        to = int(tokens_out) if tokens_out is not None else None
+
+        cost_estimate: Optional[float] = None
+        try:
+            if ti is not None or to is not None:
+                cost_estimate = estimate_call_cost(
+                    model=model_name,
+                    tokens_in=ti or 0,
+                    tokens_out=to or 0,
+                )
+        except Exception as e:  # noqa: BLE001
+            print(
+                f"[WARN] estimate_call_cost failed while logging fs ai_edit usage: {e!r}"
+            )
+
+        usage_record = models.UsageRecord(
+            project_id=project.id,
+            conversation_id=payload.conversation_id,
+            message_id=payload.message_id,
+            model=model_name,
+            tokens_in=ti,
+            tokens_out=to,
+            cost_estimate=cost_estimate,
+        )
+        db.add(usage_record)
+    except Exception as e:  # noqa: BLE001
+        print(f"[WARN] Failed to create usage record for fs ai_edit: {e!r}")
+
+    db.commit()
+
+    # 6) Return both versions so the UI (or you in Swagger) can diff
+    return {
+        "root": str(root),
+        "path": str(target.relative_to(root)),
+        "applied": applied,
+        "original_content": original_content,
+        "edited_content": edited_content,
+        "usage": {
+            "model": usage_info.get("model"),
+            "tokens_in": usage_info.get("tokens_in"),
+            "tokens_out": usage_info.get("tokens_out"),
+        },
+    }
+
+
+# ---------- Terminal ----------
+
+
+@app.post("/terminal/run")
+def run_terminal_command(
+    payload: TerminalRunPayload,
+    db: Session = Depends(get_db),
+):
+    """
+    Run a shell command for a given project, safely constrained under
+    that project's local_root_path.
+
+    Body:
+    {
+      "project_id": 1,
+      "cwd": "backend",       # optional, relative to project root
+      "command": "git status",
+      "timeout_seconds": 60
+    }
+    """
+    project = _ensure_project(db, payload.project_id)
+    root = _get_project_root(project)
+
+    # Resolve working directory
+    if payload.cwd:
+        workdir = _safe_join(root, payload.cwd)
+    else:
+        workdir = root
+
+    if not workdir.exists() or not workdir.is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail="Working directory does not exist or is not a directory.",
+        )
+
+    timeout = payload.timeout_seconds or 120
+
+    try:
+        result = subprocess.run(
+            payload.command,
+            shell=True,
+            cwd=str(workdir),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
+        exit_code = result.returncode
+    except subprocess.TimeoutExpired as e:
+        stdout = e.stdout or ""
+        stderr = (e.stderr or "") + f"\n[Command timed out after {timeout} seconds]"
+        exit_code = -1
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to run command: {e}",
+        )
+
+    # Truncate very long output so we don't blow up the UI
+    max_len = 8000
+    if len(stdout) > max_len:
+        stdout = stdout[:max_len] + "\n...[truncated]..."
+    if len(stderr) > max_len:
+        stderr = stderr[:max_len] + "\n...[truncated]..."
+
+    return {
+        "project_id": project.id,
+        "cwd": str(workdir.relative_to(root)) if workdir != root else "",
+        "command": payload.command,
+        "exit_code": exit_code,
+        "stdout": stdout,
+        "stderr": stderr,
+    }
+
+
+# ---------- Chat ----------
+
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest, db: Session = Depends(get_db)):
     """
@@ -243,20 +1139,10 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
 
     - If conversation_id is provided, we continue that conversation.
     - If conversation_id is omitted/null, we'll:
-        * use the first project if it exists, or
+        * use the provided project_id if it exists, or
+        * fall back to the first project if it exists, or
         * create a 'Default Project', then
         * create a new conversation under it.
-
-    Steps:
-      1. Resolve or create the conversation.
-      2. Load conversation history from the DB.
-      3. Store the new user message.
-      4. Embed the user message and retrieve:
-         - relevant past messages from this conversation
-         - relevant document chunks from the same project
-      5. Build the message list for OpenAI with a memory context.
-      6. Call OpenAI to generate a reply.
-      7. Store the assistant reply + index both messages in Chroma.
     """
 
     # 1) Resolve or create conversation
@@ -267,20 +1153,28 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
                 status_code=404, detail="Conversation not found."
             )
     else:
-        # Get or create a default project
-        project = (
-            db.query(models.Project)
-            .order_by(models.Project.id)
-            .first()
-        )
-        if project is None:
-            project = models.Project(
-                name="Default Project",
-                description="Auto-created default project.",
+        # Use explicit project_id if provided
+        if payload.project_id is not None:
+            project = db.get(models.Project, payload.project_id)
+            if project is None:
+                raise HTTPException(
+                    status_code=404, detail="Project not found."
+                )
+        else:
+            # Get or create a default project
+            project = (
+                db.query(models.Project)
+                .order_by(models.Project.id)
+                .first()
             )
-            db.add(project)
-            db.commit()
-            db.refresh(project)
+            if project is None:
+                project = models.Project(
+                    name="Default Project",
+                    description="Auto-created default project.",
+                )
+                db.add(project)
+                db.commit()
+                db.refresh(project)
 
         # Create a new conversation
         conversation = models.Conversation(
@@ -373,7 +1267,7 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
                 + "\n\n---\n\n".join(context_parts)
             )
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         # Retrieval should never break the chat flow
         print(f"[WARN] Retrieval failed: {e!r}")
         user_embedding = None
@@ -388,7 +1282,89 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
             "content": (
                 "You are InfinityWindow, a helpful AI assistant. "
                 "You work inside a long-lived project workspace with persistent memory. "
-                "Be clear, concise, and helpful."
+                "Be clear, concise, and helpful.\n\n"
+                "You are connected to the user's local project files through a backend API. "
+                "You cannot see arbitrary files, only files under the project's local_root_path.\n\n"
+                "FILE EDITS\n"
+                "==========\n"
+                "When (and only when) the user explicitly asks you to update a file, "
+                "or clearly gives you permission to apply changes to a specific file, "
+                "you may request an automatic edit by emitting an AI_FILE_EDIT block at "
+                "the END of your reply, using this exact format:\n\n"
+                "<<AI_FILE_EDIT>>\n"
+                "{\"file_path\": \"relative/path/from/project/root.ext\", "
+                "\"instruction\": \"Short, high-level description of the edit to apply\"}\n"
+                "<<END_AI_FILE_EDIT>>\n\n"
+                "Rules for AI_FILE_EDIT:\n"
+                "- First, explain what you plan to change in natural language so the user understands.\n"
+                "- Do NOT include the full file contents in your explanation; at most small code snippets.\n"
+                "- Only emit AI_FILE_EDIT when the user has asked you to update a file "
+                "or clearly agreed you should apply the change.\n"
+                "- The backend will take care of reading and writing the actual file.\n\n"
+                "TERMINAL COMMAND PROPOSALS\n"
+                "==========================\n"
+                "You also have access to a sandboxed terminal via a /terminal/run API. "
+                "You CANNOT execute commands directly yourself. Instead, when you believe "
+                "running a command would help (for example to inspect git status, check "
+                "backend health, run tests, etc.), you should propose a command by returning "
+                "a single JSON object at the END of your reply with this exact shape:\n\n"
+                "{\"type\":\"terminal_command_proposal\", "
+                "\"cwd\":\"backend\", "
+                "\"command\":\"git status\", "
+                "\"reason\":\"Short explanation for the human\"}\n\n"
+                "Rules for terminal_command_proposal:\n"
+                "- This JSON object MUST be valid JSON and MUST be the last thing in your reply.\n"
+                "- 'cwd' is optional. When provided, it MUST be a path RELATIVE to the project root "
+                "(for example: \"\", \"backend\", \"frontend\", \"backend/app\").\n"
+                "- Do NOT put 'cd ...' inside the 'command' string. The backend will set the working "
+                "directory using 'cwd'. For example, to run 'git status' in the backend folder, use:\n"
+                "  {\"type\":\"terminal_command_proposal\", \"cwd\":\"backend\", \"command\":\"git status\", \"reason\":\"...\"}\n"
+                "  NOT: {\"type\":\"terminal_command_proposal\", \"command\":\"cd backend && git status\"}\n"
+                "- Assume a Windows development environment. Prefer commands that work in cmd/PowerShell "
+                "on Windows (e.g. 'dir' instead of 'ls', 'type' instead of 'cat').\n"
+                "- Treat the project root as the root of the InfinityWindow repo (it already points at "
+                "the correct folder; do NOT invent absolute paths like '/path/to/your/infinitywindow').\n"
+                "- Prefer small, diagnostic commands: 'git status', 'dir', 'python -m pip list', "
+                "'pytest -q', 'uvicorn app.api.main:app --reload', 'npm run dev', etc.\n"
+                "- Never suggest destructive commands such as 'rm -rf', 'del /s', 'format', "
+                "'docker system prune', 'git reset --hard', or anything that obviously destroys data.\n"
+                "- For this project, prefer non-Docker workflows (the backend is usually run via "
+                "'uvicorn app.api.main:app --reload' in the 'backend' folder, and the frontend via "
+                "'npm run dev' in the 'frontend' folder). Avoid 'docker compose' and 'journalctl' "
+                "unless the user explicitly asks for Docker-specific help.\n"
+                "- When the user explicitly asks you to output ONLY a terminal_command_proposal JSON, "
+                "do so with no extra commentary.\n"
+                "- Otherwise, you may include normal explanation first, then the JSON object as the last "
+                "thing in your message.\n"
+                "- When the user uses language like 'run X', 'execute X', 'start X', or "
+                "'run git status / git diff and then explain the output', interpret that as a request "
+                "to use the terminal API on their behalf. In those cases you should propose a "
+                "terminal_command_proposal instead of telling the user to run the commands manually.\n\n"
+                "TERMINAL RUN RESULT MESSAGES\n"
+                "============================\n"
+                "The UI will sometimes send you a message that begins with the exact sentence "
+                "\"I ran the terminal command you proposed.\" followed by lines like:\n"
+                "Command: <command>\n"
+                "CWD: <cwd or (project root)>\n"
+                "Exit code: <integer exit code>\n"
+                "\n"
+                "STDOUT:\n"
+                "<stdout text (possibly truncated)>\n"
+                "\n"
+                "STDERR:\n"
+                "<stderr text or '(no stderr)'>\n"
+                "\n"
+                "Treat this as a structured report of the result of the last terminal_command_proposal "
+                "you emitted. Use the exit code and the stdout/stderr contents to decide what to do next:\n"
+                "- If exit_code is non-zero and STDERR contains an error or traceback, you may propose "
+                "file edits (via AI_FILE_EDIT) or follow-up terminal commands to investigate or fix it.\n"
+                "- If exit_code is 0 but the output shows that nothing meaningful happened (for example, "
+                "pytest reporting 'no tests ran'), you should consider proposing a different command that "
+                "is more likely to help (for example starting the backend with uvicorn).\n"
+                "- You should generally NOT repeat the exact same terminal_command_proposal immediately "
+                "after seeing a result for that command, unless the user explicitly asks you to rerun it.\n"
+                "- Remember that the human still has to click the 'Run command' button; your job is to "
+                "choose helpful, safe commands and then interpret the results you are given.\n"
             ),
         }
     )
@@ -414,13 +1390,18 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
     # Current user message
     chat_history.append({"role": "user", "content": payload.message})
 
-    # 6) Call OpenAI to generate a reply
-    reply_text = generate_reply_from_history(
-    chat_history,
-    model=payload.model,
-    mode=payload.mode or "auto",
-)
+    # 6) Call OpenAI to generate a reply, capturing usage metadata if available
+    usage_info: Dict[str, object] = {}
+    raw_reply_text = generate_reply_from_history(
+        chat_history,
+        model=payload.model,
+        mode=payload.mode or "auto",
+        usage_out=usage_info,  # filled by openai_client if supported
+    )
 
+    # 6b) Look for any AI_FILE_EDIT blocks in the reply and strip them from the visible text
+    clean_reply_text, file_edit_requests = _extract_ai_file_edits(raw_reply_text)
+    reply_text = clean_reply_text or raw_reply_text
 
     # 7) Save assistant message
     assistant_message = models.Message(
@@ -430,6 +1411,41 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
     )
     db.add(assistant_message)
     db.flush()  # ensure assistant_message.id exists
+
+    # 7b) If the model requested AI file edits, run them now (best-effort)
+    if file_edit_requests:
+        for req in file_edit_requests:
+            file_path = (req.get("file_path") or "").strip()
+            instruction = (req.get("instruction") or "").strip()
+            if not file_path or not instruction:
+                continue
+
+            try:
+                payload_for_edit = FileAIEditPayload(
+                    file_path=file_path,
+                    instruction=instruction,
+                    model=None,
+                    mode="code",
+                    apply_changes=True,
+                    conversation_id=conversation.id,
+                    message_id=assistant_message.id,
+                )
+                # Reuse the existing AI edit endpoint logic directly
+                ai_edit_project_file(
+                    project_id=conversation.project_id,
+                    payload=payload_for_edit,
+                    db=db,
+                )
+            except HTTPException as e:
+                print(
+                    f"[WARN] AI file edit failed for {file_path!r} in conversation "
+                    f"{conversation.id}: {e.detail!r}"
+                )
+            except Exception as e:  # noqa: BLE001
+                print(
+                    f"[WARN] Unexpected error while running AI file edit for "
+                    f"{file_path!r}: {e!r}"
+                )
 
     # 8) Create embeddings and index in Chroma
     try:
@@ -456,11 +1472,56 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
             content=reply_text,
             embedding=assistant_embedding,
         )
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         # Do not fail the request if indexing fails
         print(f"[WARN] Failed to index messages in Chroma: {e!r}")
 
-    # 9) Commit everything
+    # 9) Persist an approximate usage record (best-effort)
+    try:
+        model_name = str(
+            usage_info.get("model")
+            or (payload.model or (payload.mode or "auto"))
+        )
+
+        tokens_in = usage_info.get("tokens_in")
+        tokens_out = usage_info.get("tokens_out")
+
+        ti = int(tokens_in) if tokens_in is not None else None
+        to = int(tokens_out) if tokens_out is not None else None
+
+        cost_estimate: Optional[float] = None
+        try:
+            if ti is not None or to is not None:
+                cost_estimate = estimate_call_cost(
+                    model=model_name,
+                    tokens_in=ti or 0,
+                    tokens_out=to or 0,
+                )
+        except Exception as e:  # noqa: BLE001
+            print(
+                f"[WARN] estimate_call_cost failed while logging usage: {e!r}"
+            )
+
+        usage_record = models.UsageRecord(
+            project_id=conversation.project_id,
+            conversation_id=conversation.id,
+            message_id=assistant_message.id,
+            model=model_name,
+            tokens_in=ti,
+            tokens_out=to,
+            cost_estimate=cost_estimate,
+        )
+        db.add(usage_record)
+    except Exception as e:  # noqa: BLE001
+        print(f"[WARN] Failed to create usage record: {e!r}")
+
+    # 10) AI‑assist the project TODO list (best‑effort, doesn't block)
+    try:
+        auto_update_tasks_from_conversation(db, conversation)
+    except Exception as e:  # noqa: BLE001
+        print(f"[WARN] auto_update_tasks_from_conversation outer failed: {e!r}")
+
+    # 11) Commit everything
     db.commit()
 
     return ChatResponse(

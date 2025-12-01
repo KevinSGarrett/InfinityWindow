@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple, Any
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -32,8 +32,8 @@ def get_client() -> OpenAI:
 # ---------------------------------------------------------------------------
 
 # Built‑in defaults if you don't override via environment variables.
-# Your .env already overrides these with high‑end models (gpt‑5.1, gpt‑5‑nano, etc.).
-_DEFAULT_MODELS = {
+# Your .env likely overrides these with high‑end models (gpt‑5.1, gpt‑5-mini, etc.).
+_DEFAULT_MODELS: Dict[str, str] = {
     "auto": "gpt-4.1",
     "fast": "gpt-4.1-mini",
     "deep": "gpt-5.1",
@@ -88,7 +88,7 @@ def _is_responses_model(model: str) -> bool:
     return False
 
 
-def _extract_text_from_responses(resp) -> str:
+def _extract_text_from_responses(resp: Any) -> str:
     """
     Try to pull a plain text string out of a Responses API result.
 
@@ -126,11 +126,85 @@ def _extract_text_from_responses(resp) -> str:
     return str(resp)
 
 
+# ---------------------------------------------------------------------------
+# Pricing (cost estimation)
+# ---------------------------------------------------------------------------
+
+# Pricing per 1K tokens for common models (in USD).
+# Derived from the official OpenAI API pricing table for GPT‑5.* models. 
+#
+# NOTE: These are *inference* prices (not fine‑tuning).
+#       If you use different models, unknown models will show $0 cost unless
+#       you extend the mapping or add env‑based overrides.
+_MODEL_PRICING_PER_1K: Dict[str, Tuple[float, float]] = {
+    # canonical_name: (input_price_per_1k, output_price_per_1k)
+    "gpt-5.1": (1.250 / 1000.0, 10.000 / 1000.0),       # $1.25 in / $10 out per 1M
+    "gpt-5-mini": (0.250 / 1000.0, 2.000 / 1000.0),     # $0.25 in / $2.00 out per 1M
+    "gpt-5-nano": (0.050 / 1000.0, 0.400 / 1000.0),     # $0.05 in / $0.40 out per 1M
+    "gpt-5-pro": (15.000 / 1000.0, 120.000 / 1000.0),   # $15 in / $120 out per 1M
+    # You can extend this dict for other models (4.1, 4o, etc.) if desired.
+}
+
+
+def _canonical_model_for_pricing(model: str) -> Optional[str]:
+    """
+    Map raw model ids to a canonical key in _MODEL_PRICING_PER_1K.
+    """
+    m = model.lower()
+
+    # Direct matches first
+    for key in _MODEL_PRICING_PER_1K.keys():
+        if m == key:
+            return key
+
+    # Handle common prefixes/variants
+    if m.startswith("gpt-5.1") or m.startswith("gpt-5-codex"):
+        return "gpt-5.1"
+    if "nano" in m or m.startswith("gpt-5-nano"):
+        return "gpt-5-nano"
+    if "mini" in m or m.startswith("gpt-5-mini"):
+        return "gpt-5-mini"
+    if "pro" in m or m.startswith("gpt-5-pro"):
+        return "gpt-5-pro"
+
+    # Unknown -> no pricing
+    return None
+
+
+def estimate_cost_usd(model: str, tokens_in: int, tokens_out: int) -> float:
+    """
+    Estimate USD cost for a call based on model + token usage.
+
+    - Uses per‑1K token pricing from _MODEL_PRICING_PER_1K.
+    - Returns 0.0 if the model is unknown or usage is missing.
+    """
+    if (tokens_in or 0) <= 0 and (tokens_out or 0) <= 0:
+        return 0.0
+
+    canonical = _canonical_model_for_pricing(model)
+    if canonical is None:
+        # Unknown model family: treat as 0 cost unless you extend the mapping.
+        return 0.0
+
+    price_in_per_1k, price_out_per_1k = _MODEL_PRICING_PER_1K[canonical]
+
+    # Convert tokens to 1K‑token units
+    cost_in = (tokens_in / 1000.0) * price_in_per_1k
+    cost_out = (tokens_out / 1000.0) * price_out_per_1k
+    return float(cost_in + cost_out)
+
+
+# ---------------------------------------------------------------------------
+# Low‑level call helper
+# ---------------------------------------------------------------------------
+
+
 def _call_model(
     messages: List[Dict[str, str]],
     model: str,
     temperature: Optional[float] = None,
     max_output_tokens: Optional[int] = None,
+    usage_out: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
     Low‑level helper that actually calls OpenAI.
@@ -148,6 +222,11 @@ def _call_model(
         f"{'Responses API' if use_responses else 'Chat Completions'}"
     )
 
+    # We'll fill these from resp.usage when available
+    tokens_in = 0
+    tokens_out = 0
+    total_tokens = 0
+
     if use_responses:
         # Responses API: do NOT include temperature (some models don't support it).
         kwargs: Dict[str, object] = {
@@ -158,23 +237,82 @@ def _call_model(
             kwargs["max_output_tokens"] = max_output_tokens
 
         resp = client.responses.create(**kwargs)
-        return _extract_text_from_responses(resp)
+        text = _extract_text_from_responses(resp)
+
+        # Try to read usage.input_tokens / usage.output_tokens / usage.total_tokens
+        try:
+            usage = getattr(resp, "usage", None)
+            if usage is not None:
+                tokens_in = int(getattr(usage, "input_tokens", 0) or 0)
+                tokens_out = int(getattr(usage, "output_tokens", 0) or 0)
+                total_tokens = int(
+                    getattr(usage, "total_tokens", 0)
+                    or (tokens_in + tokens_out)
+                )
+        except Exception:
+            # Don't break the call if usage isn't available
+            pass
+
+        if usage_out is not None:
+            usage_out.clear()
+            usage_out["model"] = model
+            usage_out["tokens_in"] = tokens_in
+            usage_out["tokens_out"] = tokens_out
+            usage_out["total_tokens"] = total_tokens
+            usage_out["cost_estimate"] = estimate_cost_usd(
+                model=model,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+            )
+
+        return text
 
     # Chat Completions path (classic 4.x / 3.5 models)
-    kwargs: Dict[str, object] = {
+    kwargs_cc: Dict[str, object] = {
         "model": model,
         "messages": messages,
     }
     if temperature is not None:
-        kwargs["temperature"] = temperature
+        kwargs_cc["temperature"] = temperature
     # IMPORTANT: don't send max_tokens at all if it's None
     if max_output_tokens is not None:
-        kwargs["max_tokens"] = max_output_tokens
+        kwargs_cc["max_tokens"] = max_output_tokens
 
-    resp = client.chat.completions.create(**kwargs)
+    resp = client.chat.completions.create(**kwargs_cc)
     choice = resp.choices[0]
-    content = getattr(choice.message, "content", None)
-    return content or ""
+    content = getattr(choice.message, "content", None) or ""
+
+    # Try to read usage.prompt_tokens / usage.completion_tokens / usage.total_tokens
+    try:
+        usage = getattr(resp, "usage", None)
+        if usage is not None:
+            tokens_in = int(getattr(usage, "prompt_tokens", 0) or 0)
+            tokens_out = int(getattr(usage, "completion_tokens", 0) or 0)
+            total_tokens = int(
+                getattr(usage, "total_tokens", 0)
+                or (tokens_in + tokens_out)
+            )
+    except Exception:
+        pass
+
+    if usage_out is not None:
+        usage_out.clear()
+        usage_out["model"] = model
+        usage_out["tokens_in"] = tokens_in
+        usage_out["tokens_out"] = tokens_out
+        usage_out["total_tokens"] = total_tokens
+        usage_out["cost_estimate"] = estimate_cost_usd(
+            model=model,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+        )
+
+    return content
+
+
+# ---------------------------------------------------------------------------
+# Public helper
+# ---------------------------------------------------------------------------
 
 
 def generate_reply_from_history(
@@ -183,6 +321,7 @@ def generate_reply_from_history(
     model: Optional[str] = None,
     temperature: float = 0.4,
     max_output_tokens: Optional[int] = None,
+    usage_out: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
     Call OpenAI with the full chat history and return the assistant's reply.
@@ -192,12 +331,21 @@ def generate_reply_from_history(
 
     Logical modes (all configurable via .env):
 
-      - auto    -> OPENAI_MODEL_AUTO    (you set this to gpt‑5.1)
-      - fast    -> OPENAI_MODEL_FAST    (you set this to gpt‑5-nano)
-      - deep    -> OPENAI_MODEL_DEEP    (you set this to gpt‑5-pro)
-      - budget  -> OPENAI_MODEL_BUDGET  (you set this to gpt‑4.1-nano)
-      - research-> OPENAI_MODEL_RESEARCH
-      - code    -> OPENAI_MODEL_CODE
+      - auto     -> OPENAI_MODEL_AUTO
+      - fast     -> OPENAI_MODEL_FAST
+      - deep     -> OPENAI_MODEL_DEEP
+      - budget   -> OPENAI_MODEL_BUDGET
+      - research -> OPENAI_MODEL_RESEARCH
+      - code     -> OPENAI_MODEL_CODE
+
+    If 'usage_out' is provided, it will be populated with:
+      {
+        "model": <model name>,
+        "tokens_in": <int>,
+        "tokens_out": <int>,
+        "total_tokens": <int>,
+        "cost_estimate": <float USD>
+      }
     """
     chosen_model = (model or _get_model_for_mode(mode)).strip()
 
@@ -206,4 +354,5 @@ def generate_reply_from_history(
         model=chosen_model,
         temperature=temperature,
         max_output_tokens=max_output_tokens,
+        usage_out=usage_out,
     )
