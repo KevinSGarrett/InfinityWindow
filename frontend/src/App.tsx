@@ -208,6 +208,11 @@ function App() {
   const [fsError, setFsError] = useState<string | null>(null);
   const [fsShowOriginal, setFsShowOriginal] = useState(false);
 
+  // Right‑column workbench tab
+  const [rightTab, setRightTab] = useState<
+    "tasks" | "docs" | "files" | "search" | "terminal" | "usage"
+  >("tasks");
+
   const hasUnsavedFileChanges =
     fsSelectedRelPath != null && fsEditedContent !== fsOriginalContent;
 
@@ -1430,616 +1435,762 @@ function App() {
           </div>
         </section>
 
-        {/* RIGHT: Tasks + docs + ingestion + files + search + AI terminal + AI file edit + usage */}
+        {/* RIGHT: Workbench (tabbed) */}
         <section className="column column-right">
-          {/* Project tasks */}
-          <div className="tasks-header">Project tasks</div>
-          <div className="tasks-new">
-            <input
-              className="tasks-input"
-              type="text"
-              placeholder="Add a task for this project..."
-              value={newTaskDescription}
-              onChange={(e) => setNewTaskDescription(e.target.value)}
-              onKeyDown={handleNewTaskKeyDown}
-            />
+          <div className="right-tabs">
             <button
-              className="btn-secondary small"
               type="button"
-              onClick={handleAddTask}
-              disabled={
-                isSavingTask ||
-                !newTaskDescription.trim() ||
-                !selectedProjectId
-              }
-            >
-              Add
-            </button>
-          </div>
-          <div className="tasks-list">
-            {selectedProjectId == null ? (
-              <div className="tasks-empty">No project selected.</div>
-            ) : tasks.length === 0 ? (
-              <div className="tasks-empty">
-                No tasks yet. Add one above.
-              </div>
-            ) : (
-              <ul>
-                {tasks.map((task) => (
-                  <li key={task.id} className="task-item">
-                    <input
-                      type="checkbox"
-                      checked={task.status === "done"}
-                      onChange={() => handleToggleTaskStatus(task)}
-                    />
-                    <div
-                      className={
-                        "task-text" +
-                        (task.status === "done" ? " done" : "")
-                      }
-                    >
-                      {task.description}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {/* Project documents */}
-          <div className="docs-header">Project documents</div>
-          <div className="project-docs-list">
-            {selectedProjectId == null ? (
-              <div className="docs-empty">No project selected.</div>
-            ) : projectDocs.length === 0 ? (
-              <div className="docs-empty">
-                No documents yet. Ingest one below.
-              </div>
-            ) : (
-              <ul>
-                {projectDocs.map((doc) => (
-                  <li key={doc.id} className="project-doc-item">
-                    <div className="project-doc-name">{doc.name}</div>
-                    {doc.description && (
-                      <div className="project-doc-description">
-                        {doc.description}
-                      </div>
-                    )}
-                    <div className="project-doc-id">Doc ID {doc.id}</div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {/* Ingest text document */}
-          <div className="ingest-section">
-            <div className="ingest-title">Ingest text document</div>
-            <div className="ingest-textdoc-form">
-              <input
-                className="ingest-input"
-                type="text"
-                placeholder="Name"
-                value={newDocName}
-                onChange={(e) => setNewDocName(e.target.value)}
-              />
-              <input
-                className="ingest-input"
-                type="text"
-                placeholder="Description (optional)"
-                value={newDocDescription}
-                onChange={(e) => setNewDocDescription(e.target.value)}
-              />
-              <textarea
-                className="ingest-textarea"
-                placeholder="Paste document text here..."
-                value={newDocText}
-                onChange={(e) => setNewDocText(e.target.value)}
-              />
-              <button
-                className="btn-secondary"
-                type="button"
-                onClick={handleIngestTextDoc}
-                disabled={isIngestingTextDoc}
-              >
-                {isIngestingTextDoc ? "Ingesting…" : "Ingest text doc"}
-              </button>
-            </div>
-          </div>
-
-          {/* Ingest local repo */}
-          <div className="ingest-section">
-            <div className="ingest-title">Ingest local repo</div>
-            <div className="ingest-repo-form">
-              <input
-                className="ingest-input"
-                type="text"
-                placeholder="Root path (e.g. C:\\InfinityWindow)"
-                value={repoRootPath}
-                onChange={(e) => setRepoRootPath(e.target.value)}
-              />
-              <input
-                className="ingest-input"
-                type="text"
-                placeholder="Name prefix (e.g. InfinityWindow/)"
-                value={repoNamePrefix}
-                onChange={(e) => setRepoNamePrefix(e.target.value)}
-              />
-              <button
-                className="btn-secondary"
-                type="button"
-                onClick={handleIngestRepo}
-                disabled={isIngestingRepo}
-              >
-                {isIngestingRepo ? "Ingesting…" : "Ingest repo"}
-              </button>
-            </div>
-          </div>
-
-          {/* Project files */}
-          <div className="files-header">Project files</div>
-          <div className="files-panel">
-            {selectedProjectId == null ? (
-              <div className="files-empty">No project selected.</div>
-            ) : fsError ? (
-              <div className="files-error">{fsError}</div>
-            ) : (
-              <>
-                <div className="files-location-row">
-                  <div className="files-location">
-                    Location: {fsDisplayPath || "."}
-                    {fsRoot && (
-                      <span className="files-root-hint">
-                        {" "}
-                        (root: {fsRoot})
-                      </span>
-                    )}
-                  </div>
-                  <div className="files-location-actions">
-                    <button
-                      type="button"
-                      className="btn-secondary small"
-                      onClick={handleFsUp}
-                      disabled={!fsCurrentSubpath || fsIsLoadingList}
-                    >
-                      ↑ Up
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-secondary small"
-                      onClick={handleFsRefresh}
-                      disabled={fsIsLoadingList}
-                    >
-                      Refresh
-                    </button>
-                  </div>
-                </div>
-                <div className="files-list">
-                  {fsIsLoadingList ? (
-                    <div className="files-empty">Loading files…</div>
-                  ) : fsEntries.length === 0 ? (
-                    <div className="files-empty">
-                      No files or folders at this level.
-                    </div>
-                  ) : (
-                    <ul>
-                      {fsEntries.map((entry) => {
-                        const isSelected =
-                          !entry.is_dir &&
-                          fsSelectedRelPath === entry.rel_path;
-                        return (
-                          <li key={entry.rel_path} className="file-list-item">
-                            <button
-                              type="button"
-                              className={
-                                "file-list-entry-button" +
-                                (isSelected ? " selected" : "")
-                              }
-                              onClick={() => handleOpenFsEntry(entry)}
-                            >
-                              <span className="file-list-name">
-                                {entry.is_dir ? "📁" : "📄"} {entry.name}
-                              </span>
-                              {!entry.is_dir && entry.size != null && (
-                                <span className="file-list-meta">
-                                  {entry.size} bytes
-                                </span>
-                              )}
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </div>
-
-                {fsSelectedRelPath && (
-                  <div className="file-editor">
-                    <div className="file-editor-header">
-                      <div className="file-editor-title">
-                        Editing: {fsSelectedRelPath}
-                        {hasUnsavedFileChanges && (
-                          <span className="unsaved-indicator">
-                            ● Unsaved changes
-                          </span>
-                        )}
-                      </div>
-                      <div className="file-editor-controls">
-                        <label className="show-original-toggle">
-                          <input
-                            type="checkbox"
-                            checked={fsShowOriginal}
-                            onChange={(e) =>
-                              setFsShowOriginal(e.target.checked)
-                            }
-                          />
-                          Show original
-                        </label>
-                        <button
-                          type="button"
-                          className="btn-secondary small"
-                          onClick={handleSaveFile}
-                          disabled={
-                            fsIsSavingFile || !hasUnsavedFileChanges
-                          }
-                        >
-                          {fsIsSavingFile ? "Saving…" : "Save file"}
-                        </button>
-                      </div>
-                    </div>
-                    <textarea
-                      className="file-editor-textarea"
-                      value={fsEditedContent}
-                      onChange={(e) =>
-                        setFsEditedContent(e.target.value)
-                      }
-                      disabled={fsIsLoadingFile}
-                    />
-                    {fsShowOriginal && (
-                      <div className="file-original-box">
-                        <div className="file-original-label">
-                          Original (read-only)
-                        </div>
-                        <pre className="file-original-content">
-                          {fsOriginalContent}
-                        </pre>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* Search memory */}
-          <div className="search-header">Search memory</div>
-
-          <div className="search-tabs">
-            <button
               className={
-                "search-tab" + (searchTab === "messages" ? " active" : "")
+                "right-tab" + (rightTab === "tasks" ? " active" : "")
               }
-              type="button"
-              onClick={() => setSearchTab("messages")}
+              onClick={() => setRightTab("tasks")}
             >
-              Messages
+              Tasks
             </button>
             <button
-              className={
-                "search-tab" + (searchTab === "docs" ? " active" : "")
-              }
               type="button"
-              onClick={() => setSearchTab("docs")}
+              className={
+                "right-tab" + (rightTab === "docs" ? " active" : "")
+              }
+              onClick={() => setRightTab("docs")}
             >
               Docs
             </button>
-          </div>
-
-          <div className="search-box">
-            <textarea
-              className="search-input"
-              placeholder={
-                searchTab === "messages"
-                  ? "Search in chat history..."
-                  : "Search in ingested documents..."
-              }
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={handleSearchKeyDown}
-            />
             <button
-              className="btn-secondary"
               type="button"
-              onClick={handleSearch}
-              disabled={isSearching || !searchQuery.trim()}
+              className={
+                "right-tab" + (rightTab === "files" ? " active" : "")
+              }
+              onClick={() => setRightTab("files")}
             >
-              {isSearching ? "Searching…" : "Search"}
+              Files
+            </button>
+            <button
+              type="button"
+              className={
+                "right-tab" + (rightTab === "search" ? " active" : "")
+              }
+              onClick={() => setRightTab("search")}
+            >
+              Search
+            </button>
+            <button
+              type="button"
+              className={
+                "right-tab" + (rightTab === "terminal" ? " active" : "")
+              }
+              onClick={() => setRightTab("terminal")}
+            >
+              Terminal
+            </button>
+            <button
+              type="button"
+              className={
+                "right-tab" + (rightTab === "usage" ? " active" : "")
+              }
+              onClick={() => setRightTab("usage")}
+            >
+              Usage
             </button>
           </div>
 
-          <div className="search-results">
-            {searchTab === "messages" ? (
-              searchMessageHits.length === 0 ? (
-                <div className="search-empty">
-                  No message results yet. Try a query.
-                </div>
-              ) : (
-                <ul>
-                  {searchMessageHits.map((hit) => (
-                    <li key={hit.message_id} className="search-result-item">
-                      <div className="search-result-meta">
-                        Conversation {hit.conversation_id} · {hit.role}
-                      </div>
-                      <div className="search-result-content">
-                        {hit.content}
-                      </div>
-                      <div className="search-result-distance">
-                        distance {hit.distance.toFixed(3)}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )
-            ) : searchDocHits.length === 0 ? (
-              <div className="search-empty">
-                No doc results yet. Try a query.
+          {rightTab === "tasks" && (
+            <>
+              {/* Project tasks */}
+              <div className="tasks-header">Project tasks</div>
+              <div className="tasks-new">
+                <input
+                  className="tasks-input"
+                  type="text"
+                  placeholder="Add a task for this project..."
+                  value={newTaskDescription}
+                  onChange={(e) => setNewTaskDescription(e.target.value)}
+                  onKeyDown={handleNewTaskKeyDown}
+                />
+                <button
+                  className="btn-secondary small"
+                  type="button"
+                  onClick={handleAddTask}
+                  disabled={
+                    isSavingTask ||
+                    !newTaskDescription.trim() ||
+                    !selectedProjectId
+                  }
+                >
+                  Add
+                </button>
               </div>
-            ) : (
-              <ul>
-                {searchDocHits.map((hit) => (
-                  <li key={hit.chunk_id} className="search-result-item">
-                    <div className="search-result-meta">
-                      Doc {hit.document_id} · chunk {hit.chunk_index}
-                    </div>
-                    <div className="search-result-content">
-                      {hit.content}
-                    </div>
-                    <div className="search-result-distance">
-                      distance {hit.distance.toFixed(3)}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {/* AI terminal command proposal */}
-          <div className="terminal-header">AI terminal command</div>
-          <div className="terminal-panel">
-            {selectedConversationId == null ? (
-              <div className="terminal-empty">No conversation selected.</div>
-            ) : !terminalProposal ? (
-              <div className="terminal-empty">
-                No AI terminal command proposals in the latest assistant
-                reply.
-              </div>
-            ) : (
-              <>
-                <div className="terminal-row">
-                  <span className="terminal-label">CWD:</span>{" "}
-                  <span className="terminal-value">
-                    {terminalProposal.cwd && terminalProposal.cwd.trim()
-                      ? terminalProposal.cwd
-                      : "(project root)"}
-                  </span>
-                </div>
-                <div className="terminal-row">
-                  <span className="terminal-label">Command:</span>{" "}
-                  <span className="terminal-value mono">
-                    {terminalProposal.command}
-                  </span>
-                </div>
-                {terminalProposal.reason && (
-                  <div className="terminal-row">
-                    <span className="terminal-label">Reason:</span>{" "}
-                    <span className="terminal-value">
-                      {terminalProposal.reason}
-                    </span>
+              <div className="tasks-list">
+                {selectedProjectId == null ? (
+                  <div className="tasks-empty">No project selected.</div>
+                ) : tasks.length === 0 ? (
+                  <div className="tasks-empty">
+                    No tasks yet. Add one above.
                   </div>
-                )}
-                <div className="terminal-buttons">
-                  <button
-                    type="button"
-                    className="btn-secondary small"
-                    onClick={handleRunTerminalProposal}
-                    disabled={isRunningTerminalCommand}
-                  >
-                    {isRunningTerminalCommand ? "Running…" : "Run command"}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-link small"
-                    onClick={() => setTerminalProposal(null)}
-                  >
-                    Dismiss
-                  </button>
-                </div>
-                {terminalError && (
-                  <div className="terminal-status terminal-status-error">
-                    {terminalError}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* Terminal last run output */}
-          <div className="terminal-output-header">Last terminal run</div>
-          <div className="terminal-output-panel">
-            {!terminalResult ? (
-              <div className="terminal-empty">
-                No terminal command has been run yet from this UI.
-              </div>
-            ) : (
-              <>
-                <div className="terminal-output-meta">
-                  <div>
-                    <span className="terminal-label">Command:</span>{" "}
-                    <span className="terminal-value mono">
-                      {terminalResult.command}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="terminal-label">CWD:</span>{" "}
-                    <span className="terminal-value">
-                      {terminalResult.cwd &&
-                      terminalResult.cwd.trim()
-                        ? terminalResult.cwd
-                        : "(project root)"}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="terminal-label">Exit code:</span>{" "}
-                    <span className="terminal-value">
-                      {terminalResult.exit_code}
-                    </span>
-                  </div>
-                </div>
-                <div className="terminal-output-note">
-                  (This output was also sent to the assistant so it can
-                  decide what to do next.)
-                </div>
-                <div className="terminal-output-block">
-                  <div className="terminal-output-label">STDOUT</div>
-                  <pre className="terminal-output-stdout">
-                    {terminalResult.stdout || "(no stdout)"}
-                  </pre>
-                </div>
-                <div className="terminal-output-block">
-                  <div className="terminal-output-label">STDERR</div>
-                  <pre className="terminal-output-stderr">
-                    {terminalResult.stderr || "(no stderr)"}
-                  </pre>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* AI file edit proposal */}
-          <div className="fileedit-header">AI file edit</div>
-          <div className="fileedit-panel">
-            {selectedConversationId == null ? (
-              <div className="fileedit-empty">
-                No conversation selected.
-              </div>
-            ) : !fileEditProposal ? (
-              <div className="fileedit-empty">
-                No AI file edit proposals in the latest assistant reply.
-              </div>
-            ) : (
-              <>
-                <div className="fileedit-path">
-                  <span className="fileedit-label">File:</span>{" "}
-                  <span className="fileedit-value">
-                    {fileEditProposal.file_path}
-                  </span>
-                </div>
-                <div className="fileedit-reason">
-                  <span className="fileedit-label">Reason:</span>{" "}
-                  <span className="fileedit-value">
-                    {fileEditProposal.reason}
-                  </span>
-                </div>
-                <div className="fileedit-instruction">
-                  <span className="fileedit-label">Instruction:</span>
-                  <div className="fileedit-instruction-text">
-                    {fileEditProposal.instruction}
-                  </div>
-                </div>
-                <div className="fileedit-buttons">
-                  <button
-                    type="button"
-                    className="btn-secondary small"
-                    onClick={handleApplyFileEdit}
-                    disabled={isApplyingFileEdit}
-                  >
-                    {isApplyingFileEdit ? "Applying…" : "Apply AI edit"}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-link small"
-                    onClick={handleDismissFileEditProposal}
-                  >
-                    Dismiss
-                  </button>
-                </div>
-                {fileEditStatus && (
-                  <div className="fileedit-status">{fileEditStatus}</div>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* Usage panel */}
-          <div className="usage-header">Usage (this conversation)</div>
-          <div className="usage-panel">
-            {selectedConversationId == null ? (
-              <div className="usage-empty">
-                No conversation selected.
-              </div>
-            ) : isLoadingUsage ? (
-              <div className="usage-empty">Loading usage…</div>
-            ) : !usage || !usage.records.length ? (
-              <div className="usage-empty">
-                No usage records yet for this conversation.
-              </div>
-            ) : (
-              <>
-                <div className="usage-summary">
-                  <div>
-                    <span className="usage-label">Total tokens in:</span>{" "}
-                    <span className="usage-value">
-                      {usage.total_tokens_in ?? 0}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="usage-label">Total tokens out:</span>{" "}
-                    <span className="usage-value">
-                      {usage.total_tokens_out ?? 0}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="usage-label">Total cost:</span>{" "}
-                    <span className="usage-value">
-                      {usage.total_cost_estimate != null
-                        ? `$${usage.total_cost_estimate.toFixed(4)}`
-                        : "—"}
-                    </span>
-                  </div>
-                </div>
-                <div className="usage-records">
-                  <div className="usage-records-title">
-                    Recent assistant calls
-                  </div>
+                ) : (
                   <ul>
-                    {usage.records
-                      .slice()
-                      .reverse()
-                      .slice(0, 10)
-                      .map((r) => (
-                        <li key={r.id} className="usage-record-item">
-                          <div className="usage-record-main">
-                            <span className="usage-model">
-                              {r.model || "model?"}
-                            </span>
-                            <span className="usage-tokens">
-                              in {r.tokens_in ?? 0} · out{" "}
-                              {r.tokens_out ?? 0}
-                            </span>
+                    {tasks.map((task) => (
+                      <li key={task.id} className="task-item">
+                        <input
+                          type="checkbox"
+                          checked={task.status === "done"}
+                          onChange={() => handleToggleTaskStatus(task)}
+                        />
+                        <div
+                          className={
+                            "task-text" +
+                            (task.status === "done" ? " done" : "")
+                          }
+                        >
+                          {task.description}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </>
+          )}
+
+          {rightTab === "docs" && (
+            <>
+              {/* Project documents */}
+              <div className="docs-header">Project documents</div>
+              <div className="project-docs-list">
+                {selectedProjectId == null ? (
+                  <div className="docs-empty">No project selected.</div>
+                ) : projectDocs.length === 0 ? (
+                  <div className="docs-empty">
+                    No documents yet. Ingest one below.
+                  </div>
+                ) : (
+                  <ul>
+                    {projectDocs.map((doc) => (
+                      <li key={doc.id} className="project-doc-item">
+                        <div className="project-doc-name">{doc.name}</div>
+                        {doc.description && (
+                          <div className="project-doc-description">
+                            {doc.description}
                           </div>
-                          <div className="usage-record-sub">
-                            msg #{r.message_id ?? "?"} ·{" "}
-                            {new Date(
-                              r.created_at
-                            ).toLocaleTimeString()}
+                        )}
+                        <div className="project-doc-id">
+                          Doc ID {doc.id}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {/* Ingest text document */}
+              <div className="ingest-section">
+                <div className="ingest-title">Ingest text document</div>
+                <div className="ingest-textdoc-form">
+                  <input
+                    className="ingest-input"
+                    type="text"
+                    placeholder="Name"
+                    value={newDocName}
+                    onChange={(e) => setNewDocName(e.target.value)}
+                  />
+                  <input
+                    className="ingest-input"
+                    type="text"
+                    placeholder="Description (optional)"
+                    value={newDocDescription}
+                    onChange={(e) =>
+                      setNewDocDescription(e.target.value)
+                    }
+                  />
+                  <textarea
+                    className="ingest-textarea"
+                    placeholder="Paste document text here..."
+                    value={newDocText}
+                    onChange={(e) => setNewDocText(e.target.value)}
+                  />
+                  <button
+                    className="btn-secondary"
+                    type="button"
+                    onClick={handleIngestTextDoc}
+                    disabled={isIngestingTextDoc}
+                  >
+                    {isIngestingTextDoc
+                      ? "Ingesting…"
+                      : "Ingest text doc"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Ingest local repo */}
+              <div className="ingest-section">
+                <div className="ingest-title">Ingest local repo</div>
+                <div className="ingest-repo-form">
+                  <input
+                    className="ingest-input"
+                    type="text"
+                    placeholder="Root path (e.g. C:\\InfinityWindow)"
+                    value={repoRootPath}
+                    onChange={(e) => setRepoRootPath(e.target.value)}
+                  />
+                  <input
+                    className="ingest-input"
+                    type="text"
+                    placeholder="Name prefix (e.g. InfinityWindow/)"
+                    value={repoNamePrefix}
+                    onChange={(e) =>
+                      setRepoNamePrefix(e.target.value)
+                    }
+                  />
+                  <button
+                    className="btn-secondary"
+                    type="button"
+                    onClick={handleIngestRepo}
+                    disabled={isIngestingRepo}
+                  >
+                    {isIngestingRepo ? "Ingesting…" : "Ingest repo"}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {rightTab === "files" && (
+            <>
+              {/* Project files */}
+              <div className="files-header">Project files</div>
+              <div className="files-panel">
+                {selectedProjectId == null ? (
+                  <div className="files-empty">No project selected.</div>
+                ) : fsError ? (
+                  <div className="files-error">{fsError}</div>
+                ) : (
+                  <>
+                    <div className="files-location-row">
+                      <div className="files-location">
+                        Location: {fsDisplayPath || "."}
+                        {fsRoot && (
+                          <span className="files-root-hint">
+                            {" "}
+                            (root: {fsRoot})
+                          </span>
+                        )}
+                      </div>
+                      <div className="files-location-actions">
+                        <button
+                          type="button"
+                          className="btn-secondary small"
+                          onClick={handleFsUp}
+                          disabled={
+                            !fsCurrentSubpath || fsIsLoadingList
+                          }
+                        >
+                          ↑ Up
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-secondary small"
+                          onClick={handleFsRefresh}
+                          disabled={fsIsLoadingList}
+                        >
+                          Refresh
+                        </button>
+                      </div>
+                    </div>
+                    <div className="files-list">
+                      {fsIsLoadingList ? (
+                        <div className="files-empty">
+                          Loading files…
+                        </div>
+                      ) : fsEntries.length === 0 ? (
+                        <div className="files-empty">
+                          No files or folders at this level.
+                        </div>
+                      ) : (
+                        <ul>
+                          {fsEntries.map((entry) => {
+                            const isSelected =
+                              !entry.is_dir &&
+                              fsSelectedRelPath === entry.rel_path;
+                            return (
+                              <li
+                                key={entry.rel_path}
+                                className="file-list-item"
+                              >
+                                <button
+                                  type="button"
+                                  className={
+                                    "file-list-entry-button" +
+                                    (isSelected ? " selected" : "")
+                                  }
+                                  onClick={() =>
+                                    handleOpenFsEntry(entry)
+                                  }
+                                >
+                                  <span className="file-list-name">
+                                    {entry.is_dir ? "📁" : "📄"}{" "}
+                                    {entry.name}
+                                  </span>
+                                  {!entry.is_dir &&
+                                    entry.size != null && (
+                                      <span className="file-list-meta">
+                                        {entry.size} bytes
+                                      </span>
+                                    )}
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+
+                    {fsSelectedRelPath && (
+                      <div className="file-editor">
+                        <div className="file-editor-header">
+                          <div className="file-editor-title">
+                            Editing: {fsSelectedRelPath}
+                            {hasUnsavedFileChanges && (
+                              <span className="unsaved-indicator">
+                                ● Unsaved changes
+                              </span>
+                            )}
+                          </div>
+                          <div className="file-editor-controls">
+                            <label className="show-original-toggle">
+                              <input
+                                type="checkbox"
+                                checked={fsShowOriginal}
+                                onChange={(e) =>
+                                  setFsShowOriginal(e.target.checked)
+                                }
+                              />
+                              Show original
+                            </label>
+                            <button
+                              type="button"
+                              className="btn-secondary small"
+                              onClick={handleSaveFile}
+                              disabled={
+                                fsIsSavingFile ||
+                                !hasUnsavedFileChanges
+                              }
+                            >
+                              {fsIsSavingFile
+                                ? "Saving…"
+                                : "Save file"}
+                            </button>
+                          </div>
+                        </div>
+                        <textarea
+                          className="file-editor-textarea"
+                          value={fsEditedContent}
+                          onChange={(e) =>
+                            setFsEditedContent(e.target.value)
+                          }
+                          disabled={fsIsLoadingFile}
+                        />
+                        {fsShowOriginal && (
+                          <div className="file-original-box">
+                            <div className="file-original-label">
+                              Original (read-only)
+                            </div>
+                            <pre className="file-original-content">
+                              {fsOriginalContent}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* AI file edit proposal */}
+              <div className="fileedit-header">AI file edit</div>
+              <div className="fileedit-panel">
+                {selectedConversationId == null ? (
+                  <div className="fileedit-empty">
+                    No conversation selected.
+                  </div>
+                ) : !fileEditProposal ? (
+                  <div className="fileedit-empty">
+                    No AI file edit proposals in the latest assistant
+                    reply.
+                  </div>
+                ) : (
+                  <>
+                    <div className="fileedit-path">
+                      <span className="fileedit-label">File:</span>{" "}
+                      <span className="fileedit-value">
+                        {fileEditProposal.file_path}
+                      </span>
+                    </div>
+                    <div className="fileedit-reason">
+                      <span className="fileedit-label">Reason:</span>{" "}
+                      <span className="fileedit-value">
+                        {fileEditProposal.reason}
+                      </span>
+                    </div>
+                    <div className="fileedit-instruction">
+                      <span className="fileedit-label">
+                        Instruction:
+                      </span>
+                      <div className="fileedit-instruction-text">
+                        {fileEditProposal.instruction}
+                      </div>
+                    </div>
+                    <div className="fileedit-buttons">
+                      <button
+                        type="button"
+                        className="btn-secondary small"
+                        onClick={handleApplyFileEdit}
+                        disabled={isApplyingFileEdit}
+                      >
+                        {isApplyingFileEdit
+                          ? "Applying…"
+                          : "Apply AI edit"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-link small"
+                        onClick={handleDismissFileEditProposal}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                    {fileEditStatus && (
+                      <div className="fileedit-status">
+                        {fileEditStatus}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </>
+          )}
+
+          {rightTab === "search" && (
+            <>
+              {/* Search memory */}
+              <div className="search-header">Search memory</div>
+
+              <div className="search-tabs">
+                <button
+                  className={
+                    "search-tab" +
+                    (searchTab === "messages" ? " active" : "")
+                  }
+                  type="button"
+                  onClick={() => setSearchTab("messages")}
+                >
+                  Messages
+                </button>
+                <button
+                  className={
+                    "search-tab" +
+                    (searchTab === "docs" ? " active" : "")
+                  }
+                  type="button"
+                  onClick={() => setSearchTab("docs")}
+                >
+                  Docs
+                </button>
+              </div>
+
+              <div className="search-box">
+                <textarea
+                  className="search-input"
+                  placeholder={
+                    searchTab === "messages"
+                      ? "Search in chat history..."
+                      : "Search in ingested documents..."
+                  }
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={handleSearchKeyDown}
+                />
+                <button
+                  className="btn-secondary"
+                  type="button"
+                  onClick={handleSearch}
+                  disabled={isSearching || !searchQuery.trim()}
+                >
+                  {isSearching ? "Searching…" : "Search"}
+                </button>
+              </div>
+
+              <div className="search-results">
+                {searchTab === "messages" ? (
+                  searchMessageHits.length === 0 ? (
+                    <div className="search-empty">
+                      No message results yet. Try a query.
+                    </div>
+                  ) : (
+                    <ul>
+                      {searchMessageHits.map((hit) => (
+                        <li
+                          key={hit.message_id}
+                          className="search-result-item"
+                        >
+                          <div className="search-result-meta">
+                            Conversation {hit.conversation_id} ·{" "}
+                            {hit.role}
+                          </div>
+                          <div className="search-result-content">
+                            {hit.content}
+                          </div>
+                          <div className="search-result-distance">
+                            distance {hit.distance.toFixed(3)}
                           </div>
                         </li>
                       ))}
+                    </ul>
+                  )
+                ) : searchDocHits.length === 0 ? (
+                  <div className="search-empty">
+                    No doc results yet. Try a query.
+                  </div>
+                ) : (
+                  <ul>
+                    {searchDocHits.map((hit) => (
+                      <li
+                        key={hit.chunk_id}
+                        className="search-result-item"
+                      >
+                        <div className="search-result-meta">
+                          Doc {hit.document_id} · chunk{" "}
+                          {hit.chunk_index}
+                        </div>
+                        <div className="search-result-content">
+                          {hit.content}
+                        </div>
+                        <div className="search-result-distance">
+                          distance {hit.distance.toFixed(3)}
+                        </div>
+                      </li>
+                    ))}
                   </ul>
-                </div>
-              </>
-            )}
-          </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {rightTab === "terminal" && (
+            <>
+              {/* AI terminal command proposal */}
+              <div className="terminal-header">AI terminal command</div>
+              <div className="terminal-panel">
+                {selectedConversationId == null ? (
+                  <div className="terminal-empty">
+                    No conversation selected.
+                  </div>
+                ) : !terminalProposal ? (
+                  <div className="terminal-empty">
+                    No AI terminal command proposals in the latest
+                    assistant reply.
+                  </div>
+                ) : (
+                  <>
+                    <div className="terminal-row">
+                      <span className="terminal-label">CWD:</span>{" "}
+                      <span className="terminal-value">
+                        {terminalProposal.cwd &&
+                        terminalProposal.cwd.trim()
+                          ? terminalProposal.cwd
+                          : "(project root)"}
+                      </span>
+                    </div>
+                    <div className="terminal-row">
+                      <span className="terminal-label">
+                        Command:
+                      </span>{" "}
+                      <span className="terminal-value mono">
+                        {terminalProposal.command}
+                      </span>
+                    </div>
+                    {terminalProposal.reason && (
+                      <div className="terminal-row">
+                        <span className="terminal-label">
+                          Reason:
+                        </span>{" "}
+                        <span className="terminal-value">
+                          {terminalProposal.reason}
+                        </span>
+                      </div>
+                    )}
+                    <div className="terminal-buttons">
+                      <button
+                        type="button"
+                        className="btn-secondary small"
+                        onClick={handleRunTerminalProposal}
+                        disabled={isRunningTerminalCommand}
+                      >
+                        {isRunningTerminalCommand
+                          ? "Running…"
+                          : "Run command"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-link small"
+                        onClick={() => setTerminalProposal(null)}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                    {terminalError && (
+                      <div className="terminal-status terminal-status-error">
+                        {terminalError}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Terminal last run output */}
+              <div className="terminal-output-header">
+                Last terminal run
+              </div>
+              <div className="terminal-output-panel">
+                {!terminalResult ? (
+                  <div className="terminal-empty">
+                    No terminal command has been run yet from this UI.
+                  </div>
+                ) : (
+                  <>
+                    <div className="terminal-output-meta">
+                      <div>
+                        <span className="terminal-label">
+                          Command:
+                        </span>{" "}
+                        <span className="terminal-value mono">
+                          {terminalResult.command}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="terminal-label">CWD:</span>{" "}
+                        <span className="terminal-value">
+                          {terminalResult.cwd &&
+                          terminalResult.cwd.trim()
+                            ? terminalResult.cwd
+                            : "(project root)"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="terminal-label">
+                          Exit code:
+                        </span>{" "}
+                        <span className="terminal-value">
+                          {terminalResult.exit_code}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="terminal-output-note">
+                      (This output was also sent to the assistant so it
+                      can decide what to do next.)
+                    </div>
+                    <div className="terminal-output-block">
+                      <div className="terminal-output-label">STDOUT</div>
+                      <pre className="terminal-output-stdout">
+                        {terminalResult.stdout || "(no stdout)"}
+                      </pre>
+                    </div>
+                    <div className="terminal-output-block">
+                      <div className="terminal-output-label">STDERR</div>
+                      <pre className="terminal-output-stderr">
+                        {terminalResult.stderr || "(no stderr)"}
+                      </pre>
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+
+          {rightTab === "usage" && (
+            <>
+              {/* Usage panel */}
+              <div className="usage-header">
+                Usage (this conversation)
+              </div>
+              <div className="usage-panel">
+                {selectedConversationId == null ? (
+                  <div className="usage-empty">
+                    No conversation selected.
+                  </div>
+                ) : isLoadingUsage ? (
+                  <div className="usage-empty">Loading usage…</div>
+                ) : !usage || !usage.records.length ? (
+                  <div className="usage-empty">
+                    No usage records yet for this conversation.
+                  </div>
+                ) : (
+                  <>
+                    <div className="usage-summary">
+                      <div>
+                        <span className="usage-label">
+                          Total tokens in:
+                        </span>{" "}
+                        <span className="usage-value">
+                          {usage.total_tokens_in ?? 0}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="usage-label">
+                          Total tokens out:
+                        </span>{" "}
+                        <span className="usage-value">
+                          {usage.total_tokens_out ?? 0}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="usage-label">
+                          Total cost:
+                        </span>{" "}
+                        <span className="usage-value">
+                          {usage.total_cost_estimate != null
+                            ? `$${usage.total_cost_estimate.toFixed(4)}`
+                            : "—"}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="usage-records">
+                      <div className="usage-records-title">
+                        Recent assistant calls
+                      </div>
+                      <ul>
+                        {usage.records
+                          .slice()
+                          .reverse()
+                          .slice(0, 10)
+                          .map((r) => (
+                            <li
+                              key={r.id}
+                              className="usage-record-item"
+                            >
+                              <div className="usage-record-main">
+                                <span className="usage-model">
+                                  {r.model || "model?"}
+                                </span>
+                                <span className="usage-tokens">
+                                  in {r.tokens_in ?? 0} · out{" "}
+                                  {r.tokens_out ?? 0}
+                                </span>
+                              </div>
+                              <div className="usage-record-sub">
+                                msg #{r.message_id ?? "?"} ·{" "}
+                                {new Date(
+                                  r.created_at
+                                ).toLocaleTimeString()}
+                              </div>
+                            </li>
+                          ))}
+                      </ul>
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
+          )}
         </section>
       </main>
     </div>
