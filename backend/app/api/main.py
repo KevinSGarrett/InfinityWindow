@@ -62,6 +62,7 @@ class ProjectCreate(BaseModel):
     description: Optional[str] = None
     # NEW: optional local filesystem root configured at creation
     local_root_path: Optional[str] = None
+    instruction_text: Optional[str] = None
 
 
 class ProjectRead(BaseModel):
@@ -69,6 +70,8 @@ class ProjectRead(BaseModel):
     name: str
     description: Optional[str] = None
     local_root_path: Optional[str] = None
+    instruction_text: Optional[str] = None
+    instruction_updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -77,23 +80,29 @@ class ProjectUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     local_root_path: Optional[str] = None
+    instruction_text: Optional[str] = None
 
 
 class ConversationCreate(BaseModel):
     project_id: int
     title: Optional[str] = None
+    folder_id: Optional[int] = None
 
 
 class ConversationRead(BaseModel):
     id: int
     project_id: int
     title: Optional[str] = None
+    folder_id: Optional[int] = None
+    folder_name: Optional[str] = None
+    folder_color: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class ConversationRenamePayload(BaseModel):
-    title: str
+    title: Optional[str] = None
+    folder_id: Optional[int] = None
 
 
 class MessageRead(BaseModel):
@@ -144,6 +153,64 @@ class ConversationUsageSummary(BaseModel):
     total_tokens_out: int
     total_cost_estimate: Optional[float]
     records: List[UsageRecordRead]
+
+
+class ProjectInstructionsRead(BaseModel):
+    project_id: int
+    instruction_text: Optional[str]
+    instruction_updated_at: Optional[datetime]
+
+
+class ProjectInstructionsPayload(BaseModel):
+    instruction_text: Optional[str]
+
+
+class ProjectDecisionCreate(BaseModel):
+    title: str
+    details: Optional[str] = None
+    category: Optional[str] = None
+    source_conversation_id: Optional[int] = None
+
+
+class ProjectDecisionRead(BaseModel):
+    id: int
+    project_id: int
+    title: str
+    details: Optional[str]
+    category: Optional[str]
+    source_conversation_id: Optional[int]
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ConversationFolderCreate(BaseModel):
+    project_id: int
+    name: str
+    color: Optional[str] = None
+    sort_order: Optional[int] = None
+    is_default: Optional[bool] = None
+    is_archived: Optional[bool] = None
+
+
+class ConversationFolderUpdate(BaseModel):
+    name: Optional[str] = None
+    color: Optional[str] = None
+    sort_order: Optional[int] = None
+    is_default: Optional[bool] = None
+    is_archived: Optional[bool] = None
+
+
+class ConversationFolderRead(BaseModel):
+    id: int
+    project_id: int
+    name: str
+    color: Optional[str]
+    sort_order: int
+    is_default: bool
+    is_archived: bool
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ChatRequest(BaseModel):
@@ -211,6 +278,16 @@ class TerminalRunPayload(BaseModel):
     timeout_seconds: Optional[int] = 120
 
 
+# ---------- Helpers: misc ----------
+
+
+def _normalize_instruction_text(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    trimmed = value.strip()
+    return trimmed or None
+
+
 # ---------- Helper: filesystem ----------
 
 
@@ -219,6 +296,47 @@ def _ensure_project(db: Session, project_id: int) -> models.Project:
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found.")
     return project
+
+
+def _ensure_folder(
+    db: Session, folder_id: int, project_id: Optional[int] = None
+) -> models.ConversationFolder:
+    folder = db.get(models.ConversationFolder, folder_id)
+    if folder is None:
+        raise HTTPException(status_code=404, detail="Conversation folder not found.")
+    if project_id is not None and folder.project_id != project_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Conversation folder does not belong to this project.",
+        )
+    return folder
+
+
+def _get_default_folder_id(
+    db: Session, project_id: int
+) -> Optional[int]:
+    folder = (
+        db.query(models.ConversationFolder)
+        .filter(
+            models.ConversationFolder.project_id == project_id,
+            models.ConversationFolder.is_default.is_(True),
+        )
+        .order_by(models.ConversationFolder.sort_order.asc())
+        .first()
+    )
+    return folder.id if folder else None
+
+
+def _set_default_folder(
+    db: Session, project_id: int, folder_id: Optional[int]
+) -> None:
+    db.query(models.ConversationFolder).filter(
+        models.ConversationFolder.project_id == project_id
+    ).update({models.ConversationFolder.is_default: False})
+    if folder_id is not None:
+        db.query(models.ConversationFolder).filter(
+            models.ConversationFolder.id == folder_id
+        ).update({models.ConversationFolder.is_default: True})
 
 
 def _get_project_root(project: models.Project) -> Path:
@@ -383,8 +501,8 @@ def auto_update_tasks_from_conversation(
         "Rules:\n"
         "- Only include tasks that clearly represent work to be done in the future.\n"
         "- Skip questions, chit-chat, or things already clearly completed.\n"
-        "- Prefer short, imperative descriptions like "
-        "\"Add cost panel to InfinityWindow UI\".\n"
+        '- Prefer short, imperative descriptions like '
+        '"Add cost panel to InfinityWindow UI".\n'
         "- Do NOT include due dates or owners; only descriptions.\n"
         "- If there are no new tasks, return an empty list.\n\n"
         "Output JSON ONLY, with this exact structure (no commentary):\n"
@@ -460,6 +578,92 @@ def auto_update_tasks_from_conversation(
         # swallow errors, chat should not fail because of this
 
 
+# ---------- Helper: auto‑title conversations ----------
+
+
+def auto_title_conversation(
+    db: Session,
+    conversation: models.Conversation,
+    max_messages: int = 16,
+) -> None:
+    """
+    If this conversation does not yet have a meaningful title, ask a small/fast
+    model to propose one based on the recent messages.
+
+    This is best‑effort and should never raise out of here.
+    """
+    # Don't overwrite a non-default/manual title
+    existing_title = (conversation.title or "").strip()
+    if existing_title and not existing_title.lower().startswith("chat conversation"):
+        return
+
+    # Get recent messages (most recent first, then reverse)
+    recent_messages = (
+        db.query(models.Message)
+        .filter(models.Message.conversation_id == conversation.id)
+        .order_by(models.Message.id.desc())
+        .limit(max_messages)
+        .all()
+    )
+    if not recent_messages:
+        return
+
+    recent_messages = list(reversed(recent_messages))
+
+    convo_text_lines: List[str] = []
+    for m in recent_messages:
+        who = "User" if m.role == "user" else "Assistant"
+        content = m.content.strip().replace("\n", " ")
+        if len(content) > 200:
+            content = content[:200] + "..."
+        convo_text_lines.append(f"{who}: {content}")
+
+    convo_text = "\n".join(convo_text_lines)
+
+    system_instructions = (
+        "You generate concise, descriptive titles for chat conversations.\n"
+        "Rules:\n"
+        "- Output ONLY the title text, no quotes or extra text.\n"
+        "- Keep it under 8 words and under 60 characters.\n"
+        "- Make it specific to this conversation, not generic.\n"
+    )
+
+    prompt: List[Dict[str, str]] = [
+        {"role": "system", "content": system_instructions},
+        {
+            "role": "user",
+            "content": (
+                "Based on the following conversation snippets, propose a short, "
+                "descriptive title for this conversation:\n\n"
+                f"{convo_text}"
+            ),
+        },
+    ]
+
+    try:
+        raw = generate_reply_from_history(
+            prompt,
+            model=None,  # let openai_client pick a cheap/fast model
+            mode="fast",
+        )
+        if not raw:
+            return
+
+        title = str(raw).strip().splitlines()[0].strip()
+        # Strip surrounding quotes if present
+        if (title.startswith('"') and title.endswith('"')) or (
+            title.startswith("'") and title.endswith("'")
+        ):
+            title = title[1:-1].strip()
+
+        if not title:
+            return
+
+        conversation.title = title
+    except Exception as e:  # noqa: BLE001
+        print(f"[WARN] auto_title_conversation failed: {e!r}")
+
+
 # ---------- Routes ----------
 
 
@@ -498,10 +702,13 @@ def create_project(
             detail="Project with that name already exists.",
         )
 
+    instructions = _normalize_instruction_text(payload.instruction_text)
     project = models.Project(
         name=payload.name,
         description=payload.description,
         local_root_path=payload.local_root_path,
+        instruction_text=instructions,
+        instruction_updated_at=datetime.utcnow() if instructions else None,
     )
     db.add(project)
     db.commit()
@@ -537,10 +744,270 @@ def update_project(
         project.description = payload.description
     if payload.local_root_path is not None:
         project.local_root_path = payload.local_root_path
+    if payload.instruction_text is not None:
+        instructions = _normalize_instruction_text(payload.instruction_text)
+        project.instruction_text = instructions
+        project.instruction_updated_at = datetime.utcnow()
 
     db.commit()
     db.refresh(project)
     return project
+
+
+# ---------- Project instructions ----------
+
+
+@app.get(
+    "/projects/{project_id}/instructions",
+    response_model=ProjectInstructionsRead,
+)
+def get_project_instructions(
+    project_id: int,
+    db: Session = Depends(get_db),
+):
+    project = _ensure_project(db, project_id)
+    return {
+        "project_id": project.id,
+        "instruction_text": project.instruction_text,
+        "instruction_updated_at": project.instruction_updated_at,
+    }
+
+
+@app.put(
+    "/projects/{project_id}/instructions",
+    response_model=ProjectInstructionsRead,
+)
+def update_project_instructions(
+    project_id: int,
+    payload: ProjectInstructionsPayload,
+    db: Session = Depends(get_db),
+):
+    project = _ensure_project(db, project_id)
+    instructions = _normalize_instruction_text(payload.instruction_text)
+    project.instruction_text = instructions
+    project.instruction_updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(project)
+    return {
+        "project_id": project.id,
+        "instruction_text": project.instruction_text,
+        "instruction_updated_at": project.instruction_updated_at,
+    }
+
+
+# ---------- Project decisions ----------
+
+
+@app.get(
+    "/projects/{project_id}/decisions",
+    response_model=list[ProjectDecisionRead],
+)
+def list_project_decisions(
+    project_id: int,
+    db: Session = Depends(get_db),
+):
+    _ensure_project(db, project_id)
+    decisions = (
+        db.query(models.ProjectDecision)
+        .filter(models.ProjectDecision.project_id == project_id)
+        .order_by(models.ProjectDecision.created_at.desc())
+        .all()
+    )
+    return decisions
+
+
+@app.post(
+    "/projects/{project_id}/decisions",
+    response_model=ProjectDecisionRead,
+)
+def create_project_decision(
+    project_id: int,
+    payload: ProjectDecisionCreate,
+    db: Session = Depends(get_db),
+):
+    project = _ensure_project(db, project_id)
+
+    if payload.source_conversation_id is not None:
+        source_conversation = db.get(
+            models.Conversation, payload.source_conversation_id
+        )
+        if source_conversation is None:
+            raise HTTPException(
+                status_code=404,
+                detail="source_conversation_id not found.",
+            )
+        if source_conversation.project_id != project_id:
+            raise HTTPException(
+                status_code=400,
+                detail="source_conversation_id does not belong to this project.",
+            )
+
+    title = payload.title.strip()
+    if not title:
+        raise HTTPException(
+            status_code=400, detail="Decision title cannot be empty."
+        )
+
+    decision = models.ProjectDecision(
+        project_id=project.id,
+        title=title,
+        details=(payload.details or "").strip() or None,
+        category=(payload.category or "").strip() or None,
+        source_conversation_id=payload.source_conversation_id,
+    )
+    db.add(decision)
+    db.commit()
+    db.refresh(decision)
+    return decision
+
+
+# ---------- Conversation folders ----------
+
+
+def _sanitize_folder_name(name: str) -> str:
+    cleaned = name.strip()
+    if not cleaned:
+        raise HTTPException(
+            status_code=400, detail="Folder name cannot be empty."
+        )
+    return cleaned
+
+
+def _sanitize_color(color: Optional[str]) -> Optional[str]:
+    if color is None:
+        return None
+    value = color.strip()
+    if not value:
+        return None
+    if len(value) > 32:
+        raise HTTPException(
+            status_code=400, detail="Folder color must be <= 32 characters."
+        )
+    return value
+
+
+@app.get(
+    "/projects/{project_id}/conversation_folders",
+    response_model=list[ConversationFolderRead],
+)
+def list_conversation_folders(
+    project_id: int,
+    db: Session = Depends(get_db),
+):
+    _ensure_project(db, project_id)
+    folders = (
+        db.query(models.ConversationFolder)
+        .filter(models.ConversationFolder.project_id == project_id)
+        .order_by(
+            models.ConversationFolder.is_archived.asc(),
+            models.ConversationFolder.sort_order.asc(),
+            models.ConversationFolder.name.asc(),
+        )
+        .all()
+    )
+    return folders
+
+
+@app.post("/conversation_folders", response_model=ConversationFolderRead)
+def create_conversation_folder(
+    payload: ConversationFolderCreate,
+    db: Session = Depends(get_db),
+):
+    project = _ensure_project(db, payload.project_id)
+    name = _sanitize_folder_name(payload.name)
+    color = _sanitize_color(payload.color)
+    sort_order = payload.sort_order if payload.sort_order is not None else 0
+
+    folder = models.ConversationFolder(
+        project_id=project.id,
+        name=name,
+        color=color,
+        sort_order=sort_order,
+        is_default=bool(payload.is_default),
+        is_archived=bool(payload.is_archived),
+    )
+    db.add(folder)
+    db.flush()
+
+    if folder.is_default:
+        _set_default_folder(db, project.id, folder.id)
+
+    db.commit()
+    db.refresh(folder)
+    return folder
+
+
+@app.patch(
+    "/conversation_folders/{folder_id}",
+    response_model=ConversationFolderRead,
+)
+def update_conversation_folder(
+    folder_id: int,
+    payload: ConversationFolderUpdate,
+    db: Session = Depends(get_db),
+):
+    folder = _ensure_folder(db, folder_id)
+
+    if payload.name is not None:
+        folder.name = _sanitize_folder_name(payload.name)
+    if payload.color is not None:
+        folder.color = _sanitize_color(payload.color)
+    if payload.sort_order is not None:
+        folder.sort_order = payload.sort_order
+    if payload.is_archived is not None:
+        folder.is_archived = payload.is_archived
+    set_default = None
+    if payload.is_default is not None:
+        set_default = payload.is_default
+
+    db.commit()
+
+    if set_default is not None:
+        _set_default_folder(
+            db,
+            folder.project_id,
+            folder.id if set_default else None,
+        )
+        db.commit()
+        db.refresh(folder)
+    else:
+        db.refresh(folder)
+
+    return folder
+
+
+@app.delete("/conversation_folders/{folder_id}")
+def delete_conversation_folder(
+    folder_id: int,
+    db: Session = Depends(get_db),
+):
+    folder = _ensure_folder(db, folder_id)
+
+    # Move conversations out of this folder
+    db.query(models.Conversation).filter(
+        models.Conversation.folder_id == folder_id
+    ).update({models.Conversation.folder_id: None})
+
+
+def _conversation_with_folder_meta(
+    db: Session, conversation: models.Conversation
+) -> models.Conversation:
+    """
+    Ensure conversation objects carry folder name/color when serialized.
+    """
+    folder = None
+    if conversation.folder_id:
+        folder = conversation.folder
+        if folder is None:
+            folder = db.get(models.ConversationFolder, conversation.folder_id)
+    conversation.folder_name = folder.name if folder else None
+    conversation.folder_color = folder.color if folder else None
+    return conversation
+
+    db.delete(folder)
+    db.commit()
+
+    return {"status": "deleted", "folder_id": folder_id}
 
 
 # ---------- Conversations ----------
@@ -567,7 +1034,7 @@ def list_project_conversations(
         .order_by(models.Conversation.id)
         .all()
     )
-    return conversations
+    return [_conversation_with_folder_meta(db, convo) for convo in conversations]
 
 
 @app.post("/conversations", response_model=ConversationRead)
@@ -583,14 +1050,22 @@ def create_conversation(
             status_code=404, detail="Project not found."
         )
 
+    folder_id: Optional[int]
+    if payload.folder_id is not None:
+        _ensure_folder(db, payload.folder_id, project_id=payload.project_id)
+        folder_id = payload.folder_id
+    else:
+        folder_id = _get_default_folder_id(db, payload.project_id)
+
     conversation = models.Conversation(
         project_id=payload.project_id,
         title=payload.title,
+        folder_id=folder_id,
     )
     db.add(conversation)
     db.commit()
     db.refresh(conversation)
-    return conversation
+    return _conversation_with_folder_meta(db, conversation)
 
 
 @app.patch(
@@ -614,10 +1089,21 @@ def rename_conversation(
     if conv is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    conv.title = payload.title
+    if payload.title is not None:
+        conv.title = payload.title
+
+    if "folder_id" in payload.model_fields_set:
+        if payload.folder_id is None:
+            conv.folder_id = None
+        else:
+            _ensure_folder(
+                db, payload.folder_id, project_id=conv.project_id
+            )
+            conv.folder_id = payload.folder_id
+
     db.commit()
     db.refresh(conv)
-    return conv
+    return _conversation_with_folder_meta(db, conv)
 
 
 @app.get(
@@ -1146,11 +1632,21 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
     """
 
     # 1) Resolve or create conversation
+    project: Optional[models.Project] = None
+
+    folder: Optional[models.ConversationFolder] = None
+
     if payload.conversation_id is not None:
         conversation = db.get(models.Conversation, payload.conversation_id)
         if conversation is None:
             raise HTTPException(
                 status_code=404, detail="Conversation not found."
+            )
+        project = db.get(models.Project, conversation.project_id)
+        if project is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Project associated with conversation not found.",
             )
     else:
         # Use explicit project_id if provided
@@ -1180,10 +1676,21 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
         conversation = models.Conversation(
             project_id=project.id,
             title="Chat conversation",
+            folder_id=_get_default_folder_id(db, project.id),
         )
         db.add(conversation)
         db.commit()
         db.refresh(conversation)
+
+    if project is None:
+        project = db.get(models.Project, conversation.project_id)
+        if project is None:
+            raise HTTPException(
+                status_code=404, detail="Project not found for conversation."
+            )
+
+    if conversation.folder_id:
+        folder = db.get(models.ConversationFolder, conversation.folder_id)
 
     # 2) Load existing messages for this conversation as history
     existing_messages = (
@@ -1214,6 +1721,7 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
             project_id=conversation.project_id,
             query_embedding=user_embedding,
             conversation_id=conversation.id,
+            folder_id=conversation.folder_id,
             n_results=5,
         )
 
@@ -1369,6 +1877,39 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
         }
     )
 
+    if folder:
+        folder_desc = (
+            f"This conversation is organized under the folder "
+            f"'{folder.name}'. "
+        )
+        if folder.is_archived:
+            folder_desc += (
+                "That folder is archived, so treat this thread as historical "
+                "context unless the user says otherwise. "
+            )
+        chat_history.append(
+            {
+                "role": "system",
+                "content": folder_desc
+                + "Use this to understand the theme or status of the work.",
+            }
+        )
+
+    if project.instruction_text:
+        instructions = project.instruction_text.strip()
+        if instructions:
+            chat_history.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Project-specific instructions:\n"
+                        f"{instructions}\n\n"
+                        "Always follow these instructions while assisting with "
+                        "this project."
+                    ),
+                }
+            )
+
     # Optional retrieval context as an additional system message
     if retrieval_context_text:
         chat_history.append(
@@ -1460,6 +2001,7 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
             role="user",
             content=payload.message,
             embedding=user_embedding,
+            folder_id=conversation.folder_id,
         )
 
         # Assistant message embedding
@@ -1471,6 +2013,7 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
             role="assistant",
             content=reply_text,
             embedding=assistant_embedding,
+            folder_id=conversation.folder_id,
         )
     except Exception as e:  # noqa: BLE001
         # Do not fail the request if indexing fails
@@ -1515,13 +2058,19 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
     except Exception as e:  # noqa: BLE001
         print(f"[WARN] Failed to create usage record: {e!r}")
 
-    # 10) AI‑assist the project TODO list (best‑effort, doesn't block)
+    # 10) Auto‑title the conversation (best‑effort, doesn't block)
+    try:
+        auto_title_conversation(db, conversation)
+    except Exception as e:  # noqa: BLE001
+        print(f"[WARN] auto_title_conversation outer failed: {e!r}")
+
+    # 11) AI‑assist the project TODO list (best‑effort, doesn't block)
     try:
         auto_update_tasks_from_conversation(db, conversation)
     except Exception as e:  # noqa: BLE001
         print(f"[WARN] auto_update_tasks_from_conversation outer failed: {e!r}")
 
-    # 11) Commit everything
+    # 12) Commit everything
     db.commit()
 
     return ChatResponse(

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, Float
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, Float
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -18,6 +18,12 @@ class Project(Base):
     # NEW: optional local filesystem root for this project
     local_root_path: Mapped[Optional[str]] = mapped_column(
         String(1024), nullable=True
+    )
+    instruction_text: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
+    )
+    instruction_updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow
@@ -38,6 +44,16 @@ class Project(Base):
     usage_records: Mapped[List["UsageRecord"]] = relationship(
         "UsageRecord", back_populates="project", cascade="all, delete-orphan"
     )
+    decisions: Mapped[List["ProjectDecision"]] = relationship(
+        "ProjectDecision",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
+    folders: Mapped[List["ConversationFolder"]] = relationship(
+        "ConversationFolder",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
 
 
 class Conversation(Base):
@@ -48,12 +64,18 @@ class Conversation(Base):
         Integer, ForeignKey("projects.id"), index=True
     )
     title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    folder_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("conversation_folders.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow
     )
 
     project: Mapped[Project] = relationship(
         "Project", back_populates="conversations"
+    )
+    folder: Mapped[Optional["ConversationFolder"]] = relationship(
+        "ConversationFolder", back_populates="conversations"
     )
     messages: Mapped[List["Message"]] = relationship(
         "Message", back_populates="conversation", cascade="all, delete-orphan"
@@ -211,4 +233,56 @@ class UsageRecord(Base):
     )
     message: Mapped[Optional["Message"]] = relationship(
         "Message", back_populates="usage_records"
+    )
+
+
+class ProjectDecision(Base):
+    __tablename__ = "project_decisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("projects.id"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(255))
+    details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    source_conversation_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("conversations.id"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, index=True
+    )
+
+    project: Mapped["Project"] = relationship(
+        "Project", back_populates="decisions"
+    )
+    source_conversation: Mapped[Optional["Conversation"]] = relationship(
+        "Conversation", foreign_keys=[source_conversation_id]
+    )
+
+
+class ConversationFolder(Base):
+    __tablename__ = "conversation_folders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("projects.id"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    color: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    project: Mapped["Project"] = relationship(
+        "Project", back_populates="folders"
+    )
+    conversations: Mapped[List["Conversation"]] = relationship(
+        "Conversation", back_populates="folder"
     )

@@ -50,6 +50,7 @@ def add_message_embedding(
     role: str,
     content: str,
     embedding: List[float],
+    folder_id: Optional[int] = None,
 ) -> None:
     """
     Add a single message embedding to the Chroma 'messages' collection.
@@ -65,6 +66,7 @@ def add_message_embedding(
                 "conversation_id": conversation_id,
                 "project_id": project_id,
                 "role": role,
+                "folder_id": folder_id,
             }
         ],
     )
@@ -74,6 +76,7 @@ def query_similar_messages(
     project_id: int,
     query_embedding: List[float],
     conversation_id: Optional[int] = None,
+    folder_id: Optional[int] = None,
     n_results: int = 5,
 ) -> Dict[str, Any]:
     """
@@ -89,17 +92,18 @@ def query_similar_messages(
     collection = get_messages_collection()
 
     # Build the "where" filter in the format Chroma expects
-    if conversation_id is None:
-        where: Dict[str, Any] = {
-            "project_id": {"$eq": project_id}
-        }
+    filters: List[Dict[str, Any]] = [
+        {"project_id": {"$eq": project_id}},
+    ]
+    if conversation_id is not None:
+        filters.append({"conversation_id": {"$eq": conversation_id}})
+    if folder_id is not None:
+        filters.append({"folder_id": {"$eq": folder_id}})
+
+    if len(filters) == 1:
+        where: Dict[str, Any] = filters[0]
     else:
-        where = {
-            "$and": [
-                {"project_id": {"$eq": project_id}},
-                {"conversation_id": {"$eq": conversation_id}},
-            ]
-        }
+        where = {"$and": filters}
 
     results = collection.query(
         query_embeddings=[query_embedding],

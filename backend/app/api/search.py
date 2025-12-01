@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -28,6 +28,7 @@ class MessageSearchRequest(BaseModel):
     project_id: int
     query: str
     conversation_id: Optional[int] = None
+    folder_id: Optional[int] = None
     limit: int = 5
 
 
@@ -38,6 +39,9 @@ class MessageSearchHit(BaseModel):
     role: str
     content: str
     distance: float
+    folder_id: Optional[int] = None
+    folder_name: Optional[str] = None
+    folder_color: Optional[str] = None
 
 
 class MessageSearchResponse(BaseModel):
@@ -74,6 +78,14 @@ def search_messages(
                 status_code=400,
                 detail="Conversation does not belong to the given project.",
             )
+    # 2b) If folder_id is provided, ensure it belongs to this project
+    if payload.folder_id is not None:
+        folder = db.get(models.ConversationFolder, payload.folder_id)
+        if folder is None or folder.project_id != payload.project_id:
+            raise HTTPException(
+                status_code=404,
+                detail="Conversation folder not found for this project.",
+            )
 
     # 3) Create embedding for the query
     query_emb = get_embedding(payload.query)
@@ -83,6 +95,7 @@ def search_messages(
         project_id=payload.project_id,
         query_embedding=query_emb,
         conversation_id=payload.conversation_id,
+        folder_id=payload.folder_id,
         n_results=payload.limit,
     )
 
@@ -105,16 +118,55 @@ def search_messages(
 
     hits: List[MessageSearchHit] = []
 
+    # Fetch folder metadata for each conversation referenced in the hits
+    conversation_ids = {
+        int(meta["conversation_id"]) for meta in metas if "conversation_id" in meta
+    }
+    folder_meta_map: Dict[int, Dict[str, Optional[str]]] = {}
+    if conversation_ids:
+        rows = (
+            db.query(
+                models.Conversation.id,
+                models.Conversation.folder_id,
+                models.ConversationFolder.name,
+                models.ConversationFolder.color,
+            )
+            .outerjoin(
+                models.ConversationFolder,
+                models.Conversation.folder_id == models.ConversationFolder.id,
+            )
+            .filter(models.Conversation.id.in_(conversation_ids))
+            .all()
+        )
+        for convo_id, folder_id, folder_name, folder_color in rows:
+            folder_meta_map[convo_id] = {
+                "folder_id": folder_id,
+                "folder_name": folder_name,
+                "folder_color": folder_color,
+            }
+
     for msg_id, doc, meta, dist in zip(ids, docs, metas, dists):
         # meta contains: message_id, conversation_id, project_id, role
+        convo_id = int(meta["conversation_id"])
+        folder_info = folder_meta_map.get(
+            convo_id,
+            {
+                "folder_id": meta.get("folder_id"),
+                "folder_name": None,
+                "folder_color": None,
+            },
+        )
         hits.append(
             MessageSearchHit(
                 message_id=int(meta["message_id"]),
-                conversation_id=int(meta["conversation_id"]),
+                conversation_id=convo_id,
                 project_id=int(meta["project_id"]),
                 role=str(meta["role"]),
                 content=doc,
                 distance=float(dist),
+                folder_id=folder_info.get("folder_id"),
+                folder_name=folder_info.get("folder_name"),
+                folder_color=folder_info.get("folder_color"),
             )
         )
 

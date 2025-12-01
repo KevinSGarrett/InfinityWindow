@@ -7,12 +7,27 @@ type Project = {
   id: number;
   name: string;
   description?: string | null;
+  instruction_text?: string | null;
+  instruction_updated_at?: string | null;
+  local_root_path?: string | null;
 };
 
 type Conversation = {
   id: number;
   project_id: number;
   title?: string | null;
+  folder_id?: number | null;
+  folder_name?: string | null;
+  folder_color?: string | null;
+};
+type ConversationFolder = {
+  id: number;
+  project_id: number;
+  name: string;
+  color?: string | null;
+  sort_order: number;
+  is_default: boolean;
+  is_archived: boolean;
 };
 
 type Message = {
@@ -79,6 +94,16 @@ type ConversationUsage = {
   records: UsageRecord[];
 };
 
+type ProjectDecision = {
+  id: number;
+  project_id: number;
+  title: string;
+  details?: string | null;
+  category?: string | null;
+  source_conversation_id?: number | null;
+  created_at: string;
+};
+
 type FileEditProposal = {
   type: "file_edit_proposal";
   file_path: string;
@@ -138,6 +163,22 @@ function App() {
   >(null);
   const [renameTitle, setRenameTitle] = useState("");
 
+  // Conversation folders
+  const [folders, setFolders] = useState<ConversationFolder[]>([]);
+  const [selectedFolderId, setSelectedFolderId] = useState<
+    number | "all" | "none"
+  >("all");
+  const [isLoadingFolders, setIsLoadingFolders] = useState(false);
+  const [folderModalOpen, setFolderModalOpen] = useState(false);
+  const [editingFolder, setEditingFolder] =
+    useState<ConversationFolder | null>(null);
+  const [folderFormName, setFolderFormName] = useState("");
+  const [folderFormColor, setFolderFormColor] = useState("#4F46E5");
+  const [folderFormSortOrder, setFolderFormSortOrder] = useState(0);
+  const [folderFormIsDefault, setFolderFormIsDefault] = useState(false);
+  const [folderFormIsArchived, setFolderFormIsArchived] = useState(false);
+  const [folderFormError, setFolderFormError] = useState<string | null>(null);
+
   // Chat input + mode
   const [chatInput, setChatInput] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -157,6 +198,26 @@ function App() {
   const [usage, setUsage] = useState<ConversationUsage | null>(null);
   const [isLoadingUsage, setIsLoadingUsage] = useState(false);
 
+  // Project instructions
+  const [projectInstructions, setProjectInstructions] = useState("");
+  const [projectInstructionsUpdatedAt, setProjectInstructionsUpdatedAt] =
+    useState<string | null>(null);
+  const [isSavingInstructions, setIsSavingInstructions] = useState(false);
+  const [projectInstructionsError, setProjectInstructionsError] =
+    useState<string | null>(null);
+
+  // Project decisions
+  const [projectDecisions, setProjectDecisions] = useState<ProjectDecision[]>(
+    []
+  );
+  const [newDecisionTitle, setNewDecisionTitle] = useState("");
+  const [newDecisionDetails, setNewDecisionDetails] = useState("");
+  const [newDecisionCategory, setNewDecisionCategory] = useState("");
+  const [linkDecisionToConversation, setLinkDecisionToConversation] =
+    useState(true);
+  const [isSavingDecision, setIsSavingDecision] = useState(false);
+  const [decisionsError, setDecisionsError] = useState<string | null>(null);
+
   // AI file edit proposals
   const [fileEditProposal, setFileEditProposal] =
     useState<FileEditProposal | null>(null);
@@ -171,6 +232,15 @@ function App() {
   const [terminalResult, setTerminalResult] =
     useState<TerminalRunResult | null>(null);
   const [terminalError, setTerminalError] = useState<string | null>(null);
+  const [manualTerminalCwd, setManualTerminalCwd] = useState("");
+  const [manualTerminalCommand, setManualTerminalCommand] = useState("");
+  const [manualTerminalSendToChat, setManualTerminalSendToChat] =
+    useState(true);
+  const [isRunningManualTerminal, setIsRunningManualTerminal] =
+    useState(false);
+  const [manualTerminalError, setManualTerminalError] = useState<
+    string | null
+  >(null);
 
   // Text doc ingestion
   const [newDocName, setNewDocName] = useState("");
@@ -210,7 +280,7 @@ function App() {
 
   // Right‑column workbench tab
   const [rightTab, setRightTab] = useState<
-    "tasks" | "docs" | "files" | "search" | "terminal" | "usage"
+    "tasks" | "docs" | "files" | "search" | "terminal" | "usage" | "notes"
   >("tasks");
 
   const hasUnsavedFileChanges =
@@ -235,6 +305,34 @@ function App() {
     }
   };
 
+  const loadFolders = async (projectId: number) => {
+    setIsLoadingFolders(true);
+    try {
+      const res = await fetch(
+        `${BACKEND_BASE}/projects/${projectId}/conversation_folders`
+      );
+      if (!res.ok) {
+        console.error("Fetching folders failed:", res.status);
+        setFolders([]);
+        return;
+      }
+      const data: ConversationFolder[] = await res.json();
+      setFolders(data);
+      if (
+        selectedFolderId !== "all" &&
+        !data.some((folder) => folder.id === selectedFolderId)
+      ) {
+        setSelectedFolderId("all");
+      }
+    } catch (e) {
+      console.error("Fetching folders threw:", e);
+      setFolders([]);
+    } finally {
+      setIsLoadingFolders(false);
+    }
+  };
+
+
   const loadTasks = async (projectId: number) => {
     try {
       const res = await fetch(`${BACKEND_BASE}/projects/${projectId}/tasks`);
@@ -243,6 +341,130 @@ function App() {
       setTasks(data);
     } catch (e) {
       console.error("Fetching tasks failed:", e);
+    }
+  };
+
+  const loadProjectInstructions = async (projectId: number) => {
+    try {
+      const res = await fetch(
+        `${BACKEND_BASE}/projects/${projectId}/instructions`
+      );
+      if (!res.ok) {
+        setProjectInstructions("");
+        setProjectInstructionsUpdatedAt(null);
+        return;
+      }
+      const data: {
+        project_id: number;
+        instruction_text?: string | null;
+        instruction_updated_at?: string | null;
+      } = await res.json();
+      setProjectInstructions(data.instruction_text ?? "");
+      setProjectInstructionsUpdatedAt(data.instruction_updated_at ?? null);
+      setProjectInstructionsError(null);
+    } catch (e) {
+      console.error("Fetching project instructions failed:", e);
+      setProjectInstructions("");
+      setProjectInstructionsUpdatedAt(null);
+    }
+  };
+
+  const handleSaveInstructions = async () => {
+    if (!selectedProjectId) {
+      alert("No project selected.");
+      return;
+    }
+    setIsSavingInstructions(true);
+    setProjectInstructionsError(null);
+    try {
+      const res = await fetch(
+        `${BACKEND_BASE}/projects/${selectedProjectId}/instructions`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            instruction_text: projectInstructions,
+          }),
+        }
+      );
+      if (!res.ok) {
+        console.error("Saving instructions failed:", res.status);
+        setProjectInstructionsError("Failed to save instructions.");
+        return;
+      }
+      const data = await res.json();
+      setProjectInstructions(data.instruction_text ?? "");
+      setProjectInstructionsUpdatedAt(data.instruction_updated_at ?? null);
+    } catch (e) {
+      console.error("Saving instructions threw:", e);
+      setProjectInstructionsError("Unexpected error while saving.");
+    } finally {
+      setIsSavingInstructions(false);
+    }
+  };
+
+  const loadProjectDecisions = async (projectId: number) => {
+    try {
+      const res = await fetch(
+        `${BACKEND_BASE}/projects/${projectId}/decisions`
+      );
+      if (!res.ok) {
+        console.error("Fetching decisions failed:", res.status);
+        setProjectDecisions([]);
+        return;
+      }
+      const data: ProjectDecision[] = await res.json();
+      setProjectDecisions(data);
+      setDecisionsError(null);
+    } catch (e) {
+      console.error("Fetching decisions threw:", e);
+      setProjectDecisions([]);
+    }
+  };
+
+  const handleAddDecision = async () => {
+    if (!selectedProjectId) {
+      alert("No project selected.");
+      return;
+    }
+    const title = newDecisionTitle.trim();
+    if (!title) {
+      alert("Decision title cannot be empty.");
+      return;
+    }
+    setIsSavingDecision(true);
+    setDecisionsError(null);
+    try {
+      const res = await fetch(
+        `${BACKEND_BASE}/projects/${selectedProjectId}/decisions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title,
+            details: newDecisionDetails.trim() || null,
+            category: newDecisionCategory.trim() || null,
+            source_conversation_id:
+              linkDecisionToConversation && selectedConversationId
+                ? selectedConversationId
+                : null,
+          }),
+        }
+      );
+      if (!res.ok) {
+        console.error("Creating decision failed:", res.status);
+        setDecisionsError("Failed to save decision.");
+        return;
+      }
+      await loadProjectDecisions(selectedProjectId);
+      setNewDecisionTitle("");
+      setNewDecisionDetails("");
+      setNewDecisionCategory("");
+    } catch (e) {
+      console.error("Creating decision threw:", e);
+      setDecisionsError("Unexpected error while saving decision.");
+    } finally {
+      setIsSavingDecision(false);
     }
   };
 
@@ -725,6 +947,100 @@ function App() {
     }
   };
 
+  const handleRunManualTerminalCommand = async () => {
+    if (!selectedProjectId) {
+      alert("No project selected.");
+      return;
+    }
+    if (!manualTerminalCommand.trim()) {
+      alert("Enter a terminal command to run.");
+      return;
+    }
+    if (manualTerminalSendToChat && !selectedConversationId) {
+      alert(
+        "Select a conversation (or uncheck “Send output to chat”) before sending results back to the assistant."
+      );
+      return;
+    }
+
+    setIsRunningManualTerminal(true);
+    setManualTerminalError(null);
+
+    const body = {
+      project_id: selectedProjectId,
+      cwd: manualTerminalCwd.trim(),
+      command: manualTerminalCommand.trim(),
+      timeout_seconds: 120,
+    };
+
+    try {
+      const res = await fetch(`${BACKEND_BASE}/terminal/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        console.error("Manual terminal run failed:", res.status);
+        let detail = "";
+        try {
+          const errBody = await res.json();
+          if (errBody && typeof errBody.detail === "string") {
+            detail = errBody.detail;
+          }
+        } catch {
+          // ignore
+        }
+        setManualTerminalError(
+          detail || "Failed to run manual terminal command."
+        );
+        return;
+      }
+
+      const data: TerminalRunResult = await res.json();
+      setTerminalResult(data);
+
+      if (manualTerminalSendToChat && selectedConversationId) {
+        const stdout = data.stdout || "";
+        const stderr = data.stderr || "";
+        const MAX_STDOUT = 4000;
+        let stdoutSnippet = stdout;
+        let truncated = false;
+
+        if (stdoutSnippet.length > MAX_STDOUT) {
+          stdoutSnippet =
+            stdoutSnippet.slice(0, MAX_STDOUT) + "\n...[stdout truncated]...";
+          truncated = true;
+        }
+
+        let summaryMessage =
+          "I ran a manual terminal command from the workbench.\n\n" +
+          `Command: ${data.command}\n` +
+          `CWD: ${data.cwd && data.cwd.trim() ? data.cwd : "(project root)"}\n` +
+          `Exit code: ${data.exit_code}\n\n` +
+          "STDOUT:\n" +
+          (stdoutSnippet || "(no stdout)") +
+          "\n\n" +
+          "STDERR:\n" +
+          (stderr || "(no stderr)");
+
+        if (truncated) {
+          summaryMessage +=
+            "\n\n(Note: stdout was truncated when sending it back to you in this message.)";
+        }
+
+        await sendTerminalOutputToChat(summaryMessage);
+      }
+    } catch (e) {
+      console.error("Manual terminal run threw:", e);
+      setManualTerminalError(
+        "Unexpected error while running manual terminal command."
+      );
+    } finally {
+      setIsRunningManualTerminal(false);
+    }
+  };
+
   // ---------- Initial load (health + projects) ----------
 
   useEffect(() => {
@@ -772,12 +1088,20 @@ function App() {
       setProjectDocs([]);
       setTasks([]);
       setUsage(null);
+      setFolders([]);
+      setSelectedFolderId("all");
 
       setFileEditProposal(null);
       setFileEditStatus(null);
       setTerminalProposal(null);
       setTerminalResult(null);
       setTerminalError(null);
+
+      setProjectInstructions("");
+      setProjectInstructionsUpdatedAt(null);
+      setProjectInstructionsError(null);
+      setProjectDecisions([]);
+      setDecisionsError(null);
 
       // Clear filesystem state
       setFsEntries([]);
@@ -794,6 +1118,9 @@ function App() {
     refreshConversations(selectedProjectId);
     loadProjectDocs(selectedProjectId);
     loadTasks(selectedProjectId);
+    loadProjectInstructions(selectedProjectId);
+    loadProjectDecisions(selectedProjectId);
+    loadFolders(selectedProjectId);
     loadProjectFiles(selectedProjectId, "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProjectId]);
@@ -850,6 +1177,8 @@ function App() {
           message: userText,
           mode: chatMode,
           model: null,
+          // Frontend always sends the conversation_id (if existing), so folder assignment
+          // happens server-side already. For new chats (convIdBefore=null), backend picks default folder.
         }),
       });
 
@@ -954,7 +1283,7 @@ function App() {
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: trimmed }),
+        body: JSON.stringify({ title: trimmed }),
         }
       );
 
@@ -971,6 +1300,162 @@ function App() {
     } catch (e) {
       console.error("Rename conversation threw:", e);
       alert("Unexpected error renaming conversation. See console.");
+    }
+  };
+
+  const openFolderModalForCreate = () => {
+    setEditingFolder(null);
+    setFolderFormName("");
+    setFolderFormColor("#4F46E5");
+    setFolderFormSortOrder(folders.length);
+    setFolderFormIsDefault(false);
+    setFolderFormIsArchived(false);
+    setFolderFormError(null);
+    setFolderModalOpen(true);
+  };
+
+  const openFolderModalForEdit = (folder: ConversationFolder) => {
+    setEditingFolder(folder);
+    setFolderFormName(folder.name);
+    setFolderFormColor(folder.color || "#4F46E5");
+    setFolderFormSortOrder(folder.sort_order);
+    setFolderFormIsDefault(folder.is_default);
+    setFolderFormIsArchived(folder.is_archived);
+    setFolderFormError(null);
+    setFolderModalOpen(true);
+  };
+
+  const closeFolderModal = () => {
+    setFolderModalOpen(false);
+  };
+
+  const handleFolderFormSubmit = async () => {
+    if (!selectedProjectId) {
+      alert("No project selected.");
+      return;
+    }
+    const trimmedName = folderFormName.trim();
+    if (!trimmedName) {
+      setFolderFormError("Folder name cannot be empty.");
+      return;
+    }
+
+    try {
+      if (editingFolder) {
+        const res = await fetch(
+          `${BACKEND_BASE}/conversation_folders/${editingFolder.id}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: trimmedName,
+              color: folderFormColor || null,
+              sort_order: folderFormSortOrder,
+              is_default: folderFormIsDefault,
+              is_archived: folderFormIsArchived,
+            }),
+          }
+        );
+        if (!res.ok) {
+          console.error("Update folder failed:", res.status);
+          setFolderFormError("Failed to update folder.");
+          return;
+        }
+      } else {
+        const res = await fetch(`${BACKEND_BASE}/conversation_folders`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            project_id: selectedProjectId,
+            name: trimmedName,
+            color: folderFormColor || null,
+            sort_order: folderFormSortOrder,
+            is_default: folderFormIsDefault,
+            is_archived: folderFormIsArchived,
+          }),
+        });
+        if (!res.ok) {
+          console.error("Create folder failed:", res.status);
+          setFolderFormError("Failed to create folder.");
+          return;
+        }
+      }
+
+      await loadFolders(selectedProjectId);
+      await refreshConversations(selectedProjectId);
+      setFolderModalOpen(false);
+    } catch (e) {
+      console.error("Saving folder threw:", e);
+      setFolderFormError("Unexpected error while saving folder.");
+    }
+  };
+
+  const handleDeleteFolder = async () => {
+    if (!editingFolder) return;
+    if (
+      !window.confirm(
+        `Delete folder "${editingFolder.name}"? Conversations will be moved to Unsorted.`
+      )
+    ) {
+      return;
+    }
+    try {
+      const res = await fetch(
+        `${BACKEND_BASE}/conversation_folders/${editingFolder.id}`,
+        {
+          method: "DELETE",
+        }
+      );
+      if (!res.ok) {
+        console.error("Delete folder failed:", res.status);
+        setFolderFormError("Failed to delete folder.");
+        return;
+      }
+
+      if (
+        typeof selectedFolderId === "number" &&
+        selectedFolderId === editingFolder.id
+      ) {
+        setSelectedFolderId("all");
+      }
+
+      if (selectedProjectId != null) {
+        await loadFolders(selectedProjectId);
+        await refreshConversations(selectedProjectId);
+      }
+      setFolderModalOpen(false);
+    } catch (e) {
+      console.error("Delete folder threw:", e);
+      setFolderFormError("Unexpected error while deleting folder.");
+    }
+  };
+
+  const handleMoveConversationToFolder = async (
+    conversationId: number,
+    folderId: number | null
+  ) => {
+    try {
+      const res = await fetch(
+        `${BACKEND_BASE}/conversations/${conversationId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ folder_id: folderId }),
+        }
+      );
+
+      if (!res.ok) {
+        console.error("Move conversation failed:", res.status);
+        alert("Failed to move conversation. Check backend logs.");
+        return;
+      }
+
+      if (selectedProjectId != null) {
+        await refreshConversations(selectedProjectId);
+      }
+    } catch (e) {
+      console.error("Move conversation threw:", e);
+      alert("Unexpected error while moving conversation.");
     }
   };
 
@@ -1265,87 +1750,305 @@ function App() {
                 No conversations yet. Start a new chat.
               </div>
             ) : (
-              <ul>
-                {conversations.map((c) => {
-                  const isActive = c.id === selectedConversationId;
-                  const isRenaming = c.id === renamingConversationId;
-
-                  return (
-                    <li key={c.id}>
-                      <div
-                        className={
-                          "conversation-row" + (isActive ? " active" : "")
+              <div className="foldered-conversation-list">
+                <div className="folder-toolbar">
+                  <select
+                    value={
+                      selectedFolderId === "all"
+                        ? "all"
+                        : selectedFolderId === "none"
+                        ? "none"
+                        : selectedFolderId.toString()
+                    }
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setSelectedFolderId(
+                        value === "all"
+                          ? "all"
+                          : value === "none"
+                          ? "none"
+                          : parseInt(value, 10)
+                      );
+                    }}
+                  >
+                    <option value="all">All folders</option>
+                    <option value="none">Unsorted only</option>
+                    {folders
+                      .filter((f) => !f.is_archived)
+                      .map((folder) => (
+                        <option key={folder.id} value={folder.id}>
+                          {folder.name}
+                        </option>
+                      ))}
+                  </select>
+                  <div className="folder-toolbar-actions">
+                    <button
+                      type="button"
+                      className="btn-secondary small"
+                      onClick={openFolderModalForCreate}
+                      disabled={!selectedProjectId}
+                    >
+                      + Folder
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-link small"
+                      onClick={() => {
+                        if (typeof selectedFolderId === "number") {
+                          const folder = folders.find(
+                            (f) => f.id === selectedFolderId
+                          );
+                          if (folder) {
+                            openFolderModalForEdit(folder);
+                          }
                         }
-                      >
-                        {isRenaming ? (
-                          <>
-                            <input
-                              className="conversation-rename-input"
-                              value={renameTitle}
-                              onChange={(e) =>
-                                setRenameTitle(e.target.value)
-                              }
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  handleRenameConversation(c.id);
-                                } else if (e.key === "Escape") {
-                                  setRenamingConversationId(null);
-                                  setRenameTitle("");
-                                }
-                              }}
-                              autoFocus
-                            />
-                            <button
-                              type="button"
-                              className="btn-secondary small"
-                              onClick={() => handleRenameConversation(c.id)}
-                            >
-                              Save
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-link small"
-                              onClick={() => {
-                                setRenamingConversationId(null);
-                                setRenameTitle("");
-                              }}
-                            >
-                              Cancel
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              className={
-                                "conversation-item" +
-                                (isActive ? " active" : "")
-                              }
-                              onClick={() =>
-                                setSelectedConversationId(c.id)
-                              }
-                            >
-                              {c.title || `Chat conversation #${c.id}`}
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-link small"
-                              onClick={() => {
-                                setRenamingConversationId(c.id);
-                                setRenameTitle(c.title || "");
-                              }}
-                            >
-                              Rename
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+                      }}
+                      disabled={
+                        typeof selectedFolderId !== "number" ||
+                        isLoadingFolders
+                      }
+                    >
+                      Edit selected
+                    </button>
+                  </div>
+                </div>
+
+                <ul>
+                  {conversations
+                    .filter((c) => {
+                      if (selectedFolderId === "all") return true;
+                      if (selectedFolderId === "none") {
+                        return c.folder_id == null;
+                      }
+                      return c.folder_id === selectedFolderId;
+                    })
+                    .map((c) => {
+                      const isActive =
+                        c.id === selectedConversationId;
+                      const isRenaming =
+                        c.id === renamingConversationId;
+
+                      return (
+                        <li key={c.id}>
+                          <div
+                            className={
+                              "conversation-row" +
+                              (isActive ? " active" : "")
+                            }
+                          >
+                            {isRenaming ? (
+                              <>
+                                <input
+                                  className="conversation-rename-input"
+                                  value={renameTitle}
+                                  onChange={(e) =>
+                                    setRenameTitle(e.target.value)
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      handleRenameConversation(c.id);
+                                    } else if (e.key === "Escape") {
+                                      setRenamingConversationId(null);
+                                      setRenameTitle("");
+                                    }
+                                  }}
+                                  autoFocus
+                                />
+                                <div className="conversation-actions">
+                                  <button
+                                    type="button"
+                                    className="btn-secondary small"
+                                    onClick={() =>
+                                      handleRenameConversation(c.id)
+                                    }
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-link small"
+                                    onClick={() => {
+                                      setRenamingConversationId(null);
+                                      setRenameTitle("");
+                                    }}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div className="conversation-main">
+                                  <button
+                                    type="button"
+                                    className={
+                                      "conversation-item" +
+                                      (isActive ? " active" : "")
+                                    }
+                                    onClick={() =>
+                                      setSelectedConversationId(c.id)
+                                    }
+                                  >
+                                    {c.title || `Chat #${c.id}`}
+                                  </button>
+                                  {selectedFolderId === "all" && (
+                                    <span
+                                      className="conversation-folder-pill"
+                                      style={{
+                                        backgroundColor:
+                                          c.folder_color || "#e5e7eb",
+                                      }}
+                                    >
+                                      {c.folder_name || "Unsorted"}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="conversation-actions">
+                                  <button
+                                    type="button"
+                                    className="btn-link small"
+                                    onClick={() => {
+                                      setRenamingConversationId(c.id);
+                                      setRenameTitle(c.title || "");
+                                    }}
+                                  >
+                                    Rename
+                                  </button>
+                                  <select
+                                    className="folder-assign-select"
+                                    value={
+                                      c.folder_id != null
+                                        ? c.folder_id.toString()
+                                        : "none"
+                                    }
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      handleMoveConversationToFolder(
+                                        c.id,
+                                        value === "none"
+                                          ? null
+                                          : parseInt(value, 10)
+                                      );
+                                    }}
+                                  >
+                                    <option value="none">
+                                      Unsorted
+                                    </option>
+                                    {folders
+                                      .filter((f) => !f.is_archived)
+                                      .map((folder) => (
+                                        <option
+                                          key={folder.id}
+                                          value={folder.id}
+                                        >
+                                          {folder.name}
+                                        </option>
+                                      ))}
+                                  </select>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                </ul>
+              </div>
             )}
           </div>
+          {folderModalOpen && (
+            <div className="folder-modal-backdrop">
+              <div className="folder-modal">
+                <h3>
+                  {editingFolder ? "Edit folder" : "Create folder"}
+                </h3>
+                <div className="folder-form-field">
+                  <label htmlFor="folder-name">Name</label>
+                  <input
+                    id="folder-name"
+                    type="text"
+                    value={folderFormName}
+                    onChange={(e) => setFolderFormName(e.target.value)}
+                  />
+                </div>
+                <div className="folder-form-field">
+                  <label htmlFor="folder-color">Color</label>
+                  <input
+                    id="folder-color"
+                    type="color"
+                    value={folderFormColor}
+                    onChange={(e) => setFolderFormColor(e.target.value)}
+                  />
+                </div>
+                <div className="folder-form-field">
+                  <label htmlFor="folder-sort">Sort order</label>
+                  <input
+                    id="folder-sort"
+                    type="number"
+                    value={folderFormSortOrder}
+                    onChange={(e) =>
+                      setFolderFormSortOrder(
+                        Number.isNaN(parseInt(e.target.value, 10))
+                          ? 0
+                          : parseInt(e.target.value, 10)
+                      )
+                    }
+                  />
+                </div>
+                <label className="folder-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={folderFormIsDefault}
+                    onChange={(e) =>
+                      setFolderFormIsDefault(e.target.checked)
+                    }
+                  />
+                  Default for new chats
+                </label>
+                <label className="folder-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={folderFormIsArchived}
+                    onChange={(e) =>
+                      setFolderFormIsArchived(e.target.checked)
+                    }
+                  />
+                  Archived (hidden by default)
+                </label>
+                {folderFormError && (
+                  <div className="notes-error">{folderFormError}</div>
+                )}
+                <div className="folder-modal-actions">
+                  {editingFolder && (
+                    <button
+                      type="button"
+                      className="btn-link small danger"
+                      onClick={handleDeleteFolder}
+                    >
+                      Delete folder
+                    </button>
+                  )}
+                  <div className="folder-modal-actions-right">
+                    <button
+                      type="button"
+                      className="btn-link small"
+                      onClick={closeFolderModal}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary small"
+                      onClick={handleFolderFormSubmit}
+                      disabled={isLoadingFolders}
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* MIDDLE: Chat */}
@@ -1455,6 +2158,15 @@ function App() {
               onClick={() => setRightTab("docs")}
             >
               Docs
+            </button>
+            <button
+              type="button"
+              className={
+                "right-tab" + (rightTab === "notes" ? " active" : "")
+              }
+              onClick={() => setRightTab("notes")}
+            >
+              Notes
             </button>
             <button
               type="button"
@@ -1650,6 +2362,190 @@ function App() {
                     {isIngestingRepo ? "Ingesting…" : "Ingest repo"}
                   </button>
                 </div>
+              </div>
+            </>
+          )}
+
+          {rightTab === "notes" && (
+            <>
+              <div className="notes-header">Project instructions</div>
+              <div className="notes-panel">
+                {selectedProjectId == null ? (
+                  <div className="notes-empty">No project selected.</div>
+                ) : (
+                  <>
+                    <textarea
+                      className="instructions-textarea"
+                      placeholder="Use this space to capture coding conventions, sensitive areas, current priorities..."
+                      value={projectInstructions}
+                      onChange={(e) => setProjectInstructions(e.target.value)}
+                    />
+                    <div className="instructions-meta">
+                      {projectInstructionsUpdatedAt
+                        ? `Last updated ${new Date(
+                            projectInstructionsUpdatedAt
+                          ).toLocaleString()}`
+                        : "Instructions not set yet."}
+                    </div>
+                    {projectInstructionsError && (
+                      <div className="notes-error">
+                        {projectInstructionsError}
+                      </div>
+                    )}
+                    <div className="instructions-actions">
+                      <button
+                        type="button"
+                        className="btn-secondary small"
+                        onClick={handleSaveInstructions}
+                        disabled={isSavingInstructions}
+                      >
+                        {isSavingInstructions
+                          ? "Saving…"
+                          : "Save instructions"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-link small"
+                        onClick={() =>
+                          selectedProjectId &&
+                          loadProjectInstructions(selectedProjectId)
+                        }
+                      >
+                        Refresh
+                      </button>
+                    </div>
+                    <div className="instructions-preview">
+                      <div className="instructions-preview-label">
+                        Prompt preview
+                      </div>
+                      <pre className="instructions-preview-content">
+                        {projectInstructions
+                          ? `Project-specific instructions:\n${projectInstructions}`
+                          : "(No instructions will be injected.)"}
+                      </pre>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="decisions-header">Decision log</div>
+              <div className="decisions-panel">
+                {selectedProjectId == null ? (
+                  <div className="notes-empty">No project selected.</div>
+                ) : (
+                  <>
+                    <div className="decision-form">
+                      <input
+                        className="decision-input"
+                        type="text"
+                        placeholder="Decision title (e.g., Adopt FastAPI)"
+                        value={newDecisionTitle}
+                        onChange={(e) => setNewDecisionTitle(e.target.value)}
+                      />
+                      <input
+                        className="decision-input"
+                        type="text"
+                        placeholder="Category (optional, e.g., Architecture)"
+                        value={newDecisionCategory}
+                        onChange={(e) =>
+                          setNewDecisionCategory(e.target.value)
+                        }
+                      />
+                      <textarea
+                        className="decision-textarea"
+                        placeholder="Details (optional)"
+                        value={newDecisionDetails}
+                        onChange={(e) =>
+                          setNewDecisionDetails(e.target.value)
+                        }
+                      />
+                      <label className="decision-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={linkDecisionToConversation}
+                          disabled={!selectedConversationId}
+                          onChange={(e) =>
+                            setLinkDecisionToConversation(e.target.checked)
+                          }
+                        />
+                        Link to current conversation
+                        {!selectedConversationId && (
+                          <span className="decision-checkbox-hint">
+                            (Select a conversation to enable)
+                          </span>
+                        )}
+                      </label>
+                      <div className="decision-actions">
+                        <button
+                          type="button"
+                          className="btn-secondary small"
+                          onClick={handleAddDecision}
+                          disabled={isSavingDecision}
+                        >
+                          {isSavingDecision ? "Saving…" : "Add decision"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-link small"
+                          onClick={() =>
+                            selectedProjectId &&
+                            loadProjectDecisions(selectedProjectId)
+                          }
+                        >
+                          Refresh log
+                        </button>
+                      </div>
+                      {decisionsError && (
+                        <div className="notes-error">{decisionsError}</div>
+                      )}
+                    </div>
+                    <div className="decisions-list">
+                      {projectDecisions.length === 0 ? (
+                        <div className="notes-empty">
+                          No decisions logged yet.
+                        </div>
+                      ) : (
+                        <ul>
+                          {projectDecisions.map((decision) => (
+                            <li
+                              key={decision.id}
+                              className="decision-item"
+                            >
+                              <div className="decision-title-row">
+                                <span className="decision-title">
+                                  {decision.title}
+                                </span>
+                                {decision.category && (
+                                  <span className="decision-chip">
+                                    {decision.category}
+                                  </span>
+                                )}
+                              </div>
+                              {decision.details && (
+                                <div className="decision-details">
+                                  {decision.details}
+                                </div>
+                              )}
+                              <div className="decision-meta">
+                                <span>
+                                  {new Date(
+                                    decision.created_at
+                                  ).toLocaleString()}
+                                </span>
+                                {decision.source_conversation_id && (
+                                  <span className="decision-meta-link">
+                                    Linked to conversation #
+                                    {decision.source_conversation_id}
+                                  </span>
+                                )}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </>
           )}
@@ -1977,6 +2873,81 @@ function App() {
 
           {rightTab === "terminal" && (
             <>
+              <div className="terminal-manual-header">
+                Manual terminal command
+              </div>
+              <div className="terminal-panel manual-terminal-panel">
+                {selectedProjectId == null ? (
+                  <div className="terminal-empty">
+                    Select a project to run manual commands.
+                  </div>
+                ) : (
+                  <>
+                    <div className="manual-terminal-cwd-row">
+                      <label className="terminal-label" htmlFor="manual-cwd">
+                        CWD (optional):
+                      </label>
+                      <input
+                        id="manual-cwd"
+                        type="text"
+                        className="manual-terminal-input"
+                        placeholder="e.g. backend, frontend, scratch"
+                        value={manualTerminalCwd}
+                        onChange={(e) => setManualTerminalCwd(e.target.value)}
+                      />
+                    </div>
+                    <textarea
+                      className="manual-terminal-textarea"
+                      placeholder="Enter a command to run (PowerShell / cmd syntax)..."
+                      value={manualTerminalCommand}
+                      onChange={(e) =>
+                        setManualTerminalCommand(e.target.value)
+                      }
+                      rows={3}
+                    />
+                    <label className="manual-terminal-send">
+                      <input
+                        type="checkbox"
+                        checked={manualTerminalSendToChat}
+                        onChange={(e) =>
+                          setManualTerminalSendToChat(e.target.checked)
+                        }
+                      />
+                      Send output to chat (requires selected conversation)
+                    </label>
+                    <div className="terminal-buttons">
+                      <button
+                        type="button"
+                        className="btn-secondary small"
+                        onClick={handleRunManualTerminalCommand}
+                        disabled={
+                          isRunningManualTerminal ||
+                          !manualTerminalCommand.trim()
+                        }
+                      >
+                        {isRunningManualTerminal ? "Running…" : "Run command"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-link small"
+                        onClick={() => {
+                          setManualTerminalCommand("");
+                          setManualTerminalCwd("");
+                          setManualTerminalError(null);
+                        }}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    {manualTerminalError && (
+                      <div className="terminal-status terminal-status-error">
+                        {manualTerminalError}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
               {/* AI terminal command proposal */}
               <div className="terminal-header">AI terminal command</div>
               <div className="terminal-panel">
