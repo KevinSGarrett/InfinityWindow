@@ -141,3 +141,23 @@
 
 All QA artifacts (project 6, associated conversations/tasks/docs/memory/etc.) remain in `C:\InfinityWindow_QA`. Playwright + `make ci` logs come from the same QA environment. Use this report as the baseline for the next regression run.
 
+## 5. Additional QA validation – Search / Usage / Notes focus (2025‑12‑02 PM)
+
+- **Commands**: `python -X utf8 -m qa.run_smoke`, `npx playwright test tests/right-column.spec.ts tests/files-tab.spec.ts tests/notes-memory.spec.ts`
+- **Backend / Frontend**: `uvicorn app.api.main:app --host 127.0.0.1 --port 8000`, Vite dev server on `127.0.0.1:5174`
+- **Goal**: Re-run the high-impact rows that cover auto-mode routing, autonomous TODO maintenance, Search/Usage UX, and Notes/Decisions automation after syncing the QA repo with `C:\InfinityWindow`.
+
+| Test ID        | Description / Focus                                         | Result | Notes / Evidence |
+|----------------|-------------------------------------------------------------|--------|------------------|
+| B-Mode-02      | Auto-mode multi-scenario routing                            | Pass   | qa.run_smoke captured `auto-fast`, `auto-code`, `auto-research`, `auto-deep` → routed to the expected models; “roadmap” prompt now chooses `gpt-5-pro`. |
+| B-Tasks-02     | Autonomous TODO maintenance                                 | Pass   | Probe confirmed ≥3 tasks added, “message embeddings” / “docs polish” auto-closed, while “audit logging” remained open (new completion parsing skips “still pending”). |
+| C-Search-02    | Search tab filters, grouping, open-in actions               | Pass   | Manual UI check (project seeded via helpers) verified conversation/document filters, grouped hit headers, and “open conversation/View in docs” buttons. |
+| D-Usage-01     | Usage API sanity (per-conversation breakdown)               | Pass   | `/conversations/{id}/usage` returns aggregated token + model entries; verified Usage tab refresh picks them up. |
+| D-Usage-02     | Usage tab dashboard + telemetry block                       | Pass   | Model breakdown + Routing & tasks telemetry refresh/reset buttons function; counters increment when smoke probes run. |
+| G-Notes-02     | Notes tab pinned note + instructions diff                   | Pass   | Playwright (notes-memory.spec.ts) ensures pinned textarea + diff toggle reflect seeded instructions. |
+| G-Dec-02       | Decision filters, metadata editing                          | Pass   | Same Playwright flow validates category/tag filters and status dropdown interactions. |
+| G-Dec-03       | Decision automation & draft review                          | Pass   | qa.run_smoke auto-detects decisions from assistant chatter; drafts highlighted and can be confirmed/dismissed. |
+| G-Notes-01/Memory| Right-column regression                                   | Pass   | `tests/right-column.spec.ts` + `tests/notes-memory.spec.ts` cover rendering, tab activation, and memory list visibility. |
+
+**Issues observed**: none. Auto-mode routing and autonomous task handling both passed without regressions after the latest fixes.
+

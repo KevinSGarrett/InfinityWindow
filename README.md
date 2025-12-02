@@ -1,337 +1,203 @@
-# InfinityWindow – A Local AI Workbench for Long‑Running Projects
+# InfinityWindow – AI Workbench for Long‑Running Projects <!-- omit in toc -->
 
-InfinityWindow is my attempt to build the kind of AI workspace I *wished* existed:
+InfinityWindow is a local AI workbench for **long‑running, project‑scale work**.  
+It keeps your conversations, tasks, docs, files, decisions, and memory **in one place**, and lets an AI co‑pilot operate over the *real* project (DB, files, terminal, vector store) instead of a single chat window.
 
-- It remembers **everything** important about a project – not just the last few messages.
-- It can see **your real files and repos**, not just paste‑ins.
-- It organizes conversations, tasks, decisions, and documents so you can work on the same project for **weeks or months** without losing the plot.   
+This repo contains:
 
-Think of it as a “personal AI operating system” for deep work – built to solve the exact pain of:
-
-> *“My chat window forgot half the project, I have 500k words of plans, a large codebase, and I’m completely lost.”*   
-
----
-
-## 1. What InfinityWindow Is (Non‑Technical Overview)
-
-Most AI tools work like this:
-
-- You open a chat.
-- You paste in some context.
-- The model gives a response.
-- After a while, the chat “forgets”, context runs out, and you’re back to copy‑pasting.
-
-InfinityWindow is designed to be the opposite of that experience:
-
-1. **Projects, not just chats**
-
-   - You work in named **projects** (“RastUp orchestrator”, “New product spec”, etc.).
-   - Each project has:
-     - A set of conversations.
-     - Attached documents and Git repos.
-     - Project instructions (“charter”).
-     - A decision log (“we chose X over Y because…”).
-     - A task list / TODOs.   
-
-2. **“Never forgets” important context**
-
-   - All conversations are saved.
-   - Large docs (hundreds of thousands of words) and code are indexed.
-   - When you ask a question, InfinityWindow automatically pulls in the most relevant snippets from:
-     - Past messages.
-     - Project docs.
-     - Attached repositories.
-     - Pinned memories (“remember this”).   
-
-3. **A focused, local web UI**
-
-   - Custom “ChatGPT‑style” web interface:
-     - Project selector.
-     - Conversation list.
-     - Main chat pane.
-     - Right‑hand panel with tabs for **Docs, Search, Tasks, Usage, Files, Terminal, Memory**.   
-   - Built to feel like a serious workbench, not just another chatbot.
-
-4. **Grounded in your actual files**
-
-   - InfinityWindow knows the **local root folder** for each project.   
-   - You can:
-     - Browse the directory tree.
-     - Open files.
-     - (Safely) apply AI‑proposed edits with a diff & “Apply changes” confirmation step.
-
-5. **Built for multi‑week projects**
-
-   - Conversation folders, auto‑generated titles, and project notes help you find things again later.
-   - A per‑project task list that the AI can help maintain for you.
-   - A cost/usage panel so you can see which models you’re using and what they cost over time.   
+- A **FastAPI backend** (`backend/`) with projects, conversations, tasks, docs, memory items, filesystem + terminal integration, model routing, telemetry, and QA helpers.
+- A **React + TypeScript frontend** (`frontend/`) with a 3‑column UI (Projects / Chat / Right‑hand workbench tabs).
+- An evolving **documentation and QA library** under `docs/` and `qa/`.
 
 ---
 
-## 2. Why This Project Is Interesting to Employers
+## 1. Quick start
 
-### 2.1 Real problem, not a toy demo
+This is the “get it running locally” path. For exhaustive setup and feature coverage, see `docs/USER_MANUAL.md`.
 
-This project started from an actual pain point:
+### 1.1 Prerequisites
 
-- I had **~500k words** of project plans plus a growing codebase.
-- A long‑running chat session went off‑track and started forgetting core details.
-- Untangling what was done, what was missing, and how to continue realistically required better tooling than a normal chat window.   
+- **OS**: Windows 10/11 (project is developed/tested on Windows).
+- **Backend**:
+  - Python 3.11+ (3.12 confirmed to work).
+  - `pip` available on `PATH`.
+- **Frontend**:
+  - Node.js (current LTS) + npm.
+- **Other**:
+  - Git (optional but recommended).
+  - OpenAI API key (or compatible provider) for LLM calls.
 
-InfinityWindow is the system I designed to prevent that scenario from ever happening again.
+### 1.2 Backend (FastAPI)
 
-### 2.2 “Never‑forget” AI: practical RAG, not hype
+From `C:\InfinityWindow\backend`:
 
-Under the hood, InfinityWindow implements a serious Retrieval‑Augmented Generation (RAG) setup:
+```powershell
+# Create and activate a venv
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 
-- Large docs are **chunked hierarchically** (document → section → subsection → chunk).
-- Both documents and conversations are embedded into a vector store.
-- For each new message, the backend performs **multi‑step retrieval** to assemble a compact, relevant context for the model.   
+# Install backend dependencies
+pip install -r requirements.txt
 
-This is the difference between “I pasted a PDF” and “my assistant actually *remembers* the whole PDF and can reference it precisely.”
+# Configure environment (create backend/.env)
+echo OPENAI_API_KEY=sk-... >> .env
+# Optional: model overrides (see docs/CONFIG_ENV.md once created)
+```
 
-### 2.3 Designed as a platform, not a one‑off script
+Run the backend:
 
-InfinityWindow is structured as a real product:
+```powershell
+uvicorn app.api.main:app --reload
+```
 
-- A backend API (FastAPI) with clearly defined endpoints.
-- A local database for projects, messages, tasks, documents, etc.
-- A vector database (e.g., Chroma) for semantic search across messages, docs, and code.
-- A modular front‑end layout that can evolve over time (new tabs, new tools, new visualizations).   
+Backend will listen on `http://127.0.0.1:8000`. You can verify with:
 
-An employer can see:
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health
+```
 
-- System design.
-- Separation of concerns.
-- A clear roadmap and phased delivery plan.
+### 1.3 Frontend (React + Vite)
 
-### 2.4 Multi‑model, multi‑provider mindset
+From `C:\InfinityWindow\frontend`:
 
-The system is designed to support:
+```powershell
+npm install
+npm run dev
+```
 
-- Multiple chat models (e.g., different OpenAI models, and optionally Anthropic).
-- Different usage modes: `auto / fast / deep / budget / research / code`.   
+By default Vite will serve on `http://127.0.0.1:5173/` (or the port you choose). Open that URL in your browser.
 
-Even if the initial implementation focuses on OpenAI, the architecture is built to add more providers and modalities without rewriting everything.
+You should see:
 
----
+- Left column: **Project selector + Conversations**.
+- Middle: **Chat** with mode selector (`auto`, `fast`, `deep`, `budget`, `research`, `code`).
+- Right: **Tabbed workbench** (Tasks, Docs, Files, Search, Terminal, Usage, Notes, Memory).
 
-## 3. Key Features (High‑Level)
+### 1.4 Minimal workflow
 
-Here’s what InfinityWindow aims to provide once the current roadmap is complete.
+1. Ensure the backend is running on `:8000` and frontend dev server is running.
+2. In the UI, pick a project from the dropdown (or use the default “Demo Project”).
+3. Click **“+ New chat”** and send a message in the middle column.
+4. Open the **Tasks**, **Docs**, **Files**, **Notes**, and **Memory** tabs on the right to explore each feature.
 
-### 3.1 Project‑centric workspace
-
-- **Projects as first‑class citizens**:
-  - Each project has its own instructions, conversations, docs, repos, tasks, decisions.
-- **Per‑project instructions (“charter”)**:
-  - A long‑form description of goals, constraints, and context that is always injected into the system prompt.
-- **Decision log**:
-  - A growing list of “We decided X instead of Y because Z” so the AI doesn’t re‑open old debates.   
-
-### 3.2 Conversation organization
-
-- Auto‑generated conversation titles (with manual override).
-- Conversation folders (e.g., “Architecture”, “Frontend”, “Ops”).
-- Each conversation belongs to a project and can be grouped, searched, and revisited. :contentReference[oaicite:12]{index=12}  
-
-### 3.3 Document and repo ingestion
-
-- Ingest documents up to **600k+ words**, using structured chunking for efficient retrieval.
-- Attach Git repos to projects and index code files for semantic search:
-  - “Explain the architecture of X.”
-  - “Find where `UserSession` is instantiated.”
-  - “What changed between commit A and B in this area?”   
-
-### 3.4 Tasks / TODO system (AI‑assisted)
-
-- A per‑project tasks table, surfaced as a **Tasks** tab in the UI.
-- You can create and complete tasks manually.
-- The AI can scan recent conversation history and:
-  - Extract new tasks.
-  - Mark tasks as done when they are discussed as completed.
-- Optional: automatic updates after every conversation turn.   
-
-The goal is that your task list stays synchronized with the reality of the project, without you having to manually maintain a giant checklist.
-
-### 3.5 Cost & usage tracking
-
-- The backend records:
-  - Which model was used.
-  - Input/output tokens.
-  - Approximate cost per call.
-- The UI shows:
-  - Totals for each conversation.
-  - Stats for the last reply (model, tokens, cost).   
-
-This makes the system transparent and helps manage cost when working on large projects.
-
-### 3.6 Local file and terminal integration
-
-- **Files tab:**
-  - Browse the project’s local directory tree.
-  - View file contents in the UI.
-  - Stage 1 safe edits: AI suggests a change → you see a diff → you approve → backend writes the file.   
-
-- **Terminal tab:**
-  - Run commands in the project directory from inside the app (e.g. `git status`, `pytest`).
-  - Later: AI‑proposed commands that you explicitly approve before they run.   
-
-The long‑term vision is an AI that can see your actual repo and tools, not just what you paste.
-
-### 3.7 Memory upgrades – “Remember this”
-
-- A dedicated **memory_items** table:
-  - Keyed “memories” like canonical API lists, core requirements, edge cases.
-- “Remember this” action in the chat:
-  - Select text or a message → save as long‑term memory for the project.
-- These items are stored, indexed, and pulled into context for future chats.   
+For detailed, step‑by‑step instructions (including QA/staging copies, CI, and reset helpers), see `docs/USER_MANUAL.md` and `docs/OPERATIONS_RUNBOOK.md` (once created).
 
 ---
 
-## 4. Under the Hood (High‑Level Technical View)
+## 2. Core capabilities (high level)
 
-For more technical readers, here’s the simplified architecture.
+InfinityWindow is built around a few core ideas:
 
-> **Note:** This is intentionally written in “resume‑friendly” language, but maps directly to the actual plan and code structure.
+- **Project‑centric workspace**: everything is scoped to a project with its own tasks, docs, conversations, decisions, and memory.
+- **Real memory & retrieval**: messages, docs, and memory items are embedded into a vector store (Chroma) and retrieved as context for each reply.
+- **Local filesystem + terminal integration**: the AI can propose file edits and terminal commands, but you stay in control; all writes are constrained to the project root.
+- **AI‑assisted TODOs and decisions**: a tasks tab and a structured decision log keep long‑running work organized.
+- **Usage & telemetry**: per‑conversation usage records and `/debug/telemetry` let you see how models are being used and how well automation is behaving.
 
-### 4.1 Backend
-
-- **Framework**: FastAPI.
-- **Core endpoints**:
-  - `/chat` – project‑aware chat endpoint that:
-    - Looks up the project.
-    - Performs memory retrieval.
-    - Routes to the correct model.
-  - `/docs/*` – upload and manage documents.
-  - `/github/*` – attach and index local repos.
-  - `/projects/*` – CRUD for projects, instructions, decision logs.
-  - `/tasks/*` – CRUD for tasks and AI‑assisted extraction.
-  - `/terminal/*` – run commands (with guardrails).
-  - `/files/*` – browse and edit files under the project root.   
-
-- **Storage**:
-  - Relational DB (SQLite/Postgres) for:
-    - Projects, conversations, messages.
-    - Documents, sections, chunks.
-    - Tasks, memory items, usage records.
-  - Vector DB (Chroma/Qdrant/etc.) for embeddings:
-    - Conversation chunks.
-    - Document chunks.
-    - Code chunks.
-    - Pinned memories.   
-
-### 4.2 Model routing
-
-- Model registry describing:
-  - Available models, context sizes, and cost tiers.
-- Router chooses:
-  - Which model to use based on task type (`chat`, `summarization`, `code`, etc.), context size, and budget.   
-
-### 4.3 Retrieval pipeline
-
-For each user message:
-
-1. Fetch recent conversation history.
-2. Query vector store for relevant:
-   - Past messages.
-   - Document chunks.
-   - Code.
-   - Memory items.
-3. Combine with:
-   - Project instructions.
-   - Decision log.
-4. Build final prompt and call the chosen model.   
+For a deeper architectural overview, see `docs/SYSTEM_OVERVIEW.md` (to be refreshed) and `docs/SYSTEM_MATRIX.md` (catalogue of features and where they live).
 
 ---
 
-## 5. Status & Roadmap
+## 3. Repository layout (short map)
 
-InfinityWindow is intentionally being built in phases.
+- `backend/`
+  - `app/api/main.py` – FastAPI app, API endpoints (projects, chat, tasks, docs, search, filesystem, terminal, memory, telemetry).
+  - `app/db/models.py` – SQLAlchemy models (Project, Conversation, Message, Task, Document, MemoryItem, UsageRecord, Decision, Folder).
+  - `app/llm/openai_client.py` – LLM client, mode/model routing, pricing, telemetry helpers.
+  - `app/vectorstore/chroma_store.py` – Chroma client, collections and helpers for messages, docs, memory.
+  - `tools/reset_qa_env.py` – Guarded helper to reset SQLite + Chroma in a QA copy.
 
-### 5.1 Current status
+- `frontend/`
+  - `src/App.tsx` – main React app (3‑column layout, right‑hand tabs, all UI behavior).
+  - `src/App.css` – layout and styling for the workbench.
+  - `playwright.config.ts` + `tests/` – UI regression tests (right‑column tabs, Files, Notes, Memory).
 
-Based on the latest project plan, the following pieces are already in place or mostly implemented:
+- `docs/`
+  - `PROGRESS.md` – progress log + roadmap + QA notes.
+  - `TEST_PLAN.md` – end‑to‑end test plan.
+  - `TEST_REPORT_TEMPLATE.md` – template for recording QA runs.
+  - `TEST_REPORT_2025-12-02.md` – example completed QA report.
+  - `USER_MANUAL.md` – complete setup & usage manual (high detail).
+  - `SYSTEM_OVERVIEW.md` – system‑level overview (will be refreshed).
+  - `RIGHT_COLUMN_UI_PLAN.md` – notes and plans for the right‑column UI.
+  - `README.md` (inside `docs/`) – **documentation index** (to be added as part of the overhaul).
 
-- Backend foundations (FastAPI, DB, vector store).
-- Core chat with multi‑mode support.
-- Document & repo ingestion wired into retrieval.
-- Custom InfinityWindow UI with:
-  - Projects dropdown.
-  - Conversations list.
-  - Chat pane with modes.
-  - Right‑hand panel with docs/search/ingestion tools.   
+- `qa/`
+  - `run_smoke.py` – backend smoke suite (message search, tasks auto‑loop, mode routing).
+  - `message_search_probe.py`, `tasks_autoloop_probe.py`, `mode_routing_probe.py` – individual smoke probes.
 
-### 5.2 Upcoming work (InfinityWindow v2 roadmap)
-
-From the updated plan, the next major milestones are:   
-
-- **Project & conversation organization**
-  - Auto‑titles and folders.
-  - Project instructions editor.
-  - Decision log UI.
-
-- **Tasks / TODO sidebar**
-  - Manual tasks tab.
-  - On‑demand AI “Update tasks from conversation” button.
-  - Optional automatic updates after each message.
-
-- **Usage / cost tracking panel**
-  - Backend usage logging.
-  - Compact “Last reply” and “Conversation totals” box.
-
-- **Local project directory integration**
-  - `local_root_path` per project.
-  - File browser.
-  - Safe, diff‑based file edits.
-
-- **Terminal integration**
-  - Terminal tab with output.
-  - AI‑proposed commands with explicit user approval.
-
-- **Memory upgrades & UI 2.0**
-  - “Remember this” flow.
-  - Memory tab.
-  - Refined layout and visual polish.
+Other planning/history files live in the repo root (`Hydration_File_*.txt`, `Project_Plan_*.txt`) and will be consolidated into updated markdown docs under `docs/`.
 
 ---
 
-## 6. How to Read This Repo as an Employer
+## 4. Documentation
 
-If you’re reviewing this repo as a hiring manager or engineer, the most interesting parts to look at are:
+InfinityWindow is in the process of moving to a more extensive, organized documentation system. The key entry points (some existing, some being created) are:
 
-- **Architecture & docs**
-  - `docs/` – project plans and design documents.
-- **Backend**
-  - `backend/src/api/` – API surface.
-  - `backend/src/orchestrator/` – chat routing, retrieval, model selection.
-  - `backend/src/memory/` – DB + vector store integrations.
-- **Features**
-  - `backend/src/features/` – tasks, memory, analytics, exports.   
+- `docs/README.md` – **docs index**: lists all documentation, grouped by audience (users, developers, operators, agents).
+- `docs/USER_MANUAL.md` – full installation + usage manual.
+- `docs/SYSTEM_OVERVIEW.md` – architectural overview and main concepts.
+- `docs/SYSTEM_MATRIX.md` – matrix catalogue of features, data models, endpoints, UI components, and test IDs.
+- `docs/PROGRESS.md` – progress log and roadmap (v2/v3/v4+).
+- `docs/TODO_CHECKLIST.md` – structured checklist of outstanding work (by phase).
+- `docs/HYDRATION_*.md` – up‑to‑date hydration/rehydration files for AI agents and maintainers.
+- `docs/TEST_PLAN.md`, `docs/TEST_REPORT_TEMPLATE.md`, `docs/TEST_REPORT_*.md` – QA plans and results.
+- `docs/OPERATIONS_RUNBOOK.md` – how to run, reset, and maintain the system (including QA copies).
+- `docs/DEV_GUIDE.md` – how to extend the backend/frontend safely.
+- `docs/AGENT_GUIDE.md` – how AI agents should interact with this repo (tools, guardrails, references).
+- `docs/API_REFERENCE.md` – concise reference to important REST endpoints.
+- `docs/CONFIG_ENV.md` – configuration and environment variables (ports, models, CORS, etc.).
+- `docs/SECURITY_PRIVACY.md` – current data, storage, and security considerations.
 
-Even if some pieces are still work‑in‑progress, the repo and plan show:
-
-- How I think about **system design**.
-- How I break down a large, ambitious idea into phases.
-- How I design AI‑powered systems that are **safe, traceable, and maintainable**, not just flashy demos.
-
----
-
-## 7. Quick Start (Conceptual)
-
-> Exact commands may change as the project evolves; this is the high‑level flow, not a locked‑in setup script.
-
-1. Clone the repo and create a virtual environment.
-2. Start the backend (FastAPI).
-3. Start the InfinityWindow UI.
-4. Create a project and set its local root path.
-5. Attach documents and/or repositories.
-6. Start chatting – and let InfinityWindow handle the memory, organization, and retrieval for you.
+Once the documentation overhaul is complete, all of these will be discoverable from `docs/README.md`.
 
 ---
 
-If you’d like, I can also:
+## 5. Testing & QA
 
-- Add a shorter “Executive Summary” section at the top for non‑technical hiring managers.
-- Add a small “Demo scenarios” section (“Show me all tasks we discussed about authentication”, “Explain the architecture in this repo”, etc.) to make the capabilities concrete.
-::contentReference[oaicite:26]{index=26}
+- **Backend smoke tests**: from `C:\InfinityWindow` (backend venv active):
+
+  ```powershell
+  python -m qa.run_smoke
+  ```
+
+  This checks:
+  - Message search (`/search/messages`).
+  - Autonomous TODO maintenance behavior.
+  - Mode/model routing and fallback logic.
+
+- **Frontend UI tests (Playwright)**: from `C:\InfinityWindow\frontend`:
+
+  ```powershell
+  npm install
+  npx playwright install
+  npm run dev -- --host 127.0.0.1 --port 5174  # in one terminal
+  npm run test:e2e                              # in another
+  ```
+
+  Current specs exercise:
+  - Right‑column tab activation.
+  - Files tab: browsing + editor + “Show original”.
+  - Notes tab: seeded instructions + decision log.
+  - Memory tab: seeded pinned memory item.
+
+For the full QA plan and historical reports, see `docs/TEST_PLAN.md` and `docs/TEST_REPORT_2025-12-02.md`.
+
+---
+
+## 6. Contributing / extending
+
+This project is under active development and is currently focused on:
+
+- Stabilizing the v2 feature set (projects, tasks, docs, memory, files, terminal, usage).
+- Hardening retrieval and model routing behavior.
+- Expanding the right‑column UX and automation around TODOs and telemetry.
+
+If you’re extending the system:
+
+- **Start with** `docs/DEV_GUIDE.md` and `docs/SYSTEM_MATRIX.md` (once created) to understand where features live.
+- Use the QA smoke suite and Playwright tests to validate changes before committing.
+- Keep `docs/PROGRESS.md` and `docs/TODO_CHECKLIST.md` updated so future maintainers (and AI agents) have accurate context.
+
+InfinityWindow is meant to feel like an **operating system for your long‑running projects**; this repo is both the implementation and the evolving documentation for how that OS works.
+

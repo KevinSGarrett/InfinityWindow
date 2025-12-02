@@ -148,6 +148,13 @@ Based on `Hydration_File_002.txt`, `To_Do_List_001.txt`, and current code, here�
   - Extend the autonomous TODO maintainer so it not only adds tasks but also reconciles completions, updates ordering/priority, and avoids duplicates; target ≥90% precision/recall.
   - Add telemetry around task creation/completion accuracy (auto vs manual) so we can measure and tune reliability.
   - Provide safeguards for low-confidence cases (e.g., ask for confirmation or fall back to manual entry instead of silently adding noise).
+  - Introduce confidence scores + a review queue so “maybe” additions/completions require a single click approval.
+  - Layer priority & grouping heuristics (Critical / Blocked / Ready) so automation keeps urgent work surfaced.
+  - Track dependencies and detect overlapping tasks (“implement API” vs “wire /api endpoint”) before creating new items.
+  - Surface a telemetry dashboard (auto-added / auto-completed / dismissed suggestions, accuracy samples) in the Usage tab.
+  - Append audit snippets (“Closed automatically on <date> after user said …”) whenever the maintainer marks something done.
+  - Feed richer context into the extraction prompt (project goals, sprint focus, known blockers) so the AI emphasizes the right work.
+  - Future stretch goals: natural-language task commands, sprint/calendar sync, and cross-project duplicate detection.
 
 ### v4 – Integrations & platform expansion
 
@@ -177,6 +184,10 @@ Based on `Hydration_File_002.txt`, `To_Do_List_001.txt`, and current code, here�
 - **Project export/import & long‑term analytics**:
   - Export/import of projects (tasks, docs, memories, decisions).
   - Higher‑level analytics/exports beyond per‑conversation usage.
+- **Task intelligence stretch goals**:
+  - Natural-language task commands (“@assistant mark …”) routed through the automation loop.
+  - Sprint/calendar sync so high-priority items surface in external planners.
+  - Cross-project duplicate detection when multiple initiatives describe the same work.
 
 These phases are intentionally high‑level. When we decide to start on one, we should:
 
@@ -200,13 +211,19 @@ These phases are intentionally high‑level. When we decide to start on one, we 
 - **Chat mode routing**:
   - `mode="research"` now gracefully falls back to an authorized model if the configured research model is unavailable.
   - `mode="auto"` uses lightweight prompt heuristics (code fences, research keywords, message length) to pick between the code, research, deep, or fast tiers instead of always defaulting to a single model; it still surfaces the chosen model via the usage log.
+- **Auto-mode planning bias**: Short-yet-strategic prompts (roadmaps, multi-quarter planning, schema/telemetry rollouts) are forced toward the deep tier unless they are truly breeze-length (<120 chars), preventing “Ping?”-class heuristics from stealing heavier prompts.
 - **Autonomous tasks loop**:
   - The maintainer marks tasks `done` when users report completions, avoids duplicates with similarity + token-overlap checks, and keeps the open list ordered by most recently updated items.
   - `GET /projects/{id}/tasks` now returns open tasks first, sorted by `updated_at`, so the UI reflects the autop-run reordering without needing client-side hacks.
+  - Completion parsing ignores clauses that contain “still pending / blocked / not done / in progress” hints so open follow-ups do not get closed accidentally when users mention unfinished work alongside completed items.
 - **Guarded QA reset helper**: Added `tools/reset_qa_env.py`, which refuses to touch `backend/infinitywindow.db` or `backend/chroma_data` while port 8000 is in use, then backs up (or purges) both stores so each QA run can start from a clean slate without manual stop/delete gymnastics.
 - **QA rerun verification**: After running the reset helper, re-executed the Phase B/C tests:
   - `C-MsgSearch-01` now passes (SNOWCRASH token immediately retrievable).
   - `B-Mode-01/02` confirm research fallback + auto-mode heuristics route to fast/code/deep tiers as expected.
   - `B-Tasks-02` confirms auto-maintainer closes finished work and inserts follow-ups automatically.
+- **UI regression coverage**: Added Playwright smoke tests (`right-column.spec.ts`, `files-tab.spec.ts`, `notes-memory.spec.ts`) plus a reusable config so the Files, Notes, and Memory tabs get exercised alongside the existing tab-switch regression.
+- **Telemetry hooks**: Backend exposes `/debug/telemetry`, reporting auto-mode routing stats and autonomous TODO maintenance counters (auto-added/completed/deduped). QA can now verify routing behavior without digging through logs and optionally reset the counters between runs.
+- **Search & Usage UX**: Search tab gained conversation/folder/document filters, grouped results, and “open in chat/docs” actions, while the Usage tab now offers a conversation selector, aggregate metrics, per-model breakdown, enriched recent-call list, and the shared routing/tasks telemetry drawer.
+- **Notes & Decisions**: Notes tab now includes pinned notes, an instructions diff preview, richer decision cards (status/tag filters, inline edits, follow-up task/memory hooks, clipboard), and an automation pass that detects “Decision…” statements in chat and captures them as drafts. Projects must recreate the SQLite DB (or run a migration) to pick up the new columns (`pinned_note_text`, decision status/tags/follow-up metadata).
 
 

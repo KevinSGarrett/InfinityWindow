@@ -1,0 +1,717 @@
+1. What’s effectively DONE
+1.1 Backend foundations & core chat
+
+From the updated v2 outline, the “Backend foundations” and “Core chat + memory” bullets are basically implemented:
+
+Project_Plan_003_UPDATED
+
+FastAPI app with key endpoints
+
+/health (returns status + version).
+
+/chat – main chat endpoint with retrieval & usage logging.
+
+/docs – text doc ingestion, project docs listing.
+
+/search – search over messages and docs.
+
+/github/ingest_local_repo – ingest a local repo into the vector store.
+
+Local DB models & persistence
+
+Projects, Conversations, Messages, Documents, Tasks, UsageRecord, etc. defined in SQLAlchemy models and exposed via Pydantic read models in main.py.
+
+Vector store & embeddings
+
+Chroma‑based store for both message and document embeddings (via add_message_embedding, query_similar_messages, query_similar_document_chunks).
+
+Embeddings via OpenAI embedding API (get_embedding, using text‑embedding‑3‑* family per the updated plan).
+
+Project_Plan_003_UPDATED
+
+Chat pipeline w/ retrieval
+
+For each /chat call:
+
+Load conversation history.
+
+Embed the new user message.
+
+Retrieve similar past messages and relevant document chunks.
+
+Build a system prompt that explains InfinityWindow’s behavior, file‑edit protocol, and terminal_command_proposal protocol (the big system block you see in main.py).
+
+Call generate_reply_from_history with mode (auto, fast, deep, budget, research, code).
+
+Store both user and assistant messages in the DB and index them in Chroma.
+
+So the “core InfinityWindow brain” is in place.
+
+1.2 Docs & local repo ingestion + search
+
+From the updated v2 outline & new‑features doc, you wanted: text docs ingest, local repo ingest, and search over both.
+
+We have:
+
+Text doc ingestion
+
+/docs/text endpoint that:
+
+Accepts project_id, name, description, text.
+
+Chunks + embeds text into Chroma.
+
+Frontend:
+
+“Ingest text document” form (name, optional description, textarea) and button Ingest text doc that hits /docs/text.
+
+Project docs list on the right with doc name, description, and doc ID.
+
+Local repo ingestion
+
+/github/ingest_local_repo endpoint that:
+
+Takes root_path (e.g. C:\InfinityWindow), name_prefix, and project id.
+
+Walks the repo, indexes code/doc chunks into vector store.
+
+Frontend:
+
+“Ingest local repo” form with Root path and Name prefix, calling that endpoint.
+
+Semantic search
+
+/search/messages – vector search over past messages, scoped to a project and optionally a conversation.
+
+/search/docs – vector search over doc chunks, scoped to a project.
+
+UI:
+
+Right‑side “Search memory” panel with Messages and Docs tabs, search box, and result lists.
+
+So the RAG backbone (messages + docs + repo chunks) is online and integrated.
+
+1.3 Projects & conversations (what is done)
+
+From the updated v2 roadmap: conversation titles and projects as first‑class.
+
+Done:
+
+Project model + listing
+
+Projects stored in DB with name, description, local_root_path.
+
+/projects GET/POST/PATCH in backend.
+
+Frontend: project dropdown with description display.
+
+Conversation basics
+
+Conversations table with project_id and optional title.
+
+/projects/{id}/conversations lists conversations per project.
+
+/conversations to create under a project.
+
+Chat always happens in a conversation.
+
+Manual conversation titles (rename)
+
+Backend:
+
+PATCH /conversations/{conversation_id} to set title.
+
+Frontend:
+
+Conversation list on the left shows title if present, else “Chat conversation #id”.
+
+“Rename” button → inline input → Save calls PATCH endpoint.
+
+Missing piece here: automatic title generation by a small model (we’ll count that under “still to do” below).
+
+1.4 Tasks / TODO system
+
+The v2 roadmap’s “Phase 4 – Tasks / TODO sidebar” is basically implemented (and then some):
+
+Project_Plan_003_UPDATED
+
+Backend:
+
+Task model in DB; TaskCreate/TaskRead/TaskUpdate schemas.
+
+Endpoints:
+
+GET /projects/{project_id}/tasks
+
+POST /tasks
+
+PATCH /tasks/{task_id}
+(DELETE is not implemented yet, but is optional in the plan.)
+
+Frontend:
+
+Right column “Project tasks” section:
+
+New task input + “Add” button that hits POST /tasks.
+
+List of tasks with checkbox:
+
+Toggling calls PATCH /tasks/{id} and flips open/done.
+
+Visual strike‑through for done tasks.
+
+AI‑assisted tasks (even more than v2 spec minimum)
+
+Updated plan suggests a helper function + endpoint POST /projects/{id}/tasks/refresh_from_chat for on‑demand extraction, and an optional Stage 2 to hook into the chat pipeline.
+
+Project_Plan_003_UPDATED
+
+You now have:
+
+auto_update_tasks_from_conversation(...) helper:
+
+Pulls recent messages from the conversation.
+
+Asks a “fast” model for structured JSON { "tasks": [{ "description": "..." }, ...] }.
+
+Adds new open tasks if they don’t already exist.
+
+This helper is called automatically at the end of each /chat call (Stage 2 continuous updating), not just on demand.
+
+So tasks are one of the more “complete” areas: DB, API, UI, and AI automation.
+
+1.5 Usage / cost tracking
+
+The updated plan’s “Phase 5 – Usage / Cost tracking box” is also implemented:
+
+Backend:
+
+openai_client.generate_reply_from_history fills a usage_out dict with model, tokens_in, tokens_out.
+
+pricing.py contains a model→price map and estimate_call_cost(model, tokens_in, tokens_out) to compute cost.
+
+A UsageRecord table exists plus UsageRecordRead Pydantic schema.
+
+After each chat (and AI file edit), a UsageRecord is created with:
+
+project, conversation, message, model, tokens_in/out, and cost_estimate.
+
+API:
+
+GET /conversations/{conversation_id}/usage returns:
+
+Per‑record details.
+
+Aggregated totals: total_tokens_in, total_tokens_out, total_cost_estimate.
+
+Project_Plan_003_UPDATED
+
+Frontend:
+
+Right column “Usage (this conversation)” panel:
+
+Shows total tokens in/out and total estimated cost.
+
+Lists the last ~10 usage records with model name, tokens, and timestamp.
+
+So the cost dashboard piece is a concrete, working feature.
+
+1.6 Local project directory integration & file editing
+
+This maps to “Phase 6 – Local Project Directory Integration” from the updated plan and the local‑root/file APIs from the new‑features doc.
+
+Backend:
+
+Project has local_root_path.
+
+Helpers:
+
+_get_project_root(project) – resolves & validates local root path.
+
+_safe_join(root, relative_path) – carefully joins and normalizes paths to avoid escaping root.
+
+Endpoints:
+
+GET /projects/{id}/fs/list?subpath= – lists entries under the project root.
+
+GET /projects/{id}/fs/read?file_path= – reads a UTF‑8 text file.
+
+PUT /projects/{id}/fs/write – writes a text file (with create_dirs guard).
+
+Frontend:
+
+Right column Project files panel:
+
+Shows current location (relative to root) and root hint.
+
+“↑ Up” and “Refresh” buttons.
+
+Directory listing (📁 for folders, 📄 for files, with size).
+
+Clicking a folder navigates; clicking a file loads content via /fs/read.
+
+Built‑in file editor:
+
+Textarea with the file content.
+
+Save button → PUT /fs/write.
+
+Checkbox “Show original” to display original content side‑by‑side (read‑only).
+
+So InfinityWindow can really browse and edit your actual local files with safety checks.
+
+1.7 AI‑driven file edits
+
+On top of manual editing, we have an AI edit pipeline, which goes beyond the v2 min spec:
+
+Backend:
+
+POST /projects/{project_id}/fs/ai_edit:
+
+Reads the file under local_root_path.
+
+Sends full content + instructions to OpenAI.
+
+Returns edited content.
+
+Optionally writes the edited file (apply_changes=True).
+
+Logs usage in UsageRecord (with model + tokens + cost).
+
+In /chat, the assistant is instructed about AI_FILE_EDIT blocks:
+
+You can include blocks like:
+
+<<AI_FILE_EDIT>>
+{"file_path": "backend/app/api/main.py",
+ "instruction": "…"}
+<<END_AI_FILE_EDIT>>
+
+
+_extract_ai_file_edits parses these.
+
+For each, ai_edit_project_file is invoked automatically.
+
+Frontend:
+
+“AI file edit” panel:
+
+Shows a parsed proposal {file_path, reason, instruction} from the last assistant message.
+
+“Apply AI edit” button → calls /fs/ai_edit with apply_changes=true.
+
+Shows status text (“Applied edit to …” or errors).
+
+So the “system updates local files for you (with your approval)” feature is present.
+
+1.8 Terminal integration & AI‑assisted commands
+
+This corresponds to “Phase 7 – Terminal Integration” in the updated plan and the terminal section in the new‑features doc.
+
+Backend:
+
+POST /terminal/run:
+
+Body: { project_id, cwd (relative), command, timeout_seconds }.
+
+Resolves cwd under local_root_path using _safe_join.
+
+Runs subprocess.run with timeout, captures stdout/stderr, returns JSON:
+
+exit_code, stdout, stderr, normalized cwd.
+
+Truncates very long output.
+
+System prompt for AI:
+
+Big instructions for terminal_command_proposal:
+
+JSON like:
+
+{
+  "type": "terminal_command_proposal",
+  "cwd": "backend",
+  "command": "git status",
+  "reason": "Short explanation"
+}
+
+
+Must be last thing in the reply.
+
+cwd is relative, command must not embed cd.
+
+Prefer Windows‑friendly commands (dir, type, etc.).
+
+Frontend:
+
+“AI terminal command” panel:
+
+Shows proposed cwd, command, reason.
+
+“Run command” → posts to /terminal/run.
+
+“Last terminal run” panel:
+
+Shows last command, cwd, exit code, stdout, stderr.
+
+Automatic feedback loop into chat:
+
+After running a command, the frontend sends a summary back to /chat:
+
+“I ran the terminal command you proposed...\nCommand: ...\nCWD:...\nExit code:...\nSTDOUT:...\nSTDERR:...”
+
+The system prompt explains how the assistant should interpret such messages.
+
+This is exactly the “AI can propose commands; you approve & run; output comes back into the loop” behavior you wanted.
+
+1.9 UI 2.0 – partial but substantial
+
+From the v2 plan: “UI 2.0 – Production-grade layout” with left/middle/right columns and right‑side tabs for Docs/Search/Tasks/Usage/Files/Terminal.
+
+You now have:
+
+A 3‑column layout:
+
+Left: project selector + conversation list + rename.
+
+Middle: chat pane with mode selector.
+
+Right: a stack of panels:
+
+Project tasks
+
+Project documents
+
+Ingest text doc
+
+Ingest local repo
+
+Project files
+
+Search memory
+
+AI terminal command
+
+Last terminal run
+
+AI file edit
+
+Usage (this conversation)
+
+It’s not yet tabbed (they’re stacked vertically), but functionally all the right‑side features exist.
+
+2. What is NOT DONE yet (or only partially done)
+
+Now for the backlog.
+
+2.1 Project & conversation organization
+
+From Phase 3 of the updated roadmap:
+
+Not done / partial:
+
+Automatic conversation titles
+
+Plan: after first assistant reply, call a small model to generate a short title and save it.
+
+Reality:
+
+Manual rename via PATCH + UI inline edit is implemented.
+
+There’s no auto‑titling yet.
+
+Conversation folders
+
+Plan: conversation_folders table, folder_id on conversations, endpoints to create/rename/delete folders, UI grouping by folder with “+ Folder” and drag/drop or dropdown to move.
+
+Project_Plan_003_UPDATED
+
+Reality:
+
+No conversation_folders model or endpoints.
+
+Left sidebar shows a flat list of conversations; no folders / grouping.
+
+Project instructions & notes/decision log
+
+Plan: instruction_text on Project, project_notes or decision_log table, API to GET/PUT instructions and GET/POST decision log, then inject instructions into system prompt for that project. UI panel to edit instructions + show decision log.
+
+Reality:
+
+No instruction_text in Project model visible in main.py.
+
+No instructions or decision_log endpoints.
+
+System prompt is currently global, not per‑project.
+
+No “Project settings / notes” UI yet.
+
+So project organization is partially done (titles manual) but the richer structure is still outstanding.
+
+2.2 Memory upgrades / “Remember this”
+
+From “Phase 8 – Memory upgrades (‘Remember this’)”:
+
+Planned:
+
+memory_items table with project_id, key, content, tags, created_at.
+
+API: POST/GET /projects/{id}/memory.
+
+Vector indexing & retrieval of memory items on each /chat.
+
+UI:
+
+New “Memory” tab (or merged with Notes).
+
+“Remember this” button in chat that sends selected text/messages to backend.
+
+Reality:
+
+None of this is implemented yet:
+
+No MemoryItem model or endpoints.
+
+No memory‑tab UI or “Remember this” button.
+
+No special retrieval step for pinned memories.
+
+So the explicit long‑term memory / pinned memories feature is still to do.
+
+2.3 Terminal UI: manual usage
+
+You have AI‑driven terminal wired up, but the plan also envisioned a manual terminal tab:
+
+Planned:
+
+A “Terminal” tab with:
+
+Free‑text command input.
+
+Dropdown for cwd (e.g. backend, frontend).
+
+Output area showing results.
+
+AI‑assisted commands layered on top of that.
+
+Reality:
+
+The backend supports running any command via /terminal/run.
+
+The UI currently:
+
+Only runs the AI‑proposed command, not arbitrary commands typed by you.
+
+There is no manual command input textbox in the UI.
+
+So if you still want a manual terminal, we’d need to add that form (command input + cwd selector) and wire it to /terminal/run.
+
+2.4 File editing UX (diffs & guardrails)
+
+Plan (v2 + new‑features doc): show diffs and confirm before applying AI edits.
+
+Reality:
+
+Backend:
+
+We have /fs/write and /fs/ai_edit with strong path safety.
+
+UI:
+
+For manual editing: you see full file + “Show original” box, but no diff view.
+
+For AI edits:
+
+You see the high‑level instruction and can click “Apply AI edit”, but you don’t see a diff or preview of new content.
+
+So functionally, the system can edit files, but the UX is missing a proper diff + confirmation preview, which would make it safer and more ergonomic.
+
+2.5 UI 2.0 polish & tabs
+
+From the updated v2 UI plan: 100vh layout, column overflow, right‑side tabs for Docs/Search/Tasks/Usage/Files/Terminal, dark/light themes, icons, etc.
+
+Reality:
+
+Layout:
+
+3 columns exist and the app feels like a real tool.
+
+But we don’t strictly know if CSS fully implements:
+
+height: 100vh root layout.
+
+Per‑column overflow-y: auto to avoid full‑page scroll.
+
+Right column:
+
+Implemented as stacked panels, not actual tabs.
+
+Visual polish:
+
+Basic styling is there, but not the full design vision (theming, icons, polished cards, etc).
+
+So UI 2.0 is functional but not yet “production‑polished” the way the doc describes.
+
+2.6 Smaller deltas vs v2 checklist
+
+A few other minor gaps vs the detailed v2 checklist:
+
+Tasks model fields
+
+Plan mentions priority, blocked, timestamps, maybe source_message_id.
+
+Project_Plan_003_UPDATED
+
+Your Task model is simpler (description + status); priority/blocked aren’t surfaced now.
+
+Conversation usage UI details
+
+Spec mentions showing “last reply” breakdown (per‑turn tokens & cost) explicitly; you currently show per‑record, but not a special “last reply” summary box.
+
+These are “nice to have” polish items rather than structural gaps.
+
+3. Big items from the original mega‑plan that aren’t built (and may be de‑scoped)
+
+Your very first plan (Project_Plan_001) is intentionally ambitious: Slack, LibreChat, Anthropic, hierarchical doc ingestion, GitHub remote integration, etc.
+
+Many of those items were later trimmed or postponed in the updated v2 plan. From the v2 outline: “Slack + LibreChat are removed from plan. ✅”
+
+Project_Plan_003_UPDATED
+
+Here’s what that means:
+
+3.1 Slack integration
+
+Original plan sections cover:
+
+Slack app setup, event subscriptions, slash commands.
+
+Backend /slack/events handlers, mapping channel/thread → project/conversation.
+
+Slack formatting (mrkdwn, block kit).
+
+Workflows like /assistant remember, /assistant tasks.
+
+Status: not implemented at all in current repo and explicitly removed from the v2 scope.
+
+3.2 LibreChat / OpenAI‑compatible endpoint
+
+Original plan: build an /openai/v1/chat/completions endpoint and use LibreChat as a UI.
+
+Status:
+
+No /openai/v1 endpoint or LibreChat config is present in the current FastAPI app – you have instead a custom React UI (InfinityWindow) that talks directly to /chat, /docs, /search, etc.
+
+This is another area that ended up de‑scoped in favor of the custom UI.
+
+3.3 Multi‑provider & multimodal support
+
+Original scope: OpenAI + Anthropic, plus image/audio/video endpoints and routing rules.
+
+Status:
+
+Current code focuses on OpenAI only via openai_client.
+
+No Anthropic client, no image/audio tooling in the backend.
+
+Routing by “mode” is implemented but currently tied to OpenAI models.
+
+So the multi‑modal, multi‑provider layer is still future work if you want it.
+
+3.4 “Huge doc” ingestion & hierarchical retrieval
+
+Original plan: up to 600k‑word docs, hierarchical chunking (sections/subsections/chunks), and two‑stage retrieval.
+
+Status:
+
+You do have doc ingestion and vector search.
+
+But you don’t (yet) have:
+
+Explicit DocumentSection + DocumentChunk hierarchy with section‑level then chunk‑level retrieval as described.
+
+Stress‑tested ingestion of very large docs with optimized retrieval.
+
+So doc ingestion is “good enough for moderate docs,” but the massive hierarchical pipeline from the original spec isn’t implemented.
+
+3.5 GitHub remote integration & code search
+
+Original: remote GitHub connector, Repo/RepoFile models, clone + index remote repos, code search workflows (“Explain server/api.py”, “Find usages of UserSession”).
+
+Status:
+
+Current plan + code moved instead to local repo ingestion (/github/ingest_local_repo).
+
+There’s no remote GitHub attach/clone or dedicated code search endpoints yet.
+
+So you have a local‑repo‑centric version, not the full SaaS GitHub integration.
+
+3.6 Other “extras” from the original checklist
+
+Still not implemented (and mostly not touched in the v2 plan):
+
+Task view grouped by milestones.
+
+Cost dashboard beyond per‑conversation.
+
+Project export/import.
+
+Instruction versioning & snapshots.
+
+Topic auto‑tagging of messages.
+
+Full logging/monitoring infra, security review, backups, etc.
+
+These are long‑term “nice to have” items.
+
+So… are we 100% done?
+
+No. But:
+
+For InfinityWindow v2 as defined in Project_Plan_003_UPDATED, we are in good shape on:
+
+Core backend & chat.
+
+Docs & local repo ingest + search.
+
+Tasks (manual + AI).
+
+Usage/cost tracking.
+
+Local project directory integration.
+
+AI file edits.
+
+Terminal integration (AI proposals + run + explain).
+
+Custom UI glued to all this.
+
+We still need to build or polish:
+
+Conversation auto‑titles.
+
+Conversation folders.
+
+Project instructions & decision log (and inject into chat).
+
+“Remember this” / memory items + UI.
+
+Proper Terminal tab for manual commands.
+
+Diff‑style file edit UX.
+
+UI 2.0 polish & tabbed right column.
+
+And we’ve deliberately not implemented whole chunks of the original “mega‑MVP”:
+
+Slack integration.
+
+LibreChat integration.
+
+Anthropic + multimodal support.
+
+Remote GitHub connector & advanced code search.
+
+Huge hierarchical doc ingestion at 600k+ words scale.
+
+Extra analytics/exports/topic tagging, etc.

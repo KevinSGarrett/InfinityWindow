@@ -1,4 +1,11 @@
-import React, { useEffect, useState, KeyboardEvent } from "react";
+import React, {
+  useEffect,
+  useState,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
+import type { KeyboardEvent } from "react";
 import "./App.css";
 
 // ---------- Types ----------
@@ -10,6 +17,7 @@ type Project = {
   instruction_text?: string | null;
   instruction_updated_at?: string | null;
   local_root_path?: string | null;
+  pinned_note_text?: string | null;
 };
 
 type Conversation = {
@@ -94,6 +102,19 @@ type ConversationUsage = {
   records: UsageRecord[];
 };
 
+type TelemetrySnapshot = {
+  llm: {
+    auto_routes: Record<string, number>;
+    fallback_attempts: number;
+    fallback_success: number;
+  };
+  tasks: {
+    auto_added: number;
+    auto_completed: number;
+    auto_deduped: number;
+  };
+};
+
 type ProjectDecision = {
   id: number;
   project_id: number;
@@ -102,6 +123,50 @@ type ProjectDecision = {
   category?: string | null;
   source_conversation_id?: number | null;
   created_at: string;
+  updated_at: string;
+  status: string;
+  tags: string[];
+  follow_up_task_id?: number | null;
+  is_draft: boolean;
+  auto_detected: boolean;
+};
+
+type MemoryItem = {
+  id: number;
+  project_id: number;
+  title: string;
+  content: string;
+  tags: string[];
+  pinned: boolean;
+  expires_at?: string | null;
+  source_conversation_id?: number | null;
+  source_message_id?: number | null;
+  superseded_by_id?: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type RightTab =
+  | "tasks"
+  | "docs"
+  | "files"
+  | "search"
+  | "terminal"
+  | "usage"
+  | "notes"
+  | "memory";
+
+type CommandHistoryEntry = {
+  id: number;
+  command: string;
+  cwd: string;
+  timestamp: string;
+};
+
+type Toast = {
+  id: number;
+  message: string;
+  type: "success" | "error";
 };
 
 type FileEditProposal = {
@@ -130,6 +195,8 @@ type TerminalRunResult = {
   duration_seconds?: number;
   timed_out?: boolean;
 };
+
+type SearchFilterValue = "all" | number;
 
 // Filesystem types
 type FileEntry = {
@@ -185,9 +252,11 @@ function App() {
   const [chatMode, setChatMode] = useState<
     "auto" | "fast" | "deep" | "budget" | "research" | "code"
   >("auto");
+  const [modelOverride, setModelOverride] = useState("");
 
   // Project documents
   const [projectDocs, setProjectDocs] = useState<ProjectDocument[]>([]);
+  const [highlightedDocId, setHighlightedDocId] = useState<number | null>(null);
 
   // Project tasks
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -197,6 +266,12 @@ function App() {
   // Usage (per conversation)
   const [usage, setUsage] = useState<ConversationUsage | null>(null);
   const [isLoadingUsage, setIsLoadingUsage] = useState(false);
+  const [usageConversationId, setUsageConversationId] = useState<number | null>(
+    null
+  );
+  const [telemetry, setTelemetry] = useState<TelemetrySnapshot | null>(null);
+  const [isLoadingTelemetry, setIsLoadingTelemetry] = useState(false);
+  const [telemetryError, setTelemetryError] = useState<string | null>(null);
 
   // Project instructions
   const [projectInstructions, setProjectInstructions] = useState("");
@@ -205,6 +280,9 @@ function App() {
   const [isSavingInstructions, setIsSavingInstructions] = useState(false);
   const [projectInstructionsError, setProjectInstructionsError] =
     useState<string | null>(null);
+  const [projectInstructionsSaved, setProjectInstructionsSaved] = useState("");
+  const [projectPinnedNote, setProjectPinnedNote] = useState("");
+  const [projectPinnedNoteSaved, setProjectPinnedNoteSaved] = useState("");
 
   // Project decisions
   const [projectDecisions, setProjectDecisions] = useState<ProjectDecision[]>(
@@ -213,16 +291,48 @@ function App() {
   const [newDecisionTitle, setNewDecisionTitle] = useState("");
   const [newDecisionDetails, setNewDecisionDetails] = useState("");
   const [newDecisionCategory, setNewDecisionCategory] = useState("");
+  const [newDecisionTags, setNewDecisionTags] = useState("");
+  const [newDecisionStatus, setNewDecisionStatus] =
+    useState<"recorded" | "draft">("recorded");
   const [linkDecisionToConversation, setLinkDecisionToConversation] =
     useState(true);
   const [isSavingDecision, setIsSavingDecision] = useState(false);
   const [decisionsError, setDecisionsError] = useState<string | null>(null);
+  const [decisionStatusFilter, setDecisionStatusFilter] =
+    useState<string>("all");
+  const [decisionCategoryFilter, setDecisionCategoryFilter] =
+    useState<string>("all");
+  const [decisionTagFilter, setDecisionTagFilter] = useState<string>("all");
+  const [decisionSearchQuery, setDecisionSearchQuery] = useState("");
+  const [highlightNewDrafts, setHighlightNewDrafts] = useState(false);
 
+  // Project memory
+  const [memoryItems, setMemoryItems] = useState<MemoryItem[]>([]);
+  const [isLoadingMemory, setIsLoadingMemory] = useState(false);
+  const [memoryModalOpen, setMemoryModalOpen] = useState(false);
+  const [memoryFormTitle, setMemoryFormTitle] = useState("");
+  const [memoryFormContent, setMemoryFormContent] = useState("");
+  const [memoryFormTags, setMemoryFormTags] = useState("");
+  const [memoryFormPinned, setMemoryFormPinned] = useState(false);
+  const [memoryFormExpiresAt, setMemoryFormExpiresAt] =
+    useState<string>("");
+  const [memoryFormSourceMessageId, setMemoryFormSourceMessageId] =
+    useState<number | null>(null);
+  const [memoryFormError, setMemoryFormError] = useState<string | null>(
+    null
+  );
   // AI file edit proposals
   const [fileEditProposal, setFileEditProposal] =
     useState<FileEditProposal | null>(null);
   const [isApplyingFileEdit, setIsApplyingFileEdit] = useState(false);
   const [fileEditStatus, setFileEditStatus] = useState<string | null>(null);
+  const [fileEditPreview, setFileEditPreview] = useState<{
+    diff: string | null;
+    edited_content: string;
+    original_content: string;
+  } | null>(null);
+  const [isPreviewingFileEdit, setIsPreviewingFileEdit] = useState(false);
+  const [fileEditError, setFileEditError] = useState<string | null>(null);
 
   // AI terminal command proposals + results
   const [terminalProposal, setTerminalProposal] =
@@ -261,6 +371,12 @@ function App() {
     MessageSearchHit[]
   >([]);
   const [searchDocHits, setSearchDocHits] = useState<DocSearchHit[]>([]);
+  const [searchConversationFilter, setSearchConversationFilter] =
+    useState<SearchFilterValue>("all");
+  const [searchFolderFilter, setSearchFolderFilter] =
+    useState<SearchFilterValue>("all");
+  const [searchDocFilter, setSearchDocFilter] =
+    useState<SearchFilterValue>("all");
 
   // Filesystem / project files
   const [fsEntries, setFsEntries] = useState<FileEntry[]>([]);
@@ -279,12 +395,382 @@ function App() {
   const [fsShowOriginal, setFsShowOriginal] = useState(false);
 
   // Right‑column workbench tab
-  const [rightTab, setRightTab] = useState<
-    "tasks" | "docs" | "files" | "search" | "terminal" | "usage" | "notes"
-  >("tasks");
+  const [rightTab, setRightTab] = useState<RightTab>("tasks");
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [commandPaletteQuery, setCommandPaletteQuery] = useState("");
+  const [commandPaletteIndex, setCommandPaletteIndex] = useState(0);
+  const [manualTerminalHistory, setManualTerminalHistory] = useState<
+    CommandHistoryEntry[]
+  >([]);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const chatSectionRef = useRef<HTMLDivElement | null>(null);
+  const rightColumnRef = useRef<HTMLDivElement | null>(null);
+  const commandPaletteInputRef = useRef<HTMLInputElement | null>(null);
+  const [showAllTasks, setShowAllTasks] = useState(false);
+  const [showAllDocs, setShowAllDocs] = useState(false);
+  const [showAllDecisions, setShowAllDecisions] = useState(false);
+  const draftSeenRef = useRef<Set<number>>(new Set());
+
+  const addToast = useCallback((message: string, type: "success" | "error") => {
+    const id = Date.now();
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((toast) => toast.id !== id));
+    }, 4000);
+  }, []);
+
+  useEffect(() => {
+    if (showCommandPalette) {
+      setTimeout(() => {
+        commandPaletteInputRef.current?.focus();
+      }, 0);
+    }
+  }, [showCommandPalette]);
+
+  const commandPaletteActions = useMemo(
+    () => [
+      {
+        id: "go-tasks",
+        label: "Switch to Tasks tab",
+        action: () => setRightTab("tasks"),
+      },
+      {
+        id: "go-docs",
+        label: "Switch to Docs tab",
+        action: () => setRightTab("docs"),
+      },
+      {
+        id: "go-files",
+        label: "Switch to Files tab",
+        action: () => setRightTab("files"),
+      },
+      {
+        id: "go-search",
+        label: "Switch to Search tab",
+        action: () => setRightTab("search"),
+      },
+      {
+        id: "go-terminal",
+        label: "Switch to Terminal tab",
+        action: () => setRightTab("terminal"),
+      },
+      {
+        id: "go-usage",
+        label: "Switch to Usage tab",
+        action: () => setRightTab("usage"),
+      },
+      {
+        id: "go-notes",
+        label: "Switch to Notes tab",
+        action: () => setRightTab("notes"),
+      },
+      {
+        id: "go-memory",
+        label: "Switch to Memory tab",
+        action: () => setRightTab("memory"),
+      },
+      {
+        id: "focus-chat",
+        label: "Focus chat input",
+        action: () => {
+          chatSectionRef.current
+            ?.querySelector<HTMLTextAreaElement>(".chat-input")
+            ?.focus();
+        },
+      },
+      {
+        id: "collapse-left",
+        label: leftCollapsed ? "Expand sidebar" : "Collapse sidebar",
+        action: () => setLeftCollapsed((prev) => !prev),
+      },
+    ],
+    [leftCollapsed]
+  );
+
+  const filteredCommandActions = useMemo(() => {
+    const query = commandPaletteQuery.trim().toLowerCase();
+    if (!query) return commandPaletteActions;
+    return commandPaletteActions.filter((action) =>
+      action.label.toLowerCase().includes(query)
+    );
+  }, [commandPaletteActions, commandPaletteQuery]);
+  const visibleTasks = showAllTasks ? tasks : tasks.slice(0, 5);
+  const visibleDocs = showAllDocs ? projectDocs : projectDocs.slice(0, 5);
+  const availableDecisionCategories = useMemo(() => {
+    const categories = new Set<string>();
+    projectDecisions.forEach((decision) => {
+      if (decision.category) {
+        categories.add(decision.category);
+      }
+    });
+    return Array.from(categories.values()).sort();
+  }, [projectDecisions]);
+  const availableDecisionTags = useMemo(() => {
+    const tags = new Set<string>();
+    projectDecisions.forEach((decision) => {
+      decision.tags.forEach((tag) => tags.add(tag));
+    });
+    return Array.from(tags.values()).sort();
+  }, [projectDecisions]);
+  const filteredDecisions = useMemo(() => {
+    return projectDecisions.filter((decision) => {
+      if (
+        decisionStatusFilter !== "all" &&
+        decision.status.toLowerCase() !== decisionStatusFilter.toLowerCase()
+      ) {
+        return false;
+      }
+      if (
+        decisionCategoryFilter !== "all" &&
+        (decision.category || "").toLowerCase() !==
+          decisionCategoryFilter.toLowerCase()
+      ) {
+        return false;
+      }
+      if (
+        decisionTagFilter !== "all" &&
+        !decision.tags.some(
+          (tag) => tag.toLowerCase() === decisionTagFilter.toLowerCase()
+        )
+      ) {
+        return false;
+      }
+      if (decisionSearchQuery.trim()) {
+        const q = decisionSearchQuery.trim().toLowerCase();
+        const haystack = `${decision.title} ${decision.details || ""} ${
+          decision.category || ""
+        } ${decision.tags.join(" ")}`.toLowerCase();
+        if (!haystack.includes(q)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [
+    projectDecisions,
+    decisionStatusFilter,
+    decisionCategoryFilter,
+    decisionTagFilter,
+    decisionSearchQuery,
+  ]);
+  const visibleDecisions = showAllDecisions
+    ? filteredDecisions
+    : filteredDecisions.slice(0, 5);
+  const decisionFiltersActive =
+    decisionStatusFilter !== "all" ||
+    decisionCategoryFilter !== "all" ||
+    decisionTagFilter !== "all" ||
+    decisionSearchQuery.trim().length > 0;
+
+  const groupedMessageHits = useMemo(() => {
+    if (!searchMessageHits.length) {
+      return [];
+    }
+    const map = new Map<
+      number,
+      {
+        conversationId: number;
+        title: string;
+        folderName: string | null;
+        folderColor: string | null;
+        hits: MessageSearchHit[];
+      }
+    >();
+    searchMessageHits.forEach((hit) => {
+      const convo = conversations.find(
+        (conversation) => conversation.id === hit.conversation_id
+      );
+      const title =
+        (convo?.title && convo.title.trim()) ||
+        `Conversation ${hit.conversation_id}`;
+      const existing = map.get(hit.conversation_id);
+      if (existing) {
+        existing.hits.push(hit);
+      } else {
+        map.set(hit.conversation_id, {
+          conversationId: hit.conversation_id,
+          title,
+          folderName: hit.folder_name ?? null,
+          folderColor: hit.folder_color ?? null,
+          hits: [hit],
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [searchMessageHits, conversations]);
+
+  const groupedDocHits = useMemo(() => {
+    if (!searchDocHits.length) {
+      return [];
+    }
+    const map = new Map<
+      number,
+      { documentId: number; name: string; hits: DocSearchHit[] }
+    >();
+    searchDocHits.forEach((hit) => {
+      const doc = projectDocs.find((item) => item.id === hit.document_id);
+      const name = doc?.name || `Document ${hit.document_id}`;
+      const existing = map.get(hit.document_id);
+      if (existing) {
+        existing.hits.push(hit);
+      } else {
+        map.set(hit.document_id, {
+          documentId: hit.document_id,
+          name,
+          hits: [hit],
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [searchDocHits, projectDocs]);
+
+  const usageModelBreakdown = useMemo(() => {
+    if (!usage?.records || usage.records.length === 0) {
+      return [];
+    }
+    const map = new Map<
+      string,
+      { model: string; count: number; tokensIn: number; tokensOut: number }
+    >();
+    usage.records.forEach((record) => {
+      const key = record.model || "unknown";
+      const entry =
+        map.get(key) ??
+        {
+          model: key,
+          count: 0,
+          tokensIn: 0,
+          tokensOut: 0,
+        };
+      entry.count += 1;
+      entry.tokensIn += record.tokens_in ?? 0;
+      entry.tokensOut += record.tokens_out ?? 0;
+      map.set(key, entry);
+    });
+    return Array.from(map.values());
+  }, [usage]);
+
+  const executeCommandPaletteAction = useCallback(
+    (actionIndex: number) => {
+      const action = filteredCommandActions[actionIndex];
+      if (!action) return;
+      action.action();
+      setShowCommandPalette(false);
+      setCommandPaletteQuery("");
+    },
+    [filteredCommandActions]
+  );
+
+  const handleCommandPaletteInputKeyDown = (
+    event: KeyboardEvent<HTMLInputElement>
+  ) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      if (!filteredCommandActions.length) {
+        return;
+      }
+      setCommandPaletteIndex((prev) =>
+        Math.min(prev + 1, filteredCommandActions.length - 1)
+      );
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      if (!filteredCommandActions.length) {
+        return;
+      }
+      setCommandPaletteIndex((prev) => Math.max(prev - 1, 0));
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (!filteredCommandActions.length) return;
+      executeCommandPaletteAction(commandPaletteIndex);
+      return;
+    }
+  };
+
+  const handleRefreshAllRightPanels = () => {
+    if (selectedProjectId != null) {
+      loadTasks(selectedProjectId);
+      loadProjectDocs(selectedProjectId);
+      loadProjectFiles(selectedProjectId, fsCurrentSubpath || "");
+      loadProjectInstructions(selectedProjectId);
+      loadProjectDecisions(selectedProjectId);
+      loadFolders(selectedProjectId);
+      loadMemoryItems(selectedProjectId);
+    }
+    if (selectedConversationId != null) {
+      loadUsageForConversation(selectedConversationId);
+      refreshMessages(selectedConversationId);
+    }
+  };
+
+  useEffect(() => {
+    if (filteredCommandActions.length === 0) {
+      setCommandPaletteIndex(0);
+      return;
+    }
+    setCommandPaletteIndex((prev) =>
+      Math.min(prev, filteredCommandActions.length - 1)
+    );
+  }, [filteredCommandActions]);
+
+  useEffect(() => {
+    if (searchTab === "messages") {
+      setSearchDocFilter("all");
+    } else {
+      setSearchConversationFilter("all");
+      setSearchFolderFilter("all");
+    }
+  }, [searchTab]);
+
+  useEffect(() => {
+    if (!selectedConversationId) {
+      setUsageConversationId(null);
+      setUsage(null);
+      return;
+    }
+    setUsageConversationId((prev) => prev ?? selectedConversationId);
+  }, [selectedConversationId]);
+
+  useEffect(() => {
+    if (
+      highlightNewDrafts &&
+      !projectDecisions.some(
+        (decision) => decision.is_draft && decision.auto_detected
+      )
+    ) {
+      setHighlightNewDrafts(false);
+    }
+  }, [highlightNewDrafts, projectDecisions]);
+
+  useEffect(() => {
+    draftSeenRef.current.clear();
+    setHighlightNewDrafts(false);
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    setSearchConversationFilter("all");
+    setSearchFolderFilter("all");
+    setSearchDocFilter("all");
+    setSearchMessageHits([]);
+    setSearchDocHits([]);
+    setHighlightedDocId(null);
+  }, [selectedProjectId]);
 
   const hasUnsavedFileChanges =
     fsSelectedRelPath != null && fsEditedContent !== fsOriginalContent;
+  const parseTagsInput = useCallback((value: string): string[] => {
+    return value
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0);
+  }, []);
+  const instructionsDirty =
+    projectInstructions !== projectInstructionsSaved ||
+    projectPinnedNote !== projectPinnedNoteSaved;
 
   // Convenience
   const selectedProject =
@@ -332,6 +818,27 @@ function App() {
     }
   };
 
+  const loadMemoryItems = async (projectId: number) => {
+    setIsLoadingMemory(true);
+    try {
+      const res = await fetch(
+        `${BACKEND_BASE}/projects/${projectId}/memory`
+      );
+      if (!res.ok) {
+        console.error("Fetching memory items failed:", res.status);
+        setMemoryItems([]);
+        return;
+      }
+      const data: MemoryItem[] = await res.json();
+      setMemoryItems(data);
+    } catch (e) {
+      console.error("Fetching memory items threw:", e);
+      setMemoryItems([]);
+    } finally {
+      setIsLoadingMemory(false);
+    }
+  };
+
 
   const loadTasks = async (projectId: number) => {
     try {
@@ -358,14 +865,23 @@ function App() {
         project_id: number;
         instruction_text?: string | null;
         instruction_updated_at?: string | null;
+        pinned_note_text?: string | null;
       } = await res.json();
-      setProjectInstructions(data.instruction_text ?? "");
+      const instructionText = data.instruction_text ?? "";
+      const pinnedNote = data.pinned_note_text ?? "";
+      setProjectInstructions(instructionText);
+      setProjectInstructionsSaved(instructionText);
+      setProjectPinnedNote(pinnedNote);
+      setProjectPinnedNoteSaved(pinnedNote);
       setProjectInstructionsUpdatedAt(data.instruction_updated_at ?? null);
       setProjectInstructionsError(null);
     } catch (e) {
       console.error("Fetching project instructions failed:", e);
       setProjectInstructions("");
       setProjectInstructionsUpdatedAt(null);
+      setProjectInstructionsSaved("");
+      setProjectPinnedNote("");
+      setProjectPinnedNoteSaved("");
     }
   };
 
@@ -384,6 +900,7 @@ function App() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             instruction_text: projectInstructions,
+            pinned_note_text: projectPinnedNote,
           }),
         }
       );
@@ -395,6 +912,9 @@ function App() {
       const data = await res.json();
       setProjectInstructions(data.instruction_text ?? "");
       setProjectInstructionsUpdatedAt(data.instruction_updated_at ?? null);
+      setProjectInstructionsSaved(data.instruction_text ?? "");
+      setProjectPinnedNote(data.pinned_note_text ?? "");
+      setProjectPinnedNoteSaved(data.pinned_note_text ?? "");
     } catch (e) {
       console.error("Saving instructions threw:", e);
       setProjectInstructionsError("Unexpected error while saving.");
@@ -416,6 +936,24 @@ function App() {
       const data: ProjectDecision[] = await res.json();
       setProjectDecisions(data);
       setDecisionsError(null);
+      const unseenDrafts = data.filter(
+        (decision) =>
+          decision.is_draft &&
+          decision.auto_detected &&
+          !draftSeenRef.current.has(decision.id)
+      );
+      if (unseenDrafts.length > 0) {
+        unseenDrafts.forEach((decision) =>
+          draftSeenRef.current.add(decision.id)
+        );
+        addToast(
+          `Detected ${unseenDrafts.length} decision draft${
+            unseenDrafts.length === 1 ? "" : "s"
+          } from the latest chat.`,
+          "success"
+        );
+        setHighlightNewDrafts(true);
+      }
     } catch (e) {
       console.error("Fetching decisions threw:", e);
       setProjectDecisions([]);
@@ -435,6 +973,7 @@ function App() {
     setIsSavingDecision(true);
     setDecisionsError(null);
     try {
+      const tags = parseTagsInput(newDecisionTags);
       const res = await fetch(
         `${BACKEND_BASE}/projects/${selectedProjectId}/decisions`,
         {
@@ -448,6 +987,9 @@ function App() {
               linkDecisionToConversation && selectedConversationId
                 ? selectedConversationId
                 : null,
+            tags,
+            status: newDecisionStatus,
+            is_draft: newDecisionStatus === "draft",
           }),
         }
       );
@@ -460,6 +1002,9 @@ function App() {
       setNewDecisionTitle("");
       setNewDecisionDetails("");
       setNewDecisionCategory("");
+      setNewDecisionTags("");
+      setNewDecisionStatus("recorded");
+      addToast("Decision saved", "success");
     } catch (e) {
       console.error("Creating decision threw:", e);
       setDecisionsError("Unexpected error while saving decision.");
@@ -468,9 +1013,172 @@ function App() {
     }
   };
 
+  const updateDecision = async (
+    decisionId: number,
+    payload: Record<string, unknown>,
+    successMessage?: string
+  ) => {
+    if (!selectedProjectId) {
+      return false;
+    }
+    try {
+      const res = await fetch(`${BACKEND_BASE}/decisions/${decisionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        console.error("Update decision failed:", res.status);
+        setDecisionsError("Failed to update decision.");
+        return false;
+      }
+      await loadProjectDecisions(selectedProjectId);
+      if (successMessage) {
+        addToast(successMessage, "success");
+      }
+      return true;
+    } catch (e) {
+      console.error("Update decision threw:", e);
+      setDecisionsError("Unexpected error while updating decision.");
+      return false;
+    }
+  };
+
+  const handleDecisionStatusSelect = (
+    decision: ProjectDecision,
+    status: string
+  ) => {
+    updateDecision(decision.id, {
+      status,
+      is_draft: status === "draft" ? decision.is_draft : false,
+    });
+  };
+
+  const handleDecisionConfirmDraft = (decision: ProjectDecision) =>
+    updateDecision(
+      decision.id,
+      { status: "recorded", is_draft: false },
+      "Decision recorded"
+    );
+
+  const handleDecisionDismissDraft = (decision: ProjectDecision) =>
+    updateDecision(
+      decision.id,
+      { status: "dismissed", is_draft: false },
+      "Draft dismissed"
+    );
+
+  const handleDecisionEditTags = (decision: ProjectDecision) => {
+    const current = decision.tags.join(", ");
+    const next = window.prompt(
+      "Edit tags (comma separated)",
+      current.length ? current : ""
+    );
+    if (next === null) return;
+    const tags = parseTagsInput(next);
+    updateDecision(decision.id, { tags }, "Tags updated");
+  };
+
+  const handleDecisionCreateTask = async (decision: ProjectDecision) => {
+    if (!selectedProjectId) {
+      alert("No project selected.");
+      return;
+    }
+    const description = decision.details
+      ? `Follow-up: ${decision.title} — ${decision.details}`
+      : `Follow-up: ${decision.title}`;
+    try {
+      const res = await fetch(`${BACKEND_BASE}/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_id: selectedProjectId,
+          description,
+        }),
+      });
+      if (!res.ok) {
+        console.error("Create follow-up task failed:", res.status);
+        alert("Failed to create task. See backend logs.");
+        return;
+      }
+      const task: Task = await res.json();
+      await loadTasks(selectedProjectId);
+      await updateDecision(
+        decision.id,
+        { follow_up_task_id: task.id },
+        "Follow-up task attached"
+      );
+    } catch (e) {
+      console.error("Create follow-up task threw:", e);
+      alert("Unexpected error while creating follow-up task.");
+    }
+  };
+
+  const handleDecisionClearFollowUp = (decision: ProjectDecision) => {
+    updateDecision(
+      decision.id,
+      { follow_up_task_id: 0 },
+      "Follow-up task cleared"
+    );
+  };
+
+  const handleDecisionCreateMemory = async (decision: ProjectDecision) => {
+    if (!selectedProjectId) {
+      alert("No project selected.");
+      return;
+    }
+    try {
+      const res = await fetch(
+        `${BACKEND_BASE}/projects/${selectedProjectId}/memory`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: decision.title,
+            content: decision.details || decision.title,
+            tags: decision.tags,
+            pinned: false,
+            source_conversation_id: decision.source_conversation_id ?? null,
+          }),
+        }
+      );
+      if (!res.ok) {
+        console.error("Create memory from decision failed:", res.status);
+        alert("Failed to create memory. See backend logs.");
+        return;
+      }
+      await loadMemoryItems(selectedProjectId);
+      addToast("Decision saved to memory", "success");
+    } catch (e) {
+      console.error("Create memory from decision threw:", e);
+      alert("Unexpected error while creating memory.");
+    }
+  };
+
+  const handleDecisionCopy = async (decision: ProjectDecision) => {
+    const text = `${decision.title}\n\n${decision.details ?? ""}`.trim();
+    try {
+      await navigator.clipboard.writeText(text);
+      addToast("Decision copied to clipboard", "success");
+    } catch (e) {
+      console.error("Clipboard copy failed:", e);
+      alert("Failed to copy to clipboard.");
+    }
+  };
+
+  const handleOpenDecisionConversation = async (
+    conversationId: number | null | undefined
+  ) => {
+    if (!conversationId) return;
+    setSelectedConversationId(conversationId);
+    await refreshMessages(conversationId);
+    await loadUsageForConversation(conversationId);
+  };
+
   const loadUsageForConversation = async (conversationId: number) => {
     try {
       setIsLoadingUsage(true);
+      setUsageConversationId(conversationId);
       const res = await fetch(
         `${BACKEND_BASE}/conversations/${conversationId}/usage`
       );
@@ -486,6 +1194,32 @@ function App() {
       setUsage(null);
     } finally {
       setIsLoadingUsage(false);
+    }
+  };
+
+  const loadTelemetry = async (reset: boolean = false) => {
+    try {
+      setIsLoadingTelemetry(true);
+      setTelemetryError(null);
+      const url = new URL(`${BACKEND_BASE}/debug/telemetry`);
+      if (reset) {
+        url.searchParams.set("reset", "true");
+      }
+      const res = await fetch(url.toString());
+      if (!res.ok) {
+        console.error("Fetching telemetry failed:", res.status);
+        setTelemetry(null);
+        setTelemetryError("Failed to load telemetry.");
+        return;
+      }
+      const data: TelemetrySnapshot = await res.json();
+      setTelemetry(data);
+    } catch (e) {
+      console.error("Fetching telemetry threw:", e);
+      setTelemetry(null);
+      setTelemetryError("Unexpected error loading telemetry.");
+    } finally {
+      setIsLoadingTelemetry(false);
     }
   };
 
@@ -524,6 +1258,8 @@ function App() {
 
     setFileEditProposal(null);
     setFileEditStatus(null);
+    setFileEditPreview(null);
+    setFileEditError(null);
     setTerminalProposal(null);
     setTerminalError(null);
 
@@ -755,6 +1491,7 @@ function App() {
 
     setIsApplyingFileEdit(true);
     setFileEditStatus(null);
+    setFileEditError(null);
 
     try {
       const res = await fetch(
@@ -786,6 +1523,9 @@ function App() {
         setFileEditStatus(
           `Applied edit to ${data.path || fileEditProposal.file_path}.`
         );
+        addToast("AI edit applied", "success");
+        setFileEditPreview(null);
+        setFileEditError(null);
         // Optional: refresh file list if it might affect sizes / timestamps
         if (selectedProjectId != null) {
           await loadProjectFiles(selectedProjectId, fsCurrentSubpath);
@@ -803,9 +1543,67 @@ function App() {
     }
   };
 
+  const handlePreviewFileEdit = async () => {
+    if (!selectedProjectId) {
+      alert("No project selected.");
+      return;
+    }
+    if (!fileEditProposal) {
+      alert("No AI file edit proposal to preview.");
+      return;
+    }
+
+    setIsPreviewingFileEdit(true);
+    setFileEditError(null);
+    setFileEditPreview(null);
+
+    try {
+      const res = await fetch(
+        `${BACKEND_BASE}/projects/${selectedProjectId}/fs/ai_edit`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            file_path: fileEditProposal.file_path,
+            instruction: fileEditProposal.instruction,
+            model: null,
+            mode: "code",
+            apply_changes: false,
+            include_diff: true,
+            conversation_id: selectedConversationId,
+            message_id: null,
+          }),
+        }
+      );
+
+      if (!res.ok) {
+        console.error("Preview AI edit failed:", res.status);
+        setFileEditError("Preview failed. See backend logs.");
+        addToast("AI edit preview failed", "error");
+        return;
+      }
+
+      const data = await res.json();
+      setFileEditPreview({
+        diff: data.diff ?? null,
+        original_content: data.original_content ?? "",
+        edited_content: data.edited_content ?? "",
+      });
+      addToast("AI edit preview ready", "success");
+    } catch (e) {
+      console.error("Preview AI edit threw:", e);
+      setFileEditError("Unexpected error while previewing AI edit.");
+      addToast("AI edit preview error", "error");
+    } finally {
+      setIsPreviewingFileEdit(false);
+    }
+  };
+
   const handleDismissFileEditProposal = () => {
     setFileEditProposal(null);
     setFileEditStatus(null);
+    setFileEditPreview(null);
+    setFileEditError(null);
   };
 
   // ---------- Terminal + AI follow‑up helpers ----------
@@ -829,7 +1627,7 @@ function App() {
           conversation_id: convIdBefore,
           message: messageText,
           mode: chatMode,
-          model: null,
+          model: modelOverride.trim() || null,
         }),
       });
 
@@ -999,6 +1797,16 @@ function App() {
 
       const data: TerminalRunResult = await res.json();
       setTerminalResult(data);
+      setManualTerminalHistory((prev) => {
+        const entry: CommandHistoryEntry = {
+          id: Date.now(),
+          command: body.command,
+          cwd: body.cwd && body.cwd.trim() ? body.cwd : "(project root)",
+          timestamp: new Date().toISOString(),
+        };
+        return [entry, ...prev].slice(0, 6);
+      });
+      addToast("Command executed", "success");
 
       if (manualTerminalSendToChat && selectedConversationId) {
         const stdout = data.stdout || "";
@@ -1036,6 +1844,7 @@ function App() {
       setManualTerminalError(
         "Unexpected error while running manual terminal command."
       );
+      addToast("Manual command failed", "error");
     } finally {
       setIsRunningManualTerminal(false);
     }
@@ -1078,6 +1887,70 @@ function App() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setShowCommandPalette(true);
+        setCommandPaletteQuery("");
+        setCommandPaletteIndex(0);
+        return;
+      }
+
+      if (event.altKey && !event.ctrlKey && !event.metaKey) {
+        switch (event.key) {
+          case "1":
+            setRightTab("tasks");
+            event.preventDefault();
+            return;
+          case "2":
+            setRightTab("files");
+            event.preventDefault();
+            return;
+          case "3":
+            setRightTab("docs");
+            event.preventDefault();
+            return;
+          case "4":
+            setRightTab("search");
+            event.preventDefault();
+            return;
+          case "5":
+            setRightTab("terminal");
+            event.preventDefault();
+            return;
+          case "6":
+            setRightTab("usage");
+            event.preventDefault();
+            return;
+          case "7":
+            setRightTab("notes");
+            event.preventDefault();
+            return;
+          case "8":
+            setRightTab("memory");
+            event.preventDefault();
+            return;
+          case "s":
+            chatSectionRef.current
+              ?.querySelector<HTMLTextAreaElement>(".chat-input")
+              ?.focus();
+            event.preventDefault();
+            return;
+          default:
+            break;
+        }
+      }
+
+      if (showCommandPalette && event.key === "Escape") {
+        setShowCommandPalette(false);
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown as any);
+    return () => window.removeEventListener("keydown", handleKeyDown as any);
+  }, [setRightTab, showCommandPalette]);
 
   // ---------- When project changes, load its conversations + docs + tasks + files ----------
 
@@ -1089,6 +1962,7 @@ function App() {
       setTasks([]);
       setUsage(null);
       setFolders([]);
+      setMemoryItems([]);
       setSelectedFolderId("all");
 
       setFileEditProposal(null);
@@ -1121,6 +1995,7 @@ function App() {
     loadProjectInstructions(selectedProjectId);
     loadProjectDecisions(selectedProjectId);
     loadFolders(selectedProjectId);
+    loadMemoryItems(selectedProjectId);
     loadProjectFiles(selectedProjectId, "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProjectId]);
@@ -1176,7 +2051,7 @@ function App() {
           conversation_id: convIdBefore,
           message: userText,
           mode: chatMode,
-          model: null,
+          model: modelOverride.trim() || null,
           // Frontend always sends the conversation_id (if existing), so folder assignment
           // happens server-side already. For new chats (convIdBefore=null), backend picks default folder.
         }),
@@ -1224,6 +2099,8 @@ function App() {
     setUsage(null);
     setFileEditProposal(null);
     setFileEditStatus(null);
+    setFileEditPreview(null);
+    setFileEditError(null);
     setTerminalProposal(null);
     setTerminalResult(null);
     setTerminalError(null);
@@ -1387,6 +2264,127 @@ function App() {
     } catch (e) {
       console.error("Saving folder threw:", e);
       setFolderFormError("Unexpected error while saving folder.");
+    }
+  };
+
+  const openMemoryModal = (
+    initial?: {
+      title?: string;
+      content?: string;
+      messageId?: number;
+    }
+  ) => {
+    setMemoryFormTitle(initial?.title || "");
+    setMemoryFormContent(initial?.content || "");
+    setMemoryFormTags("");
+    setMemoryFormPinned(false);
+    setMemoryFormExpiresAt("");
+    setMemoryFormSourceMessageId(initial?.messageId ?? null);
+    setMemoryFormError(null);
+    setMemoryModalOpen(true);
+  };
+
+  const closeMemoryModal = () => {
+    setMemoryModalOpen(false);
+  };
+
+  const handleSaveMemoryItem = async () => {
+    if (!selectedProjectId) {
+      alert("No project selected.");
+      return;
+    }
+    const title = memoryFormTitle.trim();
+    const content = memoryFormContent.trim();
+    if (!title || !content) {
+      setMemoryFormError("Title and content are required.");
+      return;
+    }
+    const tags = memoryFormTags
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0);
+
+    try {
+      const res = await fetch(
+        `${BACKEND_BASE}/projects/${selectedProjectId}/memory`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title,
+            content,
+            tags,
+            pinned: memoryFormPinned,
+            expires_at: memoryFormExpiresAt || null,
+            source_conversation_id: selectedConversationId,
+            source_message_id: memoryFormSourceMessageId,
+          }),
+        }
+      );
+      if (!res.ok) {
+        console.error("Create memory failed:", res.status);
+        setMemoryFormError("Failed to save memory item.");
+        return;
+      }
+      await loadMemoryItems(selectedProjectId);
+      setMemoryModalOpen(false);
+      addToast("Memory saved", "success");
+    } catch (e) {
+      console.error("Create memory threw:", e);
+      setMemoryFormError("Unexpected error while saving memory.");
+    }
+  };
+
+  const handleToggleMemoryPinned = async (item: MemoryItem) => {
+    try {
+      const res = await fetch(
+        `${BACKEND_BASE}/memory_items/${item.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pinned: !item.pinned }),
+        }
+      );
+      if (!res.ok) {
+        console.error("Toggle pinned failed:", res.status);
+        alert("Failed to update memory item.");
+        return;
+      }
+      if (selectedProjectId != null) {
+        await loadMemoryItems(selectedProjectId);
+      }
+    } catch (e) {
+      console.error("Toggle pinned threw:", e);
+      alert("Unexpected error while updating memory.");
+    }
+  };
+
+  const handleDeleteMemory = async (id: number) => {
+    if (
+      !window.confirm(
+        "Delete this memory item? This cannot be undone."
+      )
+    ) {
+      return;
+    }
+    try {
+      const res = await fetch(
+        `${BACKEND_BASE}/memory_items/${id}`,
+        {
+          method: "DELETE",
+        }
+      );
+      if (!res.ok) {
+        console.error("Delete memory failed:", res.status);
+        alert("Failed to delete memory item.");
+        return;
+      }
+      if (selectedProjectId != null) {
+        await loadMemoryItems(selectedProjectId);
+      }
+    } catch (e) {
+      console.error("Delete memory threw:", e);
+      alert("Unexpected error while deleting memory.");
     }
   };
 
@@ -1635,13 +2633,20 @@ function App() {
 
     try {
       if (searchTab === "messages") {
+        const conversationIdFilter =
+          searchConversationFilter === "all"
+            ? null
+            : searchConversationFilter;
+        const folderIdFilter =
+          searchFolderFilter === "all" ? null : searchFolderFilter;
         const res = await fetch(`${BACKEND_BASE}/search/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             project_id: selectedProjectId,
             query: searchQuery.trim(),
-            conversation_id: selectedConversationId,
+            conversation_id: conversationIdFilter,
+            folder_id: folderIdFilter,
             limit: 10,
           }),
         });
@@ -1660,7 +2665,8 @@ function App() {
           body: JSON.stringify({
             project_id: selectedProjectId,
             query: searchQuery.trim(),
-            document_id: null,
+            document_id:
+              searchDocFilter === "all" ? null : searchDocFilter,
             limit: 10,
           }),
         });
@@ -1687,6 +2693,44 @@ function App() {
     }
   };
 
+  const clearSearchFilters = () => {
+    setSearchConversationFilter("all");
+    setSearchFolderFilter("all");
+    setSearchDocFilter("all");
+  };
+
+  const handleOpenConversationFromSearch = async (
+    conversationId: number
+  ) => {
+    setSelectedConversationId(conversationId);
+    await refreshMessages(conversationId);
+    await loadUsageForConversation(conversationId);
+  };
+
+  const handleOpenDocFromSearch = (documentId: number) => {
+    setHighlightedDocId(documentId);
+    setShowAllDocs(true);
+    setRightTab("docs");
+  };
+
+  const handleUsageConversationChange: React.ChangeEventHandler<
+    HTMLSelectElement
+  > = (event) => {
+    const value = event.target.value;
+    if (!value) {
+      setUsageConversationId(null);
+      setUsage(null);
+      return;
+    }
+    const convId = Number(value);
+    loadUsageForConversation(convId);
+  };
+
+  const handleFocusCurrentConversationUsage = () => {
+    if (!selectedConversationId) return;
+    loadUsageForConversation(selectedConversationId);
+  };
+
   // ---------- Render ----------
 
   return (
@@ -1699,6 +2743,9 @@ function App() {
           </div>
         </div>
         <div className="app-header-right">
+          <a className="skip-link" href="#chat-pane">
+            Skip to chat
+          </a>
           <div className="backend-pill">
             Backend:{" "}
             <span className="backend-pill-version">
@@ -1708,7 +2755,20 @@ function App() {
         </div>
       </header>
 
-      <main className="app-main">
+      {toasts.length > 0 && (
+        <div className="toast-stack" aria-live="polite">
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              className={"toast " + toast.type}
+            >
+              {toast.message}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <main className={"app-main" + (leftCollapsed ? " left-collapsed" : "")}>
         {/* LEFT: Projects + conversations */}
         <section className="column column-left">
           <div className="left-header">
@@ -2049,10 +3109,101 @@ function App() {
               </div>
             </div>
           )}
+
+          {memoryModalOpen && (
+            <div className="folder-modal-backdrop">
+              <div className="folder-modal memory-modal">
+                <h3>Remember this</h3>
+                <div className="folder-form-field">
+                  <label htmlFor="memory-title">Title</label>
+                  <input
+                    id="memory-title"
+                    type="text"
+                    value={memoryFormTitle}
+                    onChange={(e) =>
+                      setMemoryFormTitle(e.target.value)
+                    }
+                  />
+                </div>
+                <div className="folder-form-field">
+                  <label htmlFor="memory-content">Content</label>
+                  <textarea
+                    id="memory-content"
+                    value={memoryFormContent}
+                    onChange={(e) =>
+                      setMemoryFormContent(e.target.value)
+                    }
+                  />
+                </div>
+                <div className="folder-form-field">
+                  <label htmlFor="memory-tags">
+                    Tags (comma-separated)
+                  </label>
+                  <input
+                    id="memory-tags"
+                    type="text"
+                    value={memoryFormTags}
+                    onChange={(e) =>
+                      setMemoryFormTags(e.target.value)
+                    }
+                  />
+                </div>
+                <div className="folder-form-field">
+                  <label htmlFor="memory-expires">
+                    Expires at (optional)
+                  </label>
+                  <input
+                    id="memory-expires"
+                    type="datetime-local"
+                    value={memoryFormExpiresAt}
+                    onChange={(e) =>
+                      setMemoryFormExpiresAt(e.target.value)
+                    }
+                  />
+                </div>
+                <label className="folder-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={memoryFormPinned}
+                    onChange={(e) =>
+                      setMemoryFormPinned(e.target.checked)
+                    }
+                  />
+                  Pin this memory (always inject into prompt)
+                </label>
+                {memoryFormError && (
+                  <div className="notes-error">{memoryFormError}</div>
+                )}
+                <div className="folder-modal-actions">
+                  <div />
+                  <div className="folder-modal-actions-right">
+                    <button
+                      type="button"
+                      className="btn-link small"
+                      onClick={closeMemoryModal}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary small"
+                      onClick={handleSaveMemoryItem}
+                    >
+                      Save memory
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* MIDDLE: Chat */}
-        <section className="column column-middle">
+        <section
+          className="column column-middle"
+          ref={chatSectionRef}
+          id="chat-pane"
+        >
           <div className="chat-header">
             {selectedConversation
               ? selectedConversation.title || "Chat conversation"
@@ -2077,7 +3228,27 @@ function App() {
                     <div className="chat-message-role">
                       {m.role === "user" ? "You" : "Assistant"}
                     </div>
-                    <div className="chat-message-content">{m.content}</div>
+                    <div className="chat-message-content">
+                      {m.content}
+                      {selectedProjectId && selectedConversationId && (
+                        <button
+                          type="button"
+                          className="remember-btn"
+                          onClick={() =>
+                            openMemoryModal({
+                              title:
+                                m.role === "user"
+                                  ? "User insight"
+                                  : "Assistant insight",
+                              content: m.content,
+                              messageId: m.id,
+                            })
+                          }
+                        >
+                          Remember this
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
 
@@ -2126,6 +3297,19 @@ function App() {
                   <option value="code">Code</option>
                 </select>
               </div>
+              <div className="chat-model-override">
+                <label htmlFor="model-override-input">Model override</label>
+                <input
+                  id="model-override-input"
+                  type="text"
+                  placeholder="Optional model id"
+                  value={modelOverride}
+                  onChange={(e) => setModelOverride(e.target.value)}
+                />
+                <div className="chat-model-override-hint">
+                  Leave blank to let mode choose the model automatically.
+                </div>
+              </div>
               <button
                 className="btn-primary"
                 type="button"
@@ -2139,8 +3323,8 @@ function App() {
         </section>
 
         {/* RIGHT: Workbench (tabbed) */}
-        <section className="column column-right">
-          <div className="right-tabs">
+        <section className="column column-right" ref={rightColumnRef}>
+          <div className="right-tabs" role="tablist">
             <button
               type="button"
               className={
@@ -2153,29 +3337,20 @@ function App() {
             <button
               type="button"
               className={
-                "right-tab" + (rightTab === "docs" ? " active" : "")
-              }
-              onClick={() => setRightTab("docs")}
-            >
-              Docs
-            </button>
-            <button
-              type="button"
-              className={
-                "right-tab" + (rightTab === "notes" ? " active" : "")
-              }
-              onClick={() => setRightTab("notes")}
-            >
-              Notes
-            </button>
-            <button
-              type="button"
-              className={
                 "right-tab" + (rightTab === "files" ? " active" : "")
               }
               onClick={() => setRightTab("files")}
             >
               Files
+            </button>
+            <button
+              type="button"
+              className={
+                "right-tab" + (rightTab === "docs" ? " active" : "")
+              }
+              onClick={() => setRightTab("docs")}
+            >
+              Docs
             </button>
             <button
               type="button"
@@ -2204,346 +3379,849 @@ function App() {
             >
               Usage
             </button>
+            <button
+              type="button"
+              className={
+                "right-tab" + (rightTab === "notes" ? " active" : "")
+              }
+              onClick={() => setRightTab("notes")}
+            >
+              Notes
+            </button>
+            <button
+              type="button"
+              className={
+                "right-tab" + (rightTab === "memory" ? " active" : "")
+              }
+              onClick={() => setRightTab("memory")}
+            >
+              Memory
+            </button>
+          </div>
+          <div className="right-tabs-toolbar">
+            <button
+              type="button"
+              className="btn-link tiny"
+              onClick={handleRefreshAllRightPanels}
+            >
+              Refresh all
+            </button>
           </div>
 
           {rightTab === "tasks" && (
-            <>
-              {/* Project tasks */}
-              <div className="tasks-header">Project tasks</div>
-              <div className="tasks-new">
-                <input
-                  className="tasks-input"
-                  type="text"
-                  placeholder="Add a task for this project..."
-                  value={newTaskDescription}
-                  onChange={(e) => setNewTaskDescription(e.target.value)}
-                  onKeyDown={handleNewTaskKeyDown}
-                />
-                <button
-                  className="btn-secondary small"
-                  type="button"
-                  onClick={handleAddTask}
-                  disabled={
-                    isSavingTask ||
-                    !newTaskDescription.trim() ||
-                    !selectedProjectId
-                  }
-                >
-                  Add
-                </button>
-              </div>
-              <div className="tasks-list">
-                {selectedProjectId == null ? (
-                  <div className="tasks-empty">No project selected.</div>
-                ) : tasks.length === 0 ? (
-                  <div className="tasks-empty">
-                    No tasks yet. Add one above.
+            <div className="tab-stack">
+              <section className="tab-section">
+                <div className="tab-section-header">
+                  <div>
+                    <span className="tab-section-title">Project tasks</span>
+                    <span className="tab-pill">{tasks.length}</span>
                   </div>
-                ) : (
-                  <ul>
-                    {tasks.map((task) => (
-                      <li key={task.id} className="task-item">
-                        <input
-                          type="checkbox"
-                          checked={task.status === "done"}
-                          onChange={() => handleToggleTaskStatus(task)}
-                        />
-                        <div
-                          className={
-                            "task-text" +
-                            (task.status === "done" ? " done" : "")
-                          }
-                        >
-                          {task.description}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </>
+                  <div className="tab-toolbar">
+                    {selectedProjectId && (
+                      <button
+                        type="button"
+                        className="btn-link tiny"
+                        onClick={() => loadTasks(selectedProjectId)}
+                      >
+                        Refresh
+                      </button>
+                    )}
+                    {tasks.length > 5 && (
+                      <button
+                        type="button"
+                        className="btn-link tiny"
+                        onClick={() => setShowAllTasks((prev) => !prev)}
+                      >
+                        {showAllTasks ? "Show less" : "Show more"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="tab-section-body">
+                  <div className="tasks-new condensed">
+                    <input
+                      className="tasks-input"
+                      type="text"
+                      placeholder="Add a task..."
+                      value={newTaskDescription}
+                      onChange={(e) => setNewTaskDescription(e.target.value)}
+                      onKeyDown={handleNewTaskKeyDown}
+                    />
+                    <button
+                      className="btn-secondary small"
+                      type="button"
+                      onClick={handleAddTask}
+                      disabled={
+                        isSavingTask ||
+                        !newTaskDescription.trim() ||
+                        !selectedProjectId
+                      }
+                    >
+                      Add
+                    </button>
+                  </div>
+                  <div className="tasks-list compact">
+                    {selectedProjectId == null ? (
+                      <div className="tasks-empty">No project selected.</div>
+                    ) : tasks.length === 0 ? (
+                      <div className="tasks-empty">
+                        No tasks yet. Add one above.
+                      </div>
+                    ) : (
+                      <ul>
+                        {visibleTasks.map((task) => (
+                          <li key={task.id} className="task-item">
+                            <input
+                              type="checkbox"
+                              checked={task.status === "done"}
+                              onChange={() => handleToggleTaskStatus(task)}
+                            />
+                            <div
+                              className={
+                                "task-text" +
+                                (task.status === "done" ? " done" : "")
+                              }
+                            >
+                              {task.description}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </section>
+            </div>
           )}
 
           {rightTab === "docs" && (
-            <>
-              {/* Project documents */}
-              <div className="docs-header">Project documents</div>
-              <div className="project-docs-list">
-                {selectedProjectId == null ? (
-                  <div className="docs-empty">No project selected.</div>
-                ) : projectDocs.length === 0 ? (
-                  <div className="docs-empty">
-                    No documents yet. Ingest one below.
+            <div className="tab-stack">
+              <section className="tab-section">
+                <div className="tab-section-header">
+                  <div>
+                    <span className="tab-section-title">Project documents</span>
+                    <span className="tab-pill">{projectDocs.length}</span>
                   </div>
-                ) : (
-                  <ul>
-                    {projectDocs.map((doc) => (
-                      <li key={doc.id} className="project-doc-item">
-                        <div className="project-doc-name">{doc.name}</div>
-                        {doc.description && (
-                          <div className="project-doc-description">
-                            {doc.description}
-                          </div>
-                        )}
-                        <div className="project-doc-id">
-                          Doc ID {doc.id}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              {/* Ingest text document */}
-              <div className="ingest-section">
-                <div className="ingest-title">Ingest text document</div>
-                <div className="ingest-textdoc-form">
-                  <input
-                    className="ingest-input"
-                    type="text"
-                    placeholder="Name"
-                    value={newDocName}
-                    onChange={(e) => setNewDocName(e.target.value)}
-                  />
-                  <input
-                    className="ingest-input"
-                    type="text"
-                    placeholder="Description (optional)"
-                    value={newDocDescription}
-                    onChange={(e) =>
-                      setNewDocDescription(e.target.value)
-                    }
-                  />
-                  <textarea
-                    className="ingest-textarea"
-                    placeholder="Paste document text here..."
-                    value={newDocText}
-                    onChange={(e) => setNewDocText(e.target.value)}
-                  />
-                  <button
-                    className="btn-secondary"
-                    type="button"
-                    onClick={handleIngestTextDoc}
-                    disabled={isIngestingTextDoc}
-                  >
-                    {isIngestingTextDoc
-                      ? "Ingesting…"
-                      : "Ingest text doc"}
-                  </button>
+                  <div className="tab-toolbar">
+                    {selectedProjectId && (
+                      <button
+                        type="button"
+                        className="btn-link tiny"
+                        onClick={() => loadProjectDocs(selectedProjectId)}
+                      >
+                        Refresh
+                      </button>
+                    )}
+                    {projectDocs.length > 5 && (
+                      <button
+                        type="button"
+                        className="btn-link tiny"
+                        onClick={() => setShowAllDocs((prev) => !prev)}
+                      >
+                        {showAllDocs ? "Show less" : "Show more"}
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-
-              {/* Ingest local repo */}
-              <div className="ingest-section">
-                <div className="ingest-title">Ingest local repo</div>
-                <div className="ingest-repo-form">
-                  <input
-                    className="ingest-input"
-                    type="text"
-                    placeholder="Root path (e.g. C:\\InfinityWindow)"
-                    value={repoRootPath}
-                    onChange={(e) => setRepoRootPath(e.target.value)}
-                  />
-                  <input
-                    className="ingest-input"
-                    type="text"
-                    placeholder="Name prefix (e.g. InfinityWindow/)"
-                    value={repoNamePrefix}
-                    onChange={(e) =>
-                      setRepoNamePrefix(e.target.value)
-                    }
-                  />
-                  <button
-                    className="btn-secondary"
-                    type="button"
-                    onClick={handleIngestRepo}
-                    disabled={isIngestingRepo}
-                  >
-                    {isIngestingRepo ? "Ingesting…" : "Ingest repo"}
-                  </button>
+                <div className="tab-section-body">
+                  <div className="project-docs-list compact">
+                    {selectedProjectId == null ? (
+                      <div className="docs-empty">No project selected.</div>
+                    ) : projectDocs.length === 0 ? (
+                      <div className="docs-empty">
+                        No documents yet. Ingest one below.
+                      </div>
+                    ) : (
+                      <ul>
+                        {visibleDocs.map((doc) => (
+                          <li
+                            key={doc.id}
+                            className={
+                              "project-doc-item" +
+                              (highlightedDocId === doc.id
+                                ? " highlighted"
+                                : "")
+                            }
+                          >
+                            <div className="project-doc-name">{doc.name}</div>
+                            {doc.description && (
+                              <div className="project-doc-description">
+                                {doc.description}
+                              </div>
+                            )}
+                            <div className="project-doc-id">
+                              Doc ID {doc.id}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <details className="ingest-collapsible">
+                    <summary>Ingest text document</summary>
+                    <div className="ingest-textdoc-form">
+                      <input
+                        className="ingest-input"
+                        type="text"
+                        placeholder="Name"
+                        value={newDocName}
+                        onChange={(e) => setNewDocName(e.target.value)}
+                      />
+                      <input
+                        className="ingest-input"
+                        type="text"
+                        placeholder="Description (optional)"
+                        value={newDocDescription}
+                        onChange={(e) =>
+                          setNewDocDescription(e.target.value)
+                        }
+                      />
+                      <textarea
+                        className="ingest-textarea"
+                        placeholder="Paste document text here..."
+                        value={newDocText}
+                        onChange={(e) => setNewDocText(e.target.value)}
+                      />
+                      <button
+                        className="btn-secondary"
+                        type="button"
+                        onClick={handleIngestTextDoc}
+                        disabled={isIngestingTextDoc}
+                      >
+                        {isIngestingTextDoc
+                          ? "Ingesting…"
+                          : "Ingest text doc"}
+                      </button>
+                    </div>
+                  </details>
+                  <details className="ingest-collapsible">
+                    <summary>Ingest local repo</summary>
+                    <div className="ingest-repo-form">
+                      <input
+                        className="ingest-input"
+                        type="text"
+                        placeholder="Root path (e.g. C:\\InfinityWindow)"
+                        value={repoRootPath}
+                        onChange={(e) => setRepoRootPath(e.target.value)}
+                      />
+                      <input
+                        className="ingest-input"
+                        type="text"
+                        placeholder="Name prefix (e.g. InfinityWindow/)"
+                        value={repoNamePrefix}
+                        onChange={(e) =>
+                          setRepoNamePrefix(e.target.value)
+                        }
+                      />
+                      <button
+                        className="btn-secondary"
+                        type="button"
+                        onClick={handleIngestRepo}
+                        disabled={isIngestingRepo}
+                      >
+                        {isIngestingRepo ? "Ingesting…" : "Ingest repo"}
+                      </button>
+                    </div>
+                  </details>
                 </div>
-              </div>
-            </>
+              </section>
+            </div>
           )}
 
           {rightTab === "notes" && (
-            <>
-              <div className="notes-header">Project instructions</div>
-              <div className="notes-panel">
-                {selectedProjectId == null ? (
-                  <div className="notes-empty">No project selected.</div>
-                ) : (
-                  <>
-                    <textarea
-                      className="instructions-textarea"
-                      placeholder="Use this space to capture coding conventions, sensitive areas, current priorities..."
-                      value={projectInstructions}
-                      onChange={(e) => setProjectInstructions(e.target.value)}
-                    />
-                    <div className="instructions-meta">
-                      {projectInstructionsUpdatedAt
-                        ? `Last updated ${new Date(
-                            projectInstructionsUpdatedAt
-                          ).toLocaleString()}`
-                        : "Instructions not set yet."}
-                    </div>
-                    {projectInstructionsError && (
-                      <div className="notes-error">
-                        {projectInstructionsError}
-                      </div>
-                    )}
-                    <div className="instructions-actions">
+            <div className="tab-stack">
+              <section className="tab-section">
+                <div className="tab-section-header">
+                  <div>
+                    <span className="tab-section-title">Project instructions</span>
+                  </div>
+                  <div className="tab-toolbar">
+                    {selectedProjectId && (
                       <button
                         type="button"
-                        className="btn-secondary small"
-                        onClick={handleSaveInstructions}
-                        disabled={isSavingInstructions}
-                      >
-                        {isSavingInstructions
-                          ? "Saving…"
-                          : "Save instructions"}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-link small"
+                        className="btn-link tiny"
                         onClick={() =>
-                          selectedProjectId &&
                           loadProjectInstructions(selectedProjectId)
                         }
                       >
                         Refresh
                       </button>
-                    </div>
-                    <div className="instructions-preview">
-                      <div className="instructions-preview-label">
-                        Prompt preview
-                      </div>
-                      <pre className="instructions-preview-content">
-                        {projectInstructions
-                          ? `Project-specific instructions:\n${projectInstructions}`
-                          : "(No instructions will be injected.)"}
-                      </pre>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              <div className="decisions-header">Decision log</div>
-              <div className="decisions-panel">
-                {selectedProjectId == null ? (
-                  <div className="notes-empty">No project selected.</div>
-                ) : (
-                  <>
-                    <div className="decision-form">
-                      <input
-                        className="decision-input"
-                        type="text"
-                        placeholder="Decision title (e.g., Adopt FastAPI)"
-                        value={newDecisionTitle}
-                        onChange={(e) => setNewDecisionTitle(e.target.value)}
-                      />
-                      <input
-                        className="decision-input"
-                        type="text"
-                        placeholder="Category (optional, e.g., Architecture)"
-                        value={newDecisionCategory}
-                        onChange={(e) =>
-                          setNewDecisionCategory(e.target.value)
-                        }
-                      />
-                      <textarea
-                        className="decision-textarea"
-                        placeholder="Details (optional)"
-                        value={newDecisionDetails}
-                        onChange={(e) =>
-                          setNewDecisionDetails(e.target.value)
-                        }
-                      />
-                      <label className="decision-checkbox">
-                        <input
-                          type="checkbox"
-                          checked={linkDecisionToConversation}
-                          disabled={!selectedConversationId}
-                          onChange={(e) =>
-                            setLinkDecisionToConversation(e.target.checked)
-                          }
+                    )}
+                  </div>
+                </div>
+                <div className="tab-section-body">
+                  {selectedProjectId == null ? (
+                    <div className="notes-empty">No project selected.</div>
+                  ) : (
+                    <>
+                      <div className="pinned-note-block">
+                        <label className="pinned-note-label">
+                          Pinned note (shows at the top of Notes as a quick
+                          reminder)
+                        </label>
+                        <textarea
+                          className="pinned-note-textarea"
+                          placeholder="Summarize the current sprint goal, the most urgent reminder, or a key constraint..."
+                          value={projectPinnedNote}
+                          onChange={(e) => setProjectPinnedNote(e.target.value)}
                         />
-                        Link to current conversation
-                        {!selectedConversationId && (
-                          <span className="decision-checkbox-hint">
-                            (Select a conversation to enable)
+                      </div>
+                      <textarea
+                        className="instructions-textarea"
+                        placeholder="Use this space to capture coding conventions, sensitive areas, current priorities..."
+                        value={projectInstructions}
+                        onChange={(e) => setProjectInstructions(e.target.value)}
+                      />
+                      <div className="instructions-meta">
+                        {instructionsDirty ? (
+                          <span className="instructions-dirty">
+                            Unsaved changes — don’t forget to click Save.
                           </span>
+                        ) : projectInstructionsUpdatedAt ? (
+                          `Last updated ${new Date(
+                            projectInstructionsUpdatedAt
+                          ).toLocaleString()}`
+                        ) : (
+                          "Instructions not set yet."
                         )}
-                      </label>
-                      <div className="decision-actions">
+                      </div>
+                      {projectInstructionsError && (
+                        <div className="notes-error">
+                          {projectInstructionsError}
+                        </div>
+                      )}
+                      <div className="instructions-actions">
                         <button
                           type="button"
                           className="btn-secondary small"
-                          onClick={handleAddDecision}
-                          disabled={isSavingDecision}
+                          onClick={handleSaveInstructions}
+                          disabled={isSavingInstructions}
                         >
-                          {isSavingDecision ? "Saving…" : "Add decision"}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-link small"
-                          onClick={() =>
-                            selectedProjectId &&
-                            loadProjectDecisions(selectedProjectId)
-                          }
-                        >
-                          Refresh log
+                          {isSavingInstructions
+                            ? "Saving…"
+                            : "Save instructions"}
                         </button>
                       </div>
-                      {decisionsError && (
-                        <div className="notes-error">{decisionsError}</div>
+                      {instructionsDirty && (
+                        <details className="instructions-diff">
+                          <summary>View last saved instructions</summary>
+                          <pre className="instructions-diff-content">
+                            {projectInstructionsSaved || "(empty)"}
+                          </pre>
+                        </details>
                       )}
-                    </div>
-                    <div className="decisions-list">
-                      {projectDecisions.length === 0 ? (
-                        <div className="notes-empty">
-                          No decisions logged yet.
+                      <div className="instructions-preview">
+                        <div className="instructions-preview-label">
+                          Prompt preview
                         </div>
-                      ) : (
-                        <ul>
-                          {projectDecisions.map((decision) => (
-                            <li
-                              key={decision.id}
-                              className="decision-item"
-                            >
-                              <div className="decision-title-row">
-                                <span className="decision-title">
-                                  {decision.title}
-                                </span>
-                                {decision.category && (
-                                  <span className="decision-chip">
-                                    {decision.category}
+                        <pre className="instructions-preview-content">
+                          {projectInstructions
+                            ? `Project-specific instructions:\n${projectInstructions}`
+                            : "(No instructions will be injected.)"}
+                        </pre>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </section>
+
+              <section className="tab-section">
+                <div className="tab-section-header">
+                  <div>
+                    <span className="tab-section-title">Decision log</span>
+                    <span className="tab-pill">{filteredDecisions.length}</span>
+                  </div>
+                  <div className="tab-toolbar">
+                    {selectedProjectId && (
+                      <button
+                        type="button"
+                        className="btn-link tiny"
+                        onClick={() =>
+                          loadProjectDecisions(selectedProjectId)
+                        }
+                      >
+                        Refresh
+                      </button>
+                    )}
+                    {filteredDecisions.length > 5 && (
+                      <button
+                        type="button"
+                        className="btn-link tiny"
+                        onClick={() =>
+                          setShowAllDecisions((prev) => !prev)
+                        }
+                      >
+                        {showAllDecisions ? "Show less" : "Show more"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="tab-section-body">
+                  {selectedProjectId == null ? (
+                    <div className="notes-empty">No project selected.</div>
+                  ) : (
+                    <>
+                      <div className="decision-filters">
+                        <label className="decision-filter">
+                          <span>Status</span>
+                          <select
+                            value={decisionStatusFilter}
+                            onChange={(e) =>
+                              setDecisionStatusFilter(e.target.value)
+                            }
+                          >
+                            <option value="all">All</option>
+                            <option value="recorded">Recorded</option>
+                            <option value="in-review">In review</option>
+                            <option value="draft">Draft</option>
+                            <option value="dismissed">Dismissed</option>
+                          </select>
+                        </label>
+                        <label className="decision-filter">
+                          <span>Category</span>
+                          <select
+                            value={decisionCategoryFilter}
+                            onChange={(e) =>
+                              setDecisionCategoryFilter(e.target.value)
+                            }
+                          >
+                            <option value="all">All</option>
+                            {availableDecisionCategories.map((category) => (
+                              <option key={category} value={category}>
+                                {category}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="decision-filter">
+                          <span>Tag</span>
+                          <select
+                            value={decisionTagFilter}
+                            onChange={(e) =>
+                              setDecisionTagFilter(e.target.value)
+                            }
+                          >
+                            <option value="all">All</option>
+                            {availableDecisionTags.map((tag) => (
+                              <option key={tag} value={tag}>
+                                {tag}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="decision-filter decision-search">
+                          <span>Search</span>
+                          <input
+                            type="text"
+                            placeholder="Find a decision…"
+                            value={decisionSearchQuery}
+                            onChange={(e) =>
+                              setDecisionSearchQuery(e.target.value)
+                            }
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="btn-link tiny"
+                          onClick={() => {
+                            setDecisionStatusFilter("all");
+                            setDecisionCategoryFilter("all");
+                            setDecisionTagFilter("all");
+                            setDecisionSearchQuery("");
+                          }}
+                          disabled={!decisionFiltersActive}
+                        >
+                          Clear filters
+                        </button>
+                      </div>
+                      {highlightNewDrafts && (
+                        <div className="decision-draft-alert">
+                          New draft decisions detected — review them below.
+                        </div>
+                      )}
+                      <div className="decision-form compact">
+                        <input
+                          className="decision-input"
+                          type="text"
+                          placeholder="Decision title"
+                          value={newDecisionTitle}
+                          onChange={(e) => setNewDecisionTitle(e.target.value)}
+                        />
+                        <input
+                          className="decision-input"
+                          type="text"
+                          placeholder="Category (optional)"
+                          value={newDecisionCategory}
+                          onChange={(e) =>
+                            setNewDecisionCategory(e.target.value)
+                          }
+                        />
+                        <input
+                          className="decision-input"
+                          type="text"
+                          placeholder="Tags (comma separated)"
+                          value={newDecisionTags}
+                          onChange={(e) => setNewDecisionTags(e.target.value)}
+                        />
+                        <textarea
+                          className="decision-textarea"
+                          placeholder="Details (optional)"
+                          value={newDecisionDetails}
+                          onChange={(e) =>
+                            setNewDecisionDetails(e.target.value)
+                          }
+                        />
+                        <label className="decision-checkbox">
+                          <span>Status:</span>
+                          <select
+                            value={newDecisionStatus}
+                            onChange={(e) =>
+                              setNewDecisionStatus(
+                                e.target.value as "recorded" | "draft"
+                              )
+                            }
+                          >
+                            <option value="recorded">Recorded</option>
+                            <option value="draft">Draft</option>
+                          </select>
+                        </label>
+                        <label className="decision-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={linkDecisionToConversation}
+                            disabled={!selectedConversationId}
+                            onChange={(e) =>
+                              setLinkDecisionToConversation(e.target.checked)
+                            }
+                          />
+                          Link to current conversation
+                        </label>
+                        <div className="decision-actions">
+                          <button
+                            type="button"
+                            className="btn-secondary small"
+                            onClick={handleAddDecision}
+                            disabled={isSavingDecision}
+                          >
+                            {isSavingDecision ? "Saving…" : "Add decision"}
+                          </button>
+                        </div>
+                        {decisionsError && (
+                          <div className="notes-error">{decisionsError}</div>
+                        )}
+                      </div>
+                      <div className="decisions-list compact">
+                        {filteredDecisions.length === 0 ? (
+                          <div className="notes-empty">
+                            No decisions logged yet.
+                          </div>
+                        ) : (
+                          <ul>
+                            {visibleDecisions.map((decision) => {
+                              const showHighlight =
+                                highlightNewDrafts &&
+                                decision.is_draft &&
+                                decision.auto_detected;
+                              return (
+                                <li
+                                  key={decision.id}
+                                  className={
+                                    "decision-item" +
+                                    (decision.is_draft ? " draft" : "") +
+                                    (showHighlight ? " attention" : "")
+                                  }
+                                >
+                                  <div className="decision-title-row">
+                                    <div className="decision-title-meta">
+                                      <span className="decision-title">
+                                        {decision.title}
+                                      </span>
+                                      {decision.category && (
+                                        <span className="decision-chip">
+                                          {decision.category}
+                                        </span>
+                                      )}
+                                      <span className="decision-status-pill">
+                                        {decision.status}
+                                      </span>
+                                      {decision.is_draft && (
+                                        <span className="decision-chip draft">
+                                          Draft
+                                        </span>
+                                      )}
+                                      {decision.auto_detected && (
+                                        <span className="decision-chip auto">
+                                          Auto
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="decision-actions">
+                                      <label className="decision-status-select">
+                                        <span>Status</span>
+                                        <select
+                                          value={decision.status}
+                                          onChange={(e) =>
+                                            handleDecisionStatusSelect(
+                                              decision,
+                                              e.target.value
+                                            )
+                                          }
+                                        >
+                                          <option value="recorded">
+                                            Recorded
+                                          </option>
+                                          <option value="in-review">
+                                            In review
+                                          </option>
+                                          <option value="draft">Draft</option>
+                                          <option value="dismissed">
+                                            Dismissed
+                                          </option>
+                                        </select>
+                                      </label>
+                                      {decision.is_draft && (
+                                        <>
+                                          <button
+                                            type="button"
+                                            className="btn-link tiny"
+                                            onClick={() =>
+                                              handleDecisionConfirmDraft(
+                                                decision
+                                              )
+                                            }
+                                          >
+                                            Mark recorded
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="btn-link tiny"
+                                            onClick={() =>
+                                              handleDecisionDismissDraft(
+                                                decision
+                                              )
+                                            }
+                                          >
+                                            Dismiss draft
+                                          </button>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {decision.details && (
+                                    <div className="decision-details">
+                                      {decision.details}
+                                    </div>
+                                  )}
+                                  <div className="decision-meta">
+                                    <span>
+                                      Created{" "}
+                                      {new Date(
+                                        decision.created_at
+                                      ).toLocaleString()}
+                                    </span>
+                                    <span>
+                                      Updated{" "}
+                                      {new Date(
+                                        decision.updated_at
+                                      ).toLocaleString()}
+                                    </span>
+                                    {decision.follow_up_task_id && (
+                                      <span>
+                                        Follow-up task #
+                                        {decision.follow_up_task_id}
+                                      </span>
+                                    )}
+                                    {decision.source_conversation_id && (
+                                      <button
+                                        type="button"
+                                    className="btn-link tiny"
+                                        onClick={() =>
+                                          handleOpenDecisionConversation(
+                                            decision.source_conversation_id
+                                          )
+                                        }
+                                      >
+                                        Open conversation #
+                                        {decision.source_conversation_id}
+                                      </button>
+                                    )}
+                                  </div>
+                                  <div className="decision-tags-row">
+                                    {decision.tags.length ? (
+                                      decision.tags.map((tag) => (
+                                        <span
+                                          key={`${decision.id}-${tag}`}
+                                          className="decision-tag"
+                                        >
+                                          {tag}
+                                        </span>
+                                      ))
+                                    ) : (
+                                      <span className="decision-tag empty">
+                                        No tags yet
+                                      </span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      className="btn-link tiny"
+                                      onClick={() =>
+                                        handleDecisionEditTags(decision)
+                                      }
+                                    >
+                                      Edit tags
+                                    </button>
+                                  </div>
+                                  <div className="decision-footer">
+                                    <button
+                                      type="button"
+                                      className="btn-secondary tiny"
+                                      onClick={() =>
+                                        handleDecisionCreateTask(decision)
+                                      }
+                                    >
+                                      Add follow-up task
+                                    </button>
+                                    {decision.follow_up_task_id && (
+                                      <button
+                                        type="button"
+                                        className="btn-link tiny"
+                                        onClick={() =>
+                                          handleDecisionClearFollowUp(decision)
+                                        }
+                                      >
+                                        Clear follow-up
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      className="btn-secondary tiny"
+                                      onClick={() =>
+                                        handleDecisionCreateMemory(decision)
+                                      }
+                                    >
+                                      Save to memory
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn-link tiny"
+                                      onClick={() =>
+                                        handleDecisionCopy(decision)
+                                      }
+                                    >
+                                      Copy
+                                    </button>
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </section>
+            </div>
+          )}
+
+          {rightTab === "memory" && (
+            <>
+              <div className="memory-header">Project memories</div>
+              <div className="memory-panel">
+                {selectedProjectId == null ? (
+                  <div className="memory-empty">
+                    No project selected.
+                  </div>
+                ) : (
+                  <>
+                    <div className="memory-toolbar">
+                      <button
+                        type="button"
+                        className="btn-secondary small"
+                        onClick={() => openMemoryModal()}
+                      >
+                        + Remember something
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-link small"
+                        onClick={() => loadMemoryItems(selectedProjectId)}
+                        disabled={isLoadingMemory}
+                      >
+                        Refresh
+                      </button>
+                    </div>
+                    {isLoadingMemory ? (
+                      <div className="memory-empty">
+                        Loading memories…
+                      </div>
+                    ) : memoryItems.length === 0 ? (
+                      <div className="memory-empty">
+                        No memories yet. Capture insights from the chat
+                        or enter them manually.
+                      </div>
+                    ) : (
+                      <ul className="memory-list">
+                        {memoryItems.map((item) => (
+                          <li key={item.id} className="memory-item">
+                            <div className="memory-item-header">
+                              <div className="memory-item-title">
+                                {item.title}
+                                {item.pinned && (
+                                  <span className="memory-pill">
+                                    Pinned
                                   </span>
                                 )}
                               </div>
-                              {decision.details && (
-                                <div className="decision-details">
-                                  {decision.details}
-                                </div>
-                              )}
-                              <div className="decision-meta">
+                              <div className="memory-item-actions">
+                                <button
+                                  type="button"
+                                  className="btn-link small"
+                                  onClick={() =>
+                                    handleToggleMemoryPinned(item)
+                                  }
+                                >
+                                  {item.pinned ? "Unpin" : "Pin"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-link small danger"
+                                  onClick={() =>
+                                    handleDeleteMemory(item.id)
+                                  }
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                            <div className="memory-item-content">
+                              {item.content}
+                            </div>
+                            <div className="memory-item-meta">
+                              <span>
+                                Saved{" "}
+                                {new Date(
+                                  item.created_at
+                                ).toLocaleString()}
+                              </span>
+                              {item.tags.length > 0 && (
                                 <span>
+                                  Tags: {item.tags.join(", ")}
+                                </span>
+                              )}
+                              {item.expires_at && (
+                                <span>
+                                  Expires{" "}
                                   {new Date(
-                                    decision.created_at
+                                    item.expires_at
                                   ).toLocaleString()}
                                 </span>
-                                {decision.source_conversation_id && (
-                                  <span className="decision-meta-link">
-                                    Linked to conversation #
-                                    {decision.source_conversation_id}
-                                  </span>
-                                )}
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
+                              )}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </>
                 )}
               </div>
@@ -2551,542 +4229,849 @@ function App() {
           )}
 
           {rightTab === "files" && (
-            <>
-              {/* Project files */}
-              <div className="files-header">Project files</div>
-              <div className="files-panel">
-                {selectedProjectId == null ? (
-                  <div className="files-empty">No project selected.</div>
-                ) : fsError ? (
-                  <div className="files-error">{fsError}</div>
-                ) : (
-                  <>
-                    <div className="files-location-row">
-                      <div className="files-location">
-                        Location: {fsDisplayPath || "."}
-                        {fsRoot && (
-                          <span className="files-root-hint">
-                            {" "}
-                            (root: {fsRoot})
-                          </span>
-                        )}
-                      </div>
-                      <div className="files-location-actions">
-                        <button
-                          type="button"
-                          className="btn-secondary small"
-                          onClick={handleFsUp}
-                          disabled={
-                            !fsCurrentSubpath || fsIsLoadingList
-                          }
-                        >
-                          ↑ Up
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-secondary small"
-                          onClick={handleFsRefresh}
-                          disabled={fsIsLoadingList}
-                        >
-                          Refresh
-                        </button>
-                      </div>
-                    </div>
-                    <div className="files-list">
-                      {fsIsLoadingList ? (
-                        <div className="files-empty">
-                          Loading files…
-                        </div>
-                      ) : fsEntries.length === 0 ? (
-                        <div className="files-empty">
-                          No files or folders at this level.
-                        </div>
-                      ) : (
-                        <ul>
-                          {fsEntries.map((entry) => {
-                            const isSelected =
-                              !entry.is_dir &&
-                              fsSelectedRelPath === entry.rel_path;
-                            return (
-                              <li
-                                key={entry.rel_path}
-                                className="file-list-item"
-                              >
-                                <button
-                                  type="button"
-                                  className={
-                                    "file-list-entry-button" +
-                                    (isSelected ? " selected" : "")
-                                  }
-                                  onClick={() =>
-                                    handleOpenFsEntry(entry)
-                                  }
-                                >
-                                  <span className="file-list-name">
-                                    {entry.is_dir ? "📁" : "📄"}{" "}
-                                    {entry.name}
-                                  </span>
-                                  {!entry.is_dir &&
-                                    entry.size != null && (
-                                      <span className="file-list-meta">
-                                        {entry.size} bytes
-                                      </span>
-                                    )}
-                                </button>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      )}
-                    </div>
-
-                    {fsSelectedRelPath && (
-                      <div className="file-editor">
-                        <div className="file-editor-header">
-                          <div className="file-editor-title">
-                            Editing: {fsSelectedRelPath}
-                            {hasUnsavedFileChanges && (
-                              <span className="unsaved-indicator">
-                                ● Unsaved changes
+            <div className="tab-stack">
+              <section className="tab-section">
+                <div className="tab-section-header">
+                  <div>
+                    <span className="tab-section-title">Project files</span>
+                  </div>
+                  <div className="tab-toolbar">
+                    <button
+                      type="button"
+                      className="btn-link tiny"
+                      onClick={handleFsRefresh}
+                      disabled={fsIsLoadingList}
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                </div>
+                <div className="tab-section-body">
+                  <div className="files-panel">
+                    {selectedProjectId == null ? (
+                      <div className="files-empty">No project selected.</div>
+                    ) : fsError ? (
+                      <div className="files-error">{fsError}</div>
+                    ) : (
+                      <>
+                        <div className="files-location-row">
+                          <div className="files-location">
+                            Location: {fsDisplayPath || "."}
+                            {fsRoot && (
+                              <span className="files-root-hint">
+                                {" "}
+                                (root: {fsRoot})
                               </span>
                             )}
                           </div>
-                          <div className="file-editor-controls">
-                            <label className="show-original-toggle">
-                              <input
-                                type="checkbox"
-                                checked={fsShowOriginal}
-                                onChange={(e) =>
-                                  setFsShowOriginal(e.target.checked)
-                                }
-                              />
-                              Show original
-                            </label>
+                          <div className="files-location-actions">
                             <button
                               type="button"
                               className="btn-secondary small"
-                              onClick={handleSaveFile}
+                              onClick={handleFsUp}
                               disabled={
-                                fsIsSavingFile ||
-                                !hasUnsavedFileChanges
+                                !fsCurrentSubpath || fsIsLoadingList
                               }
                             >
-                              {fsIsSavingFile
-                                ? "Saving…"
-                                : "Save file"}
+                              ↑ Up
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-secondary small"
+                              onClick={handleFsRefresh}
+                              disabled={fsIsLoadingList}
+                            >
+                              Refresh
                             </button>
                           </div>
                         </div>
-                        <textarea
-                          className="file-editor-textarea"
-                          value={fsEditedContent}
-                          onChange={(e) =>
-                            setFsEditedContent(e.target.value)
-                          }
-                          disabled={fsIsLoadingFile}
-                        />
-                        {fsShowOriginal && (
-                          <div className="file-original-box">
-                            <div className="file-original-label">
-                              Original (read-only)
+                        <div className="files-list">
+                          {fsIsLoadingList ? (
+                            <div className="files-empty">
+                              Loading files…
                             </div>
-                            <pre className="file-original-content">
-                              {fsOriginalContent}
-                            </pre>
+                          ) : fsEntries.length === 0 ? (
+                            <div className="files-empty">
+                              No files or folders at this level.
+                            </div>
+                          ) : (
+                            <ul>
+                              {fsEntries.map((entry) => {
+                                const isSelected =
+                                  !entry.is_dir &&
+                                  fsSelectedRelPath === entry.rel_path;
+                                return (
+                                  <li
+                                    key={entry.rel_path}
+                                    className="file-list-item"
+                                  >
+                                    <button
+                                      type="button"
+                                      className={
+                                        "file-list-entry-button" +
+                                        (isSelected ? " selected" : "")
+                                      }
+                                      onClick={() => handleOpenFsEntry(entry)}
+                                    >
+                                      <span className="file-list-name">
+                                        {entry.is_dir ? "📁" : "📄"}{" "}
+                                        {entry.name}
+                                      </span>
+                                      {!entry.is_dir &&
+                                        entry.size != null && (
+                                          <span className="file-list-meta">
+                                            {entry.size} bytes
+                                          </span>
+                                        )}
+                                    </button>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+                        </div>
+
+                        {fsSelectedRelPath && (
+                          <div className="file-editor">
+                            <div className="file-editor-header">
+                              <div className="file-editor-title">
+                                Editing: {fsSelectedRelPath}
+                                {hasUnsavedFileChanges && (
+                                  <span className="unsaved-indicator">
+                                    ● Unsaved changes
+                                  </span>
+                                )}
+                              </div>
+                              <div className="file-editor-controls">
+                                <label className="show-original-toggle">
+                                  <input
+                                    type="checkbox"
+                                    checked={fsShowOriginal}
+                                    onChange={(e) =>
+                                      setFsShowOriginal(e.target.checked)
+                                    }
+                                  />
+                                  Show original
+                                </label>
+                                <button
+                                  type="button"
+                                  className="btn-secondary small"
+                                  onClick={handleSaveFile}
+                                  disabled={
+                                    fsIsSavingFile || !hasUnsavedFileChanges
+                                  }
+                                >
+                                  {fsIsSavingFile ? "Saving…" : "Save file"}
+                                </button>
+                              </div>
+                            </div>
+                            <textarea
+                              className="file-editor-textarea"
+                              value={fsEditedContent}
+                              onChange={(e) =>
+                                setFsEditedContent(e.target.value)
+                              }
+                              disabled={fsIsLoadingFile}
+                            />
+                            {fsShowOriginal && (
+                              <div className="file-original-box">
+                                <div className="file-original-label">
+                                  Original (read-only)
+                                </div>
+                                <pre className="file-original-content">
+                                  {fsOriginalContent}
+                                </pre>
+                              </div>
+                            )}
                           </div>
                         )}
-                      </div>
+                      </>
                     )}
-                  </>
-                )}
-              </div>
+                  </div>
+                </div>
+              </section>
 
-              {/* AI file edit proposal */}
-              <div className="fileedit-header">AI file edit</div>
-              <div className="fileedit-panel">
-                {selectedConversationId == null ? (
-                  <div className="fileedit-empty">
-                    No conversation selected.
+              <section className="tab-section">
+                <div className="tab-section-header">
+                  <div>
+                    <span className="tab-section-title">AI file edit</span>
                   </div>
-                ) : !fileEditProposal ? (
-                  <div className="fileedit-empty">
-                    No AI file edit proposals in the latest assistant
-                    reply.
-                  </div>
-                ) : (
-                  <>
-                    <div className="fileedit-path">
-                      <span className="fileedit-label">File:</span>{" "}
-                      <span className="fileedit-value">
-                        {fileEditProposal.file_path}
-                      </span>
-                    </div>
-                    <div className="fileedit-reason">
-                      <span className="fileedit-label">Reason:</span>{" "}
-                      <span className="fileedit-value">
-                        {fileEditProposal.reason}
-                      </span>
-                    </div>
-                    <div className="fileedit-instruction">
-                      <span className="fileedit-label">
-                        Instruction:
-                      </span>
-                      <div className="fileedit-instruction-text">
-                        {fileEditProposal.instruction}
+                </div>
+                <div className="tab-section-body">
+                  <div className="fileedit-panel">
+                    {selectedConversationId == null ? (
+                      <div className="fileedit-empty">
+                        No conversation selected.
                       </div>
-                    </div>
-                    <div className="fileedit-buttons">
-                      <button
-                        type="button"
-                        className="btn-secondary small"
-                        onClick={handleApplyFileEdit}
-                        disabled={isApplyingFileEdit}
-                      >
-                        {isApplyingFileEdit
-                          ? "Applying…"
-                          : "Apply AI edit"}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-link small"
-                        onClick={handleDismissFileEditProposal}
-                      >
-                        Dismiss
-                      </button>
-                    </div>
-                    {fileEditStatus && (
-                      <div className="fileedit-status">
-                        {fileEditStatus}
+                    ) : !fileEditProposal ? (
+                      <div className="fileedit-empty">
+                        No AI file edit proposals in the latest assistant
+                        reply.
                       </div>
+                    ) : (
+                      <>
+                        <div className="fileedit-path">
+                          <span className="fileedit-label">File:</span>{" "}
+                          <span className="fileedit-value">
+                            {fileEditProposal.file_path}
+                          </span>
+                        </div>
+                        <div className="fileedit-reason">
+                          <span className="fileedit-label">Reason:</span>{" "}
+                          <span className="fileedit-value">
+                            {fileEditProposal.reason}
+                          </span>
+                        </div>
+                        <div className="fileedit-instruction">
+                          <span className="fileedit-label">
+                            Instruction:
+                          </span>
+                          <div className="fileedit-instruction-text">
+                            {fileEditProposal.instruction}
+                          </div>
+                        </div>
+                        <div className="fileedit-buttons">
+                          <button
+                            type="button"
+                            className="btn-secondary small"
+                            onClick={handlePreviewFileEdit}
+                            disabled={isPreviewingFileEdit}
+                          >
+                            {isPreviewingFileEdit
+                              ? "Previewing…"
+                              : "Preview edit"}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-secondary small"
+                            onClick={handleApplyFileEdit}
+                            disabled={isApplyingFileEdit}
+                          >
+                            {isApplyingFileEdit
+                              ? "Applying…"
+                              : "Apply AI edit"}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-link small"
+                            onClick={handleDismissFileEditProposal}
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                        {fileEditStatus && (
+                          <div className="fileedit-status">
+                            {fileEditStatus}
+                          </div>
+                        )}
+                        {fileEditError && (
+                          <div className="fileedit-error">{fileEditError}</div>
+                        )}
+                        {fileEditPreview && (
+                          <div className="fileedit-preview">
+                            <div className="fileedit-preview-label">
+                              Preview diff
+                            </div>
+                            {fileEditPreview.diff ? (
+                              <pre className="diff-view">
+                                {fileEditPreview.diff}
+                              </pre>
+                            ) : (
+                              <div className="fileedit-preview-text">
+                                (No diff available; showing proposed content)
+                              </div>
+                            )}
+                            <details>
+                              <summary>View proposed file</summary>
+                              <pre className="fileedit-preview-content">
+                                {fileEditPreview.edited_content}
+                              </pre>
+                            </details>
+                          </div>
+                        )}
+                      </>
                     )}
-                  </>
-                )}
-              </div>
-            </>
+                  </div>
+                </div>
+              </section>
+            </div>
           )}
 
           {rightTab === "search" && (
-            <>
-              {/* Search memory */}
-              <div className="search-header">Search memory</div>
-
-              <div className="search-tabs">
-                <button
-                  className={
-                    "search-tab" +
-                    (searchTab === "messages" ? " active" : "")
-                  }
-                  type="button"
-                  onClick={() => setSearchTab("messages")}
-                >
-                  Messages
-                </button>
-                <button
-                  className={
-                    "search-tab" +
-                    (searchTab === "docs" ? " active" : "")
-                  }
-                  type="button"
-                  onClick={() => setSearchTab("docs")}
-                >
-                  Docs
-                </button>
-              </div>
-
-              <div className="search-box">
-                <textarea
-                  className="search-input"
-                  placeholder={
-                    searchTab === "messages"
-                      ? "Search in chat history..."
-                      : "Search in ingested documents..."
-                  }
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={handleSearchKeyDown}
-                />
-                <button
-                  className="btn-secondary"
-                  type="button"
-                  onClick={handleSearch}
-                  disabled={isSearching || !searchQuery.trim()}
-                >
-                  {isSearching ? "Searching…" : "Search"}
-                </button>
-              </div>
-
-              <div className="search-results">
-                {searchTab === "messages" ? (
-                  searchMessageHits.length === 0 ? (
-                    <div className="search-empty">
-                      No message results yet. Try a query.
-                    </div>
-                  ) : (
-                    <ul>
-                      {searchMessageHits.map((hit) => (
-                        <li
-                          key={hit.message_id}
-                          className="search-result-item"
-                        >
-                          <div className="search-result-meta">
-                            Conversation {hit.conversation_id} ·{" "}
-                            {hit.role}
-                          </div>
-                          <div className="search-result-content">
-                            {hit.content}
-                          </div>
-                          <div className="search-result-distance">
-                            distance {hit.distance.toFixed(3)}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )
-                ) : searchDocHits.length === 0 ? (
-                  <div className="search-empty">
-                    No doc results yet. Try a query.
+            <div className="tab-stack">
+              <section className="tab-section">
+                <div className="tab-section-header">
+                  <div>
+                    <span className="tab-section-title">Search memory</span>
                   </div>
-                ) : (
-                  <ul>
-                    {searchDocHits.map((hit) => (
-                      <li
-                        key={hit.chunk_id}
-                        className="search-result-item"
-                      >
-                        <div className="search-result-meta">
-                          Doc {hit.document_id} · chunk{" "}
-                          {hit.chunk_index}
+                </div>
+                <div className="tab-section-body">
+                  <div className="search-tabs">
+                    <button
+                      className={
+                        "search-tab" +
+                        (searchTab === "messages" ? " active" : "")
+                      }
+                      type="button"
+                      onClick={() => setSearchTab("messages")}
+                    >
+                      Messages
+                    </button>
+                    <button
+                      className={
+                        "search-tab" +
+                        (searchTab === "docs" ? " active" : "")
+                      }
+                      type="button"
+                      onClick={() => setSearchTab("docs")}
+                    >
+                      Docs
+                    </button>
+                  </div>
+                  <div className="search-box">
+                    <textarea
+                      className="search-input"
+                      placeholder={
+                        searchTab === "messages"
+                          ? "Search in chat history..."
+                          : "Search in ingested documents..."
+                      }
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={handleSearchKeyDown}
+                    />
+                    <button
+                      className="btn-secondary"
+                      type="button"
+                      onClick={handleSearch}
+                      disabled={isSearching || !searchQuery.trim()}
+                    >
+                      {isSearching ? "Searching…" : "Search"}
+                    </button>
+                  </div>
+                  <div className="search-filters">
+                    {searchTab === "messages" ? (
+                      <>
+                        <label className="search-filter">
+                          <span>Conversation</span>
+                          <select
+                            value={
+                              searchConversationFilter === "all"
+                                ? "all"
+                                : String(searchConversationFilter)
+                            }
+                            onChange={(e) =>
+                              setSearchConversationFilter(
+                                e.target.value === "all"
+                                  ? "all"
+                                  : Number(e.target.value)
+                              )
+                            }
+                          >
+                            <option value="all">All conversations</option>
+                            {conversations.map((conversation) => (
+                              <option
+                                key={conversation.id}
+                                value={conversation.id}
+                              >
+                                {conversation.title?.trim() ||
+                                  `Conversation ${conversation.id}`}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="search-filter">
+                          <span>Folder</span>
+                          <select
+                            value={
+                              searchFolderFilter === "all"
+                                ? "all"
+                                : String(searchFolderFilter)
+                            }
+                            onChange={(e) =>
+                              setSearchFolderFilter(
+                                e.target.value === "all"
+                                  ? "all"
+                                  : Number(e.target.value)
+                              )
+                            }
+                          >
+                            <option value="all">All folders</option>
+                            {folders.map((folder) => (
+                              <option key={folder.id} value={folder.id}>
+                                {folder.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          className="btn-link tiny"
+                          onClick={clearSearchFilters}
+                        >
+                          Clear filters
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <label className="search-filter">
+                          <span>Document</span>
+                          <select
+                            value={
+                              searchDocFilter === "all"
+                                ? "all"
+                                : String(searchDocFilter)
+                            }
+                            onChange={(e) =>
+                              setSearchDocFilter(
+                                e.target.value === "all"
+                                  ? "all"
+                                  : Number(e.target.value)
+                              )
+                            }
+                          >
+                            <option value="all">All documents</option>
+                            {projectDocs.map((doc) => (
+                              <option key={doc.id} value={doc.id}>
+                                {doc.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          className="btn-link tiny"
+                          onClick={() => setSearchDocFilter("all")}
+                        >
+                          Reset selection
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  <div className="search-results">
+                    {searchTab === "messages" ? (
+                      groupedMessageHits.length === 0 ? (
+                        <div className="search-empty">
+                          No message results yet. Try a query.
                         </div>
-                        <div className="search-result-content">
-                          {hit.content}
+                      ) : (
+                        <div className="search-groups">
+                          {groupedMessageHits.map((group) => (
+                            <div
+                              key={`search-group-${group.conversationId}`}
+                              className="search-group"
+                            >
+                              <div className="search-group-header">
+                                <div>
+                                  <span className="search-group-title">
+                                    {group.title}
+                                  </span>
+                                  <span className="search-group-subtitle">
+                                    Conversation #{group.conversationId}
+                                  </span>
+                                  {group.folderName && (
+                                    <span className="search-group-chip">
+                                      {group.folderName}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="search-group-actions">
+                                  <button
+                                    type="button"
+                                    className="btn-link tiny"
+                                    onClick={() =>
+                                      handleOpenConversationFromSearch(
+                                        group.conversationId
+                                      )
+                                    }
+                                  >
+                                    Open conversation
+                                  </button>
+                                </div>
+                              </div>
+                              <ul>
+                                {group.hits.map((hit, idx) => (
+                                  <li
+                                    key={`${hit.message_id}-${idx}`}
+                                    className="search-result-item"
+                                  >
+                                    <div className="search-result-meta">
+                                      {hit.role} · distance{" "}
+                                      {hit.distance.toFixed(3)}
+                                    </div>
+                                    <div className="search-result-content">
+                                      {hit.content}
+                                    </div>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))}
                         </div>
-                        <div className="search-result-distance">
-                          distance {hit.distance.toFixed(3)}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </>
+                      )
+                    ) : groupedDocHits.length === 0 ? (
+                      <div className="search-empty">
+                        No doc results yet. Try a query.
+                      </div>
+                    ) : (
+                      <div className="search-groups">
+                        {groupedDocHits.map((group) => (
+                          <div
+                            key={`doc-group-${group.documentId}`}
+                            className="search-group"
+                          >
+                            <div className="search-group-header">
+                              <div>
+                                <span className="search-group-title">
+                                  {group.name}
+                                </span>
+                                <span className="search-group-subtitle">
+                                  Doc #{group.documentId}
+                                </span>
+                              </div>
+                              <div className="search-group-actions">
+                                <button
+                                  type="button"
+                                  className="btn-link tiny"
+                                  onClick={() =>
+                                    handleOpenDocFromSearch(group.documentId)
+                                  }
+                                >
+                                  View in Docs tab
+                                </button>
+                              </div>
+                            </div>
+                            <ul>
+                              {group.hits.map((hit, idx) => (
+                                <li
+                                  key={`${hit.chunk_id}-${idx}`}
+                                  className="search-result-item"
+                                >
+                                  <div className="search-result-meta">
+                                    Chunk {hit.chunk_index} · distance{" "}
+                                    {hit.distance.toFixed(3)}
+                                  </div>
+                                  <div className="search-result-content">
+                                    {hit.content}
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </section>
+            </div>
           )}
 
           {rightTab === "terminal" && (
-            <>
-              <div className="terminal-manual-header">
-                Manual terminal command
-              </div>
-              <div className="terminal-panel manual-terminal-panel">
-                {selectedProjectId == null ? (
-                  <div className="terminal-empty">
-                    Select a project to run manual commands.
+            <div className="tab-stack">
+              <section className="tab-section">
+                <div className="tab-section-header">
+                  <div>
+                    <span className="tab-section-title">Terminal</span>
+                    <span className="tab-pill">
+                      {manualTerminalHistory.length} saved
+                    </span>
                   </div>
-                ) : (
-                  <>
-                    <div className="manual-terminal-cwd-row">
-                      <label className="terminal-label" htmlFor="manual-cwd">
-                        CWD (optional):
-                      </label>
-                      <input
-                        id="manual-cwd"
-                        type="text"
-                        className="manual-terminal-input"
-                        placeholder="e.g. backend, frontend, scratch"
-                        value={manualTerminalCwd}
-                        onChange={(e) => setManualTerminalCwd(e.target.value)}
-                      />
-                    </div>
-                    <textarea
-                      className="manual-terminal-textarea"
-                      placeholder="Enter a command to run (PowerShell / cmd syntax)..."
-                      value={manualTerminalCommand}
-                      onChange={(e) =>
-                        setManualTerminalCommand(e.target.value)
-                      }
-                      rows={3}
-                    />
-                    <label className="manual-terminal-send">
-                      <input
-                        type="checkbox"
-                        checked={manualTerminalSendToChat}
-                        onChange={(e) =>
-                          setManualTerminalSendToChat(e.target.checked)
-                        }
-                      />
-                      Send output to chat (requires selected conversation)
-                    </label>
-                    <div className="terminal-buttons">
-                      <button
-                        type="button"
-                        className="btn-secondary small"
-                        onClick={handleRunManualTerminalCommand}
-                        disabled={
-                          isRunningManualTerminal ||
-                          !manualTerminalCommand.trim()
-                        }
-                      >
-                        {isRunningManualTerminal ? "Running…" : "Run command"}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-link small"
-                        onClick={() => {
-                          setManualTerminalCommand("");
-                          setManualTerminalCwd("");
-                          setManualTerminalError(null);
-                        }}
-                      >
-                        Clear
-                      </button>
-                    </div>
-                    {manualTerminalError && (
-                      <div className="terminal-status terminal-status-error">
-                        {manualTerminalError}
+                </div>
+                <div className="tab-section-body">
+                  <div className="terminal-panel manual-terminal-panel">
+                    {selectedProjectId == null ? (
+                      <div className="terminal-empty">
+                        Select a project to run manual commands.
                       </div>
+                    ) : (
+                      <>
+                        <div className="manual-terminal-cwd-row">
+                          <label
+                            className="terminal-label"
+                            htmlFor="manual-cwd"
+                          >
+                            CWD (optional):
+                          </label>
+                          <input
+                            id="manual-cwd"
+                            type="text"
+                            className="manual-terminal-input"
+                            placeholder="e.g. backend, frontend, scratch"
+                            value={manualTerminalCwd}
+                            onChange={(e) =>
+                              setManualTerminalCwd(e.target.value)
+                            }
+                          />
+                        </div>
+                        <textarea
+                          className="manual-terminal-textarea"
+                          placeholder="Enter a command to run (PowerShell / cmd syntax)..."
+                          value={manualTerminalCommand}
+                          onChange={(e) =>
+                            setManualTerminalCommand(e.target.value)
+                          }
+                          rows={3}
+                        />
+                        <label className="manual-terminal-send">
+                          <input
+                            type="checkbox"
+                            checked={manualTerminalSendToChat}
+                            onChange={(e) =>
+                              setManualTerminalSendToChat(e.target.checked)
+                            }
+                          />
+                          Send output to chat (requires selected conversation)
+                        </label>
+                        <div className="terminal-buttons">
+                          <button
+                            type="button"
+                            className="btn-secondary small"
+                            onClick={handleRunManualTerminalCommand}
+                            disabled={
+                              isRunningManualTerminal ||
+                              !manualTerminalCommand.trim()
+                            }
+                          >
+                            {isRunningManualTerminal
+                              ? "Running…"
+                              : "Run command"}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-link small"
+                            onClick={() => {
+                              setManualTerminalCommand("");
+                              setManualTerminalCwd("");
+                              setManualTerminalError(null);
+                            }}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        {manualTerminalError && (
+                          <div className="terminal-status terminal-status-error">
+                            {manualTerminalError}
+                          </div>
+                        )}
+                      </>
                     )}
-                  </>
-                )}
-              </div>
+                  </div>
 
-              {/* AI terminal command proposal */}
-              <div className="terminal-header">AI terminal command</div>
-              <div className="terminal-panel">
-                {selectedConversationId == null ? (
-                  <div className="terminal-empty">
-                    No conversation selected.
-                  </div>
-                ) : !terminalProposal ? (
-                  <div className="terminal-empty">
-                    No AI terminal command proposals in the latest
-                    assistant reply.
-                  </div>
-                ) : (
-                  <>
-                    <div className="terminal-row">
-                      <span className="terminal-label">CWD:</span>{" "}
-                      <span className="terminal-value">
-                        {terminalProposal.cwd &&
-                        terminalProposal.cwd.trim()
-                          ? terminalProposal.cwd
-                          : "(project root)"}
-                      </span>
-                    </div>
-                    <div className="terminal-row">
-                      <span className="terminal-label">
-                        Command:
-                      </span>{" "}
-                      <span className="terminal-value mono">
-                        {terminalProposal.command}
-                      </span>
-                    </div>
-                    {terminalProposal.reason && (
-                      <div className="terminal-row">
-                        <span className="terminal-label">
-                          Reason:
-                        </span>{" "}
-                        <span className="terminal-value">
-                          {terminalProposal.reason}
-                        </span>
+                  <div className="terminal-panel">
+                    {selectedConversationId == null ? (
+                      <div className="terminal-empty">
+                        No conversation selected.
                       </div>
-                    )}
-                    <div className="terminal-buttons">
-                      <button
-                        type="button"
-                        className="btn-secondary small"
-                        onClick={handleRunTerminalProposal}
-                        disabled={isRunningTerminalCommand}
-                      >
-                        {isRunningTerminalCommand
-                          ? "Running…"
-                          : "Run command"}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-link small"
-                        onClick={() => setTerminalProposal(null)}
-                      >
-                        Dismiss
-                      </button>
-                    </div>
-                    {terminalError && (
-                      <div className="terminal-status terminal-status-error">
-                        {terminalError}
+                    ) : !terminalProposal ? (
+                      <div className="terminal-empty">
+                        No AI terminal command proposals in the latest
+                        assistant reply.
                       </div>
+                    ) : (
+                      <>
+                        <div className="terminal-row">
+                          <span className="terminal-label">CWD:</span>{" "}
+                          <span className="terminal-value">
+                            {terminalProposal.cwd &&
+                            terminalProposal.cwd.trim()
+                              ? terminalProposal.cwd
+                              : "(project root)"}
+                          </span>
+                        </div>
+                        <div className="terminal-row">
+                          <span className="terminal-label">
+                            Command:
+                          </span>{" "}
+                          <span className="terminal-value mono">
+                            {terminalProposal.command}
+                          </span>
+                        </div>
+                        {terminalProposal.reason && (
+                          <div className="terminal-row">
+                            <span className="terminal-label">
+                              Reason:
+                            </span>{" "}
+                            <span className="terminal-value">
+                              {terminalProposal.reason}
+                            </span>
+                          </div>
+                        )}
+                        <div className="terminal-buttons">
+                          <button
+                            type="button"
+                            className="btn-secondary small"
+                            onClick={handleRunTerminalProposal}
+                            disabled={isRunningTerminalCommand}
+                          >
+                            {isRunningTerminalCommand
+                              ? "Running…"
+                              : "Run command"}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-link small"
+                            onClick={() => setTerminalProposal(null)}
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                        {terminalError && (
+                          <div className="terminal-status terminal-status-error">
+                            {terminalError}
+                          </div>
+                        )}
+                      </>
                     )}
-                  </>
-                )}
-              </div>
+                  </div>
 
-              {/* Terminal last run output */}
-              <div className="terminal-output-header">
-                Last terminal run
-              </div>
-              <div className="terminal-output-panel">
-                {!terminalResult ? (
-                  <div className="terminal-empty">
-                    No terminal command has been run yet from this UI.
+                  <div className="terminal-output-panel">
+                    {!terminalResult ? (
+                      <div className="terminal-empty">
+                        No terminal command has been run yet from this UI.
+                      </div>
+                    ) : (
+                      <>
+                        <div className="terminal-output-meta">
+                          <div>
+                            <span className="terminal-label">
+                              Command:
+                            </span>{" "}
+                            <span className="terminal-value mono">
+                              {terminalResult.command}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="terminal-label">CWD:</span>{" "}
+                            <span className="terminal-value">
+                              {terminalResult.cwd &&
+                              terminalResult.cwd.trim()
+                                ? terminalResult.cwd
+                                : "(project root)"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="terminal-label">
+                              Exit code:
+                            </span>{" "}
+                            <span className="terminal-value">
+                              {terminalResult.exit_code}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="terminal-output-note">
+                          (This output was also sent to the assistant so it
+                          can decide what to do next.)
+                        </div>
+                        <div className="terminal-output-block">
+                          <div className="terminal-output-label">STDOUT</div>
+                          <pre className="terminal-output-stdout">
+                            {terminalResult.stdout || "(no stdout)"}
+                          </pre>
+                        </div>
+                        <div className="terminal-output-block">
+                          <div className="terminal-output-label">STDERR</div>
+                          <pre className="terminal-output-stderr">
+                            {terminalResult.stderr || "(no stderr)"}
+                          </pre>
+                        </div>
+                      </>
+                    )}
                   </div>
-                ) : (
-                  <>
-                    <div className="terminal-output-meta">
-                      <div>
-                        <span className="terminal-label">
-                          Command:
-                        </span>{" "}
-                        <span className="terminal-value mono">
-                          {terminalResult.command}
-                        </span>
+
+                  <div className="terminal-history-header">
+                    Recent manual commands
+                  </div>
+                  <div className="terminal-history-panel">
+                    {manualTerminalHistory.length === 0 ? (
+                      <div className="terminal-empty">
+                        Commands you run manually will be listed here.
                       </div>
-                      <div>
-                        <span className="terminal-label">CWD:</span>{" "}
-                        <span className="terminal-value">
-                          {terminalResult.cwd &&
-                          terminalResult.cwd.trim()
-                            ? terminalResult.cwd
-                            : "(project root)"}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="terminal-label">
-                          Exit code:
-                        </span>{" "}
-                        <span className="terminal-value">
-                          {terminalResult.exit_code}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="terminal-output-note">
-                      (This output was also sent to the assistant so it
-                      can decide what to do next.)
-                    </div>
-                    <div className="terminal-output-block">
-                      <div className="terminal-output-label">STDOUT</div>
-                      <pre className="terminal-output-stdout">
-                        {terminalResult.stdout || "(no stdout)"}
-                      </pre>
-                    </div>
-                    <div className="terminal-output-block">
-                      <div className="terminal-output-label">STDERR</div>
-                      <pre className="terminal-output-stderr">
-                        {terminalResult.stderr || "(no stderr)"}
-                      </pre>
-                    </div>
-                  </>
-                )}
-              </div>
-            </>
+                    ) : (
+                      <ul>
+                        {manualTerminalHistory.map((entry) => (
+                          <li key={entry.id} className="terminal-history-item">
+                            <div>
+                              <span className="mono">{entry.command}</span>
+                              <span className="terminal-history-cwd">
+                                ({entry.cwd})
+                              </span>
+                            </div>
+                            <div className="terminal-history-meta">
+                              {new Date(entry.timestamp).toLocaleTimeString()}
+                              <button
+                                type="button"
+                                className="btn-link tiny"
+                                onClick={() => {
+                                  setManualTerminalCommand(entry.command);
+                                  setManualTerminalCwd(
+                                    entry.cwd === "(project root)"
+                                      ? ""
+                                      : entry.cwd
+                                  );
+                                  addToast(
+                                    "Loaded command into manual runner",
+                                    "success"
+                                  );
+                                }}
+                              >
+                                Load
+                              </button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </section>
+            </div>
           )}
 
           {rightTab === "usage" && (
             <>
               {/* Usage panel */}
               <div className="usage-header">
-                Usage (this conversation)
+                Usage dashboard
+                {usageConversationId && (
+                  <span className="usage-header-subtitle">
+                    Conversation #{usageConversationId}
+                  </span>
+                )}
               </div>
               <div className="usage-panel">
-                {selectedConversationId == null ? (
+                <div className="usage-toolbar">
+                  <label className="usage-filter">
+                    <span>Select conversation</span>
+                    <select
+                      value={usageConversationId ?? ""}
+                      onChange={handleUsageConversationChange}
+                    >
+                      <option value="">
+                        {conversations.length === 0
+                          ? "No conversations available"
+                          : "Choose…"}
+                      </option>
+                      {conversations.map((conversation) => (
+                        <option key={conversation.id} value={conversation.id}>
+                          {conversation.title?.trim() ||
+                            `Conversation ${conversation.id}`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    className="btn-link small"
+                    onClick={handleFocusCurrentConversationUsage}
+                    disabled={!selectedConversationId}
+                  >
+                    Use current chat
+                  </button>
+                </div>
+                {usageConversationId == null ? (
                   <div className="usage-empty">
-                    No conversation selected.
+                    Select a conversation to view usage analytics.
                   </div>
                 ) : isLoadingUsage ? (
                   <div className="usage-empty">Loading usage…</div>
@@ -3102,7 +5087,7 @@ function App() {
                           Total tokens in:
                         </span>{" "}
                         <span className="usage-value">
-                          {usage.total_tokens_in ?? 0}
+                          {usage.total_tokens_in?.toLocaleString() ?? 0}
                         </span>
                       </div>
                       <div>
@@ -3110,7 +5095,7 @@ function App() {
                           Total tokens out:
                         </span>{" "}
                         <span className="usage-value">
-                          {usage.total_tokens_out ?? 0}
+                          {usage.total_tokens_out?.toLocaleString() ?? 0}
                         </span>
                       </div>
                       <div>
@@ -3123,6 +5108,47 @@ function App() {
                             : "—"}
                         </span>
                       </div>
+                      <div>
+                        <span className="usage-label">Total calls:</span>{" "}
+                        <span className="usage-value">
+                          {usage.records.length.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="usage-breakdown">
+                      <div className="usage-breakdown-title">
+                        Model breakdown
+                      </div>
+                      {usageModelBreakdown.length === 0 ? (
+                        <div className="usage-empty">
+                          No assistant calls recorded yet.
+                        </div>
+                      ) : (
+                        <ul className="usage-breakdown-list">
+                          {usageModelBreakdown.map((entry) => (
+                            <li
+                              key={entry.model}
+                              className="usage-breakdown-item"
+                            >
+                              <div className="usage-model">
+                                {entry.model || "Unknown model"}
+                              </div>
+                              <div className="usage-model-metrics">
+                                <span>
+                                  {entry.count} call
+                                  {entry.count === 1 ? "" : "s"}
+                                </span>
+                                <span>
+                                  in {entry.tokensIn.toLocaleString()}
+                                </span>
+                                <span>
+                                  out {entry.tokensOut.toLocaleString()}
+                                </span>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                     <div className="usage-records">
                       <div className="usage-records-title">
@@ -3143,8 +5169,8 @@ function App() {
                                   {r.model || "model?"}
                                 </span>
                                 <span className="usage-tokens">
-                                  in {r.tokens_in ?? 0} · out{" "}
-                                  {r.tokens_out ?? 0}
+                                  in {(r.tokens_in ?? 0).toLocaleString()} ·
+                                  out {(r.tokens_out ?? 0).toLocaleString()}
                                 </span>
                               </div>
                               <div className="usage-record-sub">
@@ -3157,6 +5183,119 @@ function App() {
                           ))}
                       </ul>
                     </div>
+                    <div className="usage-telemetry">
+                      <div className="usage-telemetry-header">
+                        <span>Routing & tasks telemetry</span>
+                        <div className="usage-telemetry-actions">
+                          <button
+                            type="button"
+                            className="btn-secondary small"
+                            onClick={() => loadTelemetry(false)}
+                            disabled={isLoadingTelemetry}
+                          >
+                            Refresh
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-link small"
+                            onClick={() => loadTelemetry(true)}
+                            disabled={isLoadingTelemetry}
+                          >
+                            Refresh & reset
+                          </button>
+                        </div>
+                      </div>
+                      {isLoadingTelemetry ? (
+                        <div className="usage-telemetry-body">
+                          Loading telemetry…
+                        </div>
+                      ) : telemetryError ? (
+                        <div className="usage-telemetry-body usage-telemetry-error">
+                          {telemetryError}
+                        </div>
+                      ) : !telemetry ? (
+                        <div className="usage-telemetry-body">
+                          No telemetry loaded yet. Click Refresh to fetch
+                          routing and task counters.
+                        </div>
+                      ) : (
+                        <div className="usage-telemetry-body">
+                          <div className="usage-telemetry-section">
+                            <div className="usage-telemetry-title">
+                              Auto-mode routes
+                            </div>
+                            {Object.keys(telemetry.llm.auto_routes).length ===
+                            0 ? (
+                              <div className="usage-telemetry-empty">
+                                No auto-mode calls recorded yet.
+                              </div>
+                            ) : (
+                              <ul className="usage-telemetry-list">
+                                {Object.entries(
+                                  telemetry.llm.auto_routes
+                                ).map(([mode, count]) => (
+                                  <li key={mode}>
+                                    <span className="usage-label">
+                                      {mode}
+                                    </span>
+                                    <span className="usage-value">
+                                      {count}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                          <div className="usage-telemetry-section">
+                            <div className="usage-telemetry-title">
+                              Fallbacks & tasks
+                            </div>
+                            <ul className="usage-telemetry-list">
+                              <li>
+                                <span className="usage-label">
+                                  Fallback attempts
+                                </span>
+                                <span className="usage-value">
+                                  {telemetry.llm.fallback_attempts}
+                                </span>
+                              </li>
+                              <li>
+                                <span className="usage-label">
+                                  Fallback successes
+                                </span>
+                                <span className="usage-value">
+                                  {telemetry.llm.fallback_success}
+                                </span>
+                              </li>
+                              <li>
+                                <span className="usage-label">
+                                  Tasks auto-added
+                                </span>
+                                <span className="usage-value">
+                                  {telemetry.tasks.auto_added}
+                                </span>
+                              </li>
+                              <li>
+                                <span className="usage-label">
+                                  Tasks auto-completed
+                                </span>
+                                <span className="usage-value">
+                                  {telemetry.tasks.auto_completed}
+                                </span>
+                              </li>
+                              <li>
+                                <span className="usage-label">
+                                  Tasks auto-deduped
+                                </span>
+                                <span className="usage-value">
+                                  {telemetry.tasks.auto_deduped}
+                                </span>
+                              </li>
+                            </ul>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
               </div>
@@ -3164,6 +5303,62 @@ function App() {
           )}
         </section>
       </main>
+
+      {showCommandPalette && (
+        <div
+          className="command-palette-overlay"
+          role="presentation"
+          onClick={() => setShowCommandPalette(false)}
+        >
+          <div
+            className="command-palette"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="command-palette-header">
+              <span>Quick actions</span>
+              <button
+                type="button"
+                className="btn-link small"
+                onClick={() => setShowCommandPalette(false)}
+              >
+                Close
+              </button>
+            </div>
+            <input
+              ref={commandPaletteInputRef}
+              className="command-palette-input"
+              placeholder="Search actions…"
+              value={commandPaletteQuery}
+              onChange={(e) => {
+                setCommandPaletteQuery(e.target.value);
+                setCommandPaletteIndex(0);
+              }}
+              onKeyDown={handleCommandPaletteInputKeyDown}
+            />
+            <div className="command-palette-list" role="listbox">
+              {filteredCommandActions.length === 0 ? (
+                <div className="command-palette-empty">No matches</div>
+              ) : (
+                filteredCommandActions.map((action, idx) => (
+                  <button
+                    key={action.id}
+                    type="button"
+                    className={
+                      "command-palette-item" +
+                      (idx === commandPaletteIndex ? " active" : "")
+                    }
+                    onClick={() => executeCommandPaletteAction(idx)}
+                  >
+                    {action.label}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

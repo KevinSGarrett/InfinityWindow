@@ -1,0 +1,844 @@
+InfinityWindow – Hydration File v2 (Updated)
+
+Instructions to the assistant reading this file
+==============================================
+
+You are helping continue work on the InfinityWindow project – a local AI workbench for long‑running, serious projects.
+
+Treat everything below as canonical project context unless the user explicitly says it has changed.
+
+When the user pastes this file or says “rehydrate”:
+
+1. Read this entire document once.
+2. Assume the codebase and behavior described here already exist.
+3. Ask for *minimal* clarification; prefer proposing concrete code edits and steps.
+4. Preserve the architecture, constraints, and conventions described here.
+5. When you need exact current code, ask the user to paste specific files (e.g. `frontend/src/App.tsx`, `backend/app/api/main.py`).
+
+
+0. Snapshot of where things stand (high‑level)
+=============================================
+
+InfinityWindow now has:
+
+- A working backend (FastAPI) with:
+  - Projects, conversations, messages, tasks, usage records, documents.
+  - Vector retrieval over messages and ingested documents.
+  - Filesystem integration for each project (`/fs/list`, `/fs/read`, `/fs/write`, `/fs/ai_edit`).
+  - A terminal runner endpoint (`/terminal/run`) tied to per‑project roots.
+  - A chat endpoint that:
+    - Does retrieval.
+    - Logs usage and costs.
+    - Can auto‑apply file edits via special `<<AI_FILE_EDIT>>` blocks.
+    - Understands structured “terminal run result” messages.
+
+- A working frontend (React + TS) with a single‑page UI that includes:
+  - Project selector and conversations list.
+  - Chat pane with modes (auto / fast / deep / budget / research / code).
+  - Right‑hand workbench with:
+    - Project tasks (DB‑backed).
+    - Project documents list + ingestion (text + local repo).
+    - Project file browser + editor (backed by filesystem endpoints).
+    - Vector search across messages and docs.
+    - Usage panel for the current conversation.
+    - AI terminal command panel (proposals from the model).
+    - Terminal output panel (last command run).
+    - An AI file‑edit panel (wired for future JSON‑style file edit proposals).
+
+- A set of project plan docs at the repo root which describe:
+  - Original product vision.
+  - New features (tasks panel, usage, terminal, file integration, etc.).
+  - Updated multi‑phase roadmap (v2).
+
+Not everything in the roadmap is done (e.g., conversation folders, dedicated memory items, full UI 2.0 refactor), but a lot is implemented.
+
+
+1. High‑level project overview
+==============================
+
+Name: **InfinityWindow**
+
+Goal: A local “AI workbench” for serious, multi‑week projects where you:
+
+- Work at the level of **projects**, not one‑off chats.
+- Persist and search all important context:
+  - Conversations.
+  - Tasks / TODOs.
+  - Documents and code (via vector store).
+- Integrate with **real local files & repos** (not just copy/paste).
+- Have a focused UI with:
+  - Project selector.
+  - Conversation list.
+  - Chat pane.
+  - Right‑hand workbench (tasks, docs, search, files, usage, terminal, etc.).
+
+Design intent:
+
+- The assistant should behave like a “project copilot” that knows:
+  - The state of the codebase.
+  - The project roadmap.
+  - The user’s preferences for step‑by‑step guidance.
+- Code and UX should favor **clarity and explicitness** over magic.
+
+
+2. Tech stack & repo layout
+===========================
+
+Environment:
+
+- OS: Windows.
+- Project root: `C:\InfinityWindow`
+
+Top‑level layout (from `dir`):
+
+- `backend\` – FastAPI app, DB, vectorstore, LLM integration.
+- `frontend\` – React + TypeScript SPA.
+- `scratch\` – local scratchpad folder (e.g., `scratch/test-notes.txt`).
+- `.gitignore`
+- `README.md` – long, resume‑style product description.
+- `Project_Plan_001_ORIGINAL.txt`
+- `Project_Plan_002_NEW_FEATURES.txt`
+- `Project_Plan_003_UPDATED.txt`
+- `Hydration_File_001.txt` – older hydration snapshot.
+- `sample_upload.txt` – used in ingestion tests.
+- (New hydration file you’re reading now, ideally saved as `Hydration_File_002_*.txt`.)
+
+Backend:
+
+- Stack: Python, FastAPI, SQLAlchemy, SQLite.
+- DB file: `backend/infinitywindow.db`
+- Vector store: Chroma on disk under `backend/chroma_data`.
+- App code: `backend/app/...`
+- Main entrypoint: `uvicorn app.api.main:app --reload`
+
+Frontend:
+
+- Stack: React + TypeScript.
+- Build tooling: Vite.
+- Main component: `frontend/src/App.tsx`
+- Styles: `frontend/src/App.css`
+- Local dev server: typically `http://127.0.0.1:5173`
+
+
+3. Backend data model (SQLAlchemy)
+==================================
+
+File: `backend/app/db/models.py` (schema summarized)
+
+**Project**
+
+- Columns:
+  - `id` (PK)
+  - `name` (unique, indexed)
+  - `description` (nullable)
+  - `local_root_path` (nullable string) — absolute path to project’s root on disk.
+  - `created_at`, `updated_at`
+- Relationships:
+  - `conversations: List[Conversation]`
+  - `documents: List[Document]`
+  - `tasks: List[Task]`
+  - `usage_records: List[UsageRecord]`
+
+Important: For the main project in this environment:
+
+```json
+{
+  "id": 1,
+  "name": "Demo Project",
+  "description": "Main InfinityWindow playground",
+  "local_root_path": "C:\\InfinityWindow"
+}
+This makes the repo root itself the “local project root”. Conversation
+id, project_id, title, timestamps.
+Belongs to a Project.
+Has many Message and UsageRecord.
+Message
+id, conversation_id, role ("user" | "assistant" | "system"), content, timestamps.
+Indexed in Chroma for retrieval.
+Document / DocumentSection / DocumentChunk
+Represent ingested docs (text files, repo files) and their chunked embeddings:
+Each Document belongs to a Project.
+DocumentChunk stores text and metadata like document_id, chunk_index.
+Task
+id, project_id, description, status ("open" / "done"), timestamps.
+Optional links (in code) to conversation/message context via helper logic.
+UsageRecord
+Tracks LLM usage:
+project_id
+conversation_id (nullable)
+message_id (nullable)
+model
+tokens_in, tokens_out
+cost_estimate (float, USD approximation)
+created_at
+Backend API & behavior (FastAPI)
+===================================
+Main module: backend/app/api/main.py 4.1 System & health
+GET /health
+Returns { "status": "ok", "service": "InfinityWindow", "version": "0.3.0" }
+CORS allows local frontends:
+http://localhost:5173
+http://127.0.0.1:5173
+http://localhost:3000
+http://127.0.0.1:3000
+4.2 Projects Pydantic:
+ProjectCreate { name, description?, local_root_path? }
+ProjectRead { id, name, description?, local_root_path? }
+ProjectUpdate { name?, description?, local_root_path? }
+Endpoints:
+POST /projects → create project (name must be unique).
+GET /projects → list all projects.
+PATCH /projects/{project_id} → update name, description, local_root_path.
+local_root_path is fundamental for filesystem and terminal features. 4.3 Conversations & messages Pydantic:
+ConversationCreate { project_id, title? }
+ConversationRead { id, project_id, title? }
+ConversationRenamePayload { title }
+MessageRead { id, conversation_id, role, content }
+Endpoints:
+GET /projects/{project_id}/conversations
+POST /conversations
+PATCH /conversations/{conversation_id} → rename.
+GET /conversations/{conversation_id}/messages
+Status:
+Conversation titles + manual renaming are fully implemented (DB + endpoints + UI).
+Conversation folders do not yet exist (no extra table / folder_id column yet). 4.4 Tasks (project TODOs) Pydantic:
+TaskCreate { project_id, description }
+TaskRead { id, project_id, description, status }
+TaskUpdate { description?, status? }
+Endpoints:
+GET /projects/{project_id}/tasks
+POST /tasks
+PATCH /tasks/{task_id}
+Helper: auto_update_tasks_from_conversation(db, conversation, max_messages=16)
+Behavior:
+Pulls up to max_messages most recent messages for the conversation.
+Builds a textual transcript.
+Calls a small/fast model via generate_reply_from_history with a system prompt that:
+Asks for JSON only: {"tasks": [{"description": "..."}]}.
+Wants new, actionable TODOs.
+Parses returned JSON.
+For each proposed task:
+If there’s not already an open task with the same description for that project:
+Create a new Task(status="open").
+Called at the end of /chat, best‑effort:
+Failures are logged as warnings; chat still succeeds.
+Status:
+Tasks model + endpoints + right‑side UI list are implemented.
+Auto AI task extraction runs automatically after each chat turn (no separate /tasks/refresh endpoint yet).
+4.5 Usage / cost tracking Pydantic:
+UsageRecordRead
+ConversationUsageSummary { conversation_id, total_tokens_in, total_tokens_out, total_cost_estimate, records[] }
+Endpoint:
+GET /conversations/{conversation_id}/usage
+Behavior:
+Loads all UsageRecord rows for the conversation.
+Sums tokens in/out.
+Recomputes total_cost_estimate using estimate_call_cost(model, tokens_in, tokens_out).
+Returns a list of UsageRecordRead plus totals.
+Where do UsageRecords come from?
+In /chat:
+After generating a reply, it reads usage_out from generate_reply_from_history:
+model, tokens_in, tokens_out.
+Computes cost via estimate_call_cost.
+Inserts a UsageRecord.
+In /projects/{project_id}/fs/ai_edit:
+After the AI file edit call, it also logs a UsageRecord tied to:
+project_id, conversation_id (if provided), and message_id (if provided).
+Status:
+Usage logging + per‑conversation usage API + frontend usage panel are implemented.
+4.6 Filesystem helpers & endpoints
+Helpers:
+_ensure_project(db, project_id) – 404 if not found.
+_get_project_root(project):
+Uses local_root_path (must exist and be a directory).
+Normalizes and validates path.
+_safe_join(root, relative_path):
+Enforces:
+Relative path only (no drives, no leading slash).
+No .. segments.
+Resolved path must stay under root (checked via .relative_to(root)).
+Raises 400 if violated.
+Endpoints: GET /projects/{project_id}/fs/list
+Query: subpath (optional).
+Behavior:
+Resolve project & root.
+target = _safe_join(root, subpath or "").
+Must exist and be a directory.
+Returns:
+json
+Copy code
+{
+  "root": "C:\\InfinityWindow",
+  "path": "backend\\app",
+  "entries": [
+    {
+      "name": "api",
+      "is_dir": true,
+      "size": null,
+      "modified_at": "...",
+      "rel_path": "backend\\app\\api"
+    },
+    ...
+  ]
+}
+GET /projects/{project_id}/fs/read
+Query: file_path (relative).
+Behavior:
+Resolve, _safe_join, ensure it’s a file.
+Read as UTF‑8 text.
+Returns { root, path, content }.
+400 if not UTF‑8.
+PUT /projects/{project_id}/fs/write
+Body: FileWritePayload { file_path, content, create_dirs }
+Behavior:
+Resolve.
+Ensure parent directory exists (or create if create_dirs=true).
+Write file as UTF‑8.
+Returns { root, path, size, modified_at }.
+Status:
+These are fully wired to the frontend’s Project Files panel and editor.
+4.7 AI‑assisted file editing (/fs/ai_edit + AI_FILE_EDIT)
+Endpoint: POST /projects/{project_id}/fs/ai_edit Body: FileAIEditPayload { file_path, instruction, model?, mode?, apply_changes, conversation_id?, message_id? } Flow:
+Resolve project & root; _safe_join to get target.
+Read original_content as UTF‑8.
+Build a prompt to the model:
+System: explains it is a code/text editor; must return only the new file content, no explanations or code fences.
+User: includes file path, editing instructions, and current file content.
+Call generate_reply_from_history with mode="code" by default, capturing usage in usage_info.
+If apply_changes is True:
+Overwrite the file with the edited content.
+Log a UsageRecord with model, tokens, cost (best‑effort).
+Return:
+root, path, applied (bool), original_content, edited_content, usage{...}.
+Automatic file edits from /chat There is an internal convention for the assistant inside /chat:
+The model can embed one or more AI_FILE_EDIT blocks inside its reply:
+text
+Copy code
+...user‑visible explanation...
+
+<<AI_FILE_EDIT>>
+{"file_path": "relative/path/from/project/root.ext",
+ "instruction": "Short, high-level description of the edit to apply"}
+<<END_AI_FILE_EDIT>>
+Helper _extract_ai_file_edits(reply_text):
+Finds each <<AI_FILE_EDIT>> ... <<END_AI_FILE_EDIT>> block.
+Parses the JSON inside (dict or list of dicts).
+Returns:
+cleaned_reply_text (original reply with blocks removed).
+file_edit_requests: List[{"file_path": ..., "instruction": ...}].
+In /chat:
+After generate_reply_from_history:
+raw_reply_text → _extract_ai_file_edits(...) → clean_reply_text, file_edit_requests.
+The user sees only clean_reply_text.
+For each file edit request:
+The backend calls ai_edit_project_file(project_id=conversation.project_id, ...) with apply_changes=True.
+Errors are caught and logged; chat still succeeds.
+Status:
+Automatic AI file edits are implemented at the backend level via AI_FILE_EDIT blocks.
+The current frontend also has an “AI file edit” panel expecting JSON {"type": "file_edit_proposal", ...}, which is now effectively unused because AI_FILE_EDIT blocks are stripped server‑side. You can either:
+Keep this panel as future UI for explicit user‑approved edits, or
+Update it later to surface AI_FILE_EDIT results or a new JSON proposal format.
+4.8 Terminal integration (/terminal/run)
+Pydantic:
+TerminalRunPayload { project_id, command, cwd?, timeout_seconds? }
+Endpoint: POST /terminal/run Body example:
+json
+Copy code
+{
+  "project_id": 1,
+  "cwd": "backend",
+  "command": "pytest -q",
+  "timeout_seconds": 120
+}
+Behavior:
+Resolve project and root (local_root_path).
+Determine working directory:
+If cwd provided, _safe_join(root, cwd).
+Else workdir = root.
+Must exist and be a directory.
+Run subprocess.run:
+shell=True, cwd=workdir, capture_output=True, text=True, timeout=timeout.
+On success:
+Collect stdout, stderr, exit_code.
+On TimeoutExpired:
+Return stdout, stderr + "[Command timed out...]", exit_code=-1.
+500 if unexpected exception.
+Output is truncated to at most 8000 characters for each of stdout/stderr. Returns:
+json
+Copy code
+{
+  "project_id": 1,
+  "cwd": "",                 // relative to root; "" = project root
+  "command": "pytest -q",
+  "exit_code": 5,
+  "stdout": "no tests ran in 0.01s",
+  "stderr": ""
+}
+Safety:
+Still constrained under local_root_path via _safe_join.
+The model cannot call this endpoint directly; it can only propose commands (see system prompt behavior below).
+4.9 Chat endpoint & system prompt conventions
+Endpoint: POST /chat → { conversation_id, reply } Request:
+json
+Copy code
+{
+  "project_id": 1,           // optional if creating a new conversation
+  "conversation_id": 123,    // optional; continue existing conversation
+  "message": "text",         // required
+  "mode": "auto|fast|deep|budget|research|code", // optional
+  "model": "...",            // optional; overrides mode
+}
+Logic:
+Resolve or create conversation:
+If conversation_id provided:
+Load or 404.
+Else:
+If project_id provided:
+Use that project or 404.
+Else:
+Use the first project or create “Default Project”.
+Create a new Conversation(title="Chat conversation").
+Load existing messages for history (chronological).
+Insert new Message(role="user", content=payload.message) and flush.
+Retrieval step (best‑effort):
+Compute user_embedding = get_embedding(payload.message).
+Query Chroma for:
+Similar past messages (query_similar_messages).
+Similar document chunks (query_similar_document_chunks).
+Construct a retrieval_context_text with:
+“Relevant past messages: …”
+“Relevant document excerpts: …”
+If retrieval fails, log warning; proceed without context.
+Build chat_history for generate_reply_from_history:
+System message with detailed behavior, including:
+InfinityWindow persona.
+Rules for file edits via AI_FILE_EDIT blocks.
+Rules for terminal command proposals via JSON terminal_command_proposal.
+Explicit instructions about:
+Using Windows‑friendly commands (dir, type, etc.).
+Not including cd inside the command string (use cwd instead).
+Safe, non‑destructive commands only.
+Interpreting structured terminal run result messages (see below).
+Optional system message with retrieval context.
+All previous messages (user & assistant).
+Current user message.
+Call generate_reply_from_history(chat_history, model, mode, usage_out=...).
+Extract AI_FILE_EDIT blocks and auto‑apply file edits as described above.
+Save assistant message (visible text only).
+Index user & assistant messages into Chroma.
+Log LLM usage in UsageRecord.
+Call auto_update_tasks_from_conversation (best‑effort).
+Commit and return { conversation_id, reply }.
+Special system prompt conventions for this project:
+Terminal command proposals The model can propose a command by returning a JSON object as the last thing in the reply, e.g.:
+json
+Copy code
+{
+  "type": "terminal_command_proposal",
+  "cwd": "backend",
+  "command": "pytest -q",
+  "reason": "Run the backend test suite quietly to check for failing components."
+}
+Rules encoded in the backend system prompt:
+JSON must be valid and must be the last thing in the reply (no trailing text).
+cwd is optional; when present it is relative to project root ("", "backend", "frontend", etc.).
+Do not include cd inside command; use cwd instead.
+Prefer safe, diagnostic commands (no destructive operations).
+Assume a Windows shell environment.
+Terminal run result messages The frontend automatically sends the result of a proposed command back into /chat as a user message when the user clicks “Run command”. That message always begins with:
+I ran the terminal command you proposed.
+Then it includes:
+Command: <command>
+CWD: <cwd or (project root)>
+Exit code: <int>
+STDOUT: (possibly truncated)
+STDERR:
+The system prompt tells the model to:
+Treat this as structured diagnostic data.
+Avoid immediately proposing the exact same command again unless explicitly asked.
+Use exit code + stdout/stderr to decide next steps:
+e.g. propose a different command,
+or propose file edits,
+or explain what the output means.
+File edits via AI_FILE_EDIT Covered in 4.7; the system prompt explains when and how to emit AI_FILE_EDIT blocks, and that the backend will perform the actual file write.
+Frontend UI (React App)
+==========================
+File: frontend/src/App.tsx (summary of behavior; exact code may evolve). 5.1 Layout App root layout:
+Header:
+Title: “InfinityWindow”
+Subtitle: “Personal AI workbench with long-term memory”
+Backend status pill showing InfinityWindow v{version} from /health.
+Main content: 3 columns:
+Left column – Projects & conversations
+Middle column – Chat
+Right column – Workbench:
+Tasks
+Project documents
+Text doc ingestion
+Local repo ingestion
+Project files
+Search memory
+AI terminal command
+Last terminal run
+AI file edit
+Usage (this conversation)
+5.2 Projects & conversations (left column) State:
+projects, selectedProjectId
+conversations, selectedConversationId
+messages
+Conversation rename state (renamingConversationId, renameTitle)
+Behavior:
+On mount:
+GET /health → backend version pill.
+GET /projects:
+Set projects.
+If at least one:
+Set selectedProjectId = first project.
+Preload:
+/projects/{id}/conversations
+/projects/{id}/docs
+/projects/{id}/tasks
+/projects/{id}/fs/list (root)
+When selectedProjectId changes:
+Refresh conversations, docs, tasks, and file listing.
+Clear conversation‑specific state (messages, usage, terminal panel, etc.).
+When selectedConversationId changes:
+GET /conversations/{id}/messages
+GET /conversations/{id}/usage
+Conversations list:
+Shows title or fallback Chat conversation #{id}.
+Clicking a row selects that conversation.
+“Rename” button:
+Toggles an inline <input> bound to renameTitle.
+On Enter or Save:
+PATCH /conversations/{id} with { title }.
+Refresh conversations.
+“+ New chat”:
+Clears selectedConversationId and message list.
+Next POST /chat without conversation_id will create a new conversation for the currently selected project.
+5.3 Chat (middle column) State:
+chatInput, chatMode ("auto" | "fast" | "deep" | "budget" | "research" | "code"), isSending.
+Messages list (from backend).
+Behavior:
+handleSend:
+Validates input, ensures a project is selected.
+Optimistically appends a temporary user message.
+POST /chat with:
+project_id: selectedProjectId
+conversation_id: selectedConversationId (or null)
+message: userText
+mode: chatMode
+On success:
+The backend returns a conversation_id:
+If it changed (new conversation), update selectedConversationId and refresh conversations.
+Refresh messages and conversation usage.
+Enter key in textarea sends the message (without Shift).
+While isSending is true, a “thinking…” assistant bubble is shown.
+5.4 Tasks UI (right column – "Project tasks") State:
+tasks, newTaskDescription, isSavingTask.
+Behavior:
+Load: GET /projects/{id}/tasks when project changes.
+Add task:
+POST /tasks with { project_id, description }.
+On success, clear input and reload tasks.
+Toggle task status:
+PATCH /tasks/{task.id} with { status: "open"|"done" }.
+UI:
+Checkbox + description for each task.
+Simple header “Project tasks”.
+Empty states: “No project selected” or “No tasks yet. Add one above.”
+Note: The user doesn’t see the auto‑extracted tasks logic directly; they just see tasks appearing/being updated as /chat runs. 5.5 Project documents & ingestion Project docs list:
+GET /projects/{id}/docs → list of ingested docs.
+Shows name, optional description, and doc ID.
+Text doc ingestion:
+Inputs: name, optional description, large textarea for text.
+POST /docs/text with { project_id, name, description, text }.
+On success: clear fields, reload docs.
+Repo ingestion:
+Inputs:
+repoRootPath (default "C:\\InfinityWindow")
+repoNamePrefix (default "InfinityWindow/")
+POST /github/ingest_local_repo with:
+{ project_id, root_path, name_prefix, include_globs: null }
+On success: reload docs.
+5.6 Project files panel State (key):
+fsEntries, fsRoot, fsCurrentSubpath, fsDisplayPath
+fsSelectedRelPath, fsOriginalContent, fsEditedContent
+fsIsLoadingList, fsIsLoadingFile, fsIsSavingFile
+fsError, fsShowOriginal
+Behavior:
+loadProjectFiles(projectId, subpath):
+Calls GET /projects/{id}/fs/list?subpath=....
+On success: sets entries, root, fsCurrentSubpath, fsDisplayPath.
+On errors: sets fsError (e.g., no local_root_path).
+readProjectFile(projectId, relPath):
+GET /projects/{id}/fs/read?file_path=relPath.
+Sets fsSelectedRelPath, fsOriginalContent, and copies to fsEditedContent.
+“Up” button:
+Navigates to parent directory by adjusting fsCurrentSubpath and calling loadProjectFiles.
+“Refresh” button:
+Reloads loadProjectFiles for current subpath.
+Save file:
+If there are unsaved changes:
+PUT /projects/{id}/fs/write with { file_path, content: fsEditedContent, create_dirs: false }.
+On success: update fsOriginalContent and reload list.
+UI:
+Shows current location (fsDisplayPath or ".") and root hint (fsRoot).
+Lists directories and files; directories show 📁, files show 📄 + size.
+Clicking a directory navigates into it.
+Clicking a file opens editor.
+Editor:
+Large textarea for edited content.
+“Show original” toggle to reveal read‑only <pre> with original text.
+“Save file” button with unsaved changes indicator.
+5.7 Search memory panel State:
+searchTab (“messages” | “docs”)
+searchQuery, isSearching
+searchMessageHits, searchDocHits
+Behavior:
+Messages search:
+POST /search/messages with:
+{ project_id, query, conversation_id, limit }
+Shows hits with conversation ID, role, content, and distance.
+Docs search:
+POST /search/docs with:
+{ project_id, query, document_id: null, limit }
+Shows hits with doc ID, chunk index, content, and distance.
+UI:
+Tabs for Messages / Docs.
+Textarea input; Enter (no Shift) triggers search.
+Lists results with distance values.
+5.8 AI terminal command panel State:
+terminalProposal: TerminalCommandProposal | null
+Extracted by extractAiProposals(messages) which:
+Looks at the latest assistant message.
+Finds the last { ... } substring.
+Tries to JSON.parse it.
+If parsed.type === "terminal_command_proposal", sets terminalProposal.
+UI:
+If no conversation selected: “No conversation selected.”
+If no proposal in last assistant reply: “No AI terminal command proposals…”
+If present:
+Shows:
+CWD (or (project root) if empty).
+Command (monospace).
+Reason (if provided).
+Buttons:
+“Run command” → handleRunTerminalProposal().
+“Dismiss”.
+handleRunTerminalProposal:
+Builds payload:
+{ project_id, cwd: proposal.cwd ?? "", command: proposal.command, timeout_seconds: 120 }
+POST /terminal/run.
+On success:
+Stores terminalResult.
+Builds a structured summary message:
+text
+Copy code
+I ran the terminal command you proposed.
+
+Command: <command>
+CWD: <cwd or (project root)>
+Exit code: <exit_code>
+
+STDOUT:
+<stdoutSnippet>
+
+STDERR:
+<stderr or (no stderr)>
+
+(Optional note about truncation)
+Calls sendTerminalOutputToChat(summaryMessage):
+Which is another POST /chat attached to the current conversation.
+Result:
+The model “sees” the command output and can respond to it without you copy/pasting anything.
+5.9 Last terminal run panel State:
+terminalResult: TerminalRunResult | null
+Shows most recent response from /terminal/run.
+UI:
+If no result yet: “No terminal command has been run yet from this UI.”
+Otherwise:
+Shows command, CWD, exit code.
+Two <pre> blocks: STDOUT, STDERR.
+5.10 AI file edit panel (currently legacy / future)
+State:
+fileEditProposal: FileEditProposal | null (JSON of shape { type: "file_edit_proposal", file_path, instruction, reason }).
+Extraction:
+Same extractAiProposals function:
+If parsed JSON has type === "file_edit_proposal" → setFileEditProposal.
+Handlers:
+handleApplyFileEdit:
+Calls POST /projects/{projectId}/fs/ai_edit with:
+{ file_path, instruction, model: null, mode: "code", apply_changes: true, conversation_id, message_id: null }
+Sets status text and refreshes file list.
+“Dismiss” clears fileEditProposal.
+Status:
+Because the backend now uses AI_FILE_EDIT blocks (not JSON proposals) and strips them before sending the reply to the UI, this panel is not currently triggered by the new convention.
+You can:
+Leave it as experimental / future UI for more explicit user‑approved edits, or
+Update the system prompt + backend to produce JSON proposals instead of (or in addition to) AI_FILE_EDIT.
+5.11 Usage (this conversation) panel State:
+usage: ConversationUsage | null, isLoadingUsage.
+Behavior:
+On conversation change or after new message:
+GET /conversations/{id}/usage.
+UI:
+Shows:
+Total tokens in/out.
+Total cost (formatted as $0.0000 or — if unknown).
+Recent usage records (reverse chronological, last ~10):
+Model name.
+Tokens in/out.
+Message ID.
+Local time of created_at.
+This gives the user visibility into model usage per conversation.
+Project plans & documentation
+================================
+At the repo root:
+Project_Plan_001_ORIGINAL.txt: original design + product description.
+Project_Plan_002_NEW_FEATURES.txt: detailed feature ideas and how to implement them (tasks panel, usage, files, terminal, etc.). 
+Project_Plan_002_NEW_FEATURES
+
+Project_Plan_003_UPDATED.txt: updated v2 roadmap with phases (project organization, tasks, usage, filesystem, terminal, memory, UI 2.0). 
+Project_Plan_003_UPDATED
+
+README.md: long overview, resume‑friendly narrative.
+Hydration_File_001.txt: previous hydration snapshot.
+This hydration file: updated canonical state.
+These documents should be treated as trusted context. When they conflict, assume:
+The latest project plan (003) + this hydration file describe the current intended direction.
+Some items in the roadmap are aspirational (see next section).
+What’s done vs still TODO (from the roadmap)
+===============================================
+Based on the v2 roadmap and the current code, here’s a status summary: 7.1 Project & conversation organization
+Conversation titles:
+✅ DB supports title.
+✅ PATCH /conversations/{id} implemented.
+✅ UI shows titles and supports renaming.
+Conversation folders:
+⏳ Not implemented yet.
+No conversation_folders table or folder_id column.
+Project instructions / decision log:
+⏳ Not implemented (no instruction_text column or decision log table yet).
+Current system prompt is global, not per‑project.
+7.2 Tasks / TODO system
+Core tasks model + API:
+✅ tasks table.
+✅ GET /projects/{id}/tasks, POST /tasks, PATCH /tasks/{id}.
+Tasks UI:
+✅ Right‑hand “Project tasks” section with list + checkbox + add input.
+AI‑assisted task extraction:
+✅ Implemented as auto_update_tasks_from_conversation and automatically invoked at end of /chat.
+⏳ There is no separate “Update tasks from this conversation” button yet; it just runs behind the scenes.
+7.3 Usage / cost tracking
+Backend:
+✅ UsageRecord model and logging from /chat and /fs/ai_edit.
+✅ Cost computed via estimate_call_cost per usage record.
+API:
+✅ GET /conversations/{id}/usage.
+UI:
+✅ “Usage (this conversation)” panel.
+7.4 Local project directory integration
+Project local_root_path:
+✅ Field on Project.
+✅ Used to constrain filesystem & terminal endpoints.
+Filesystem browsing & editing:
+✅ /fs/list, /fs/read, /fs/write implemented and constrained by _safe_join.
+✅ Frontend file browser + editor + “Show original” + unsaved changes indicator.
+AI‑driven file editing:
+✅ /fs/ai_edit endpoint.
+✅ AI_FILE_EDIT block convention in /chat to auto‑apply edits.
+⏳ No diff view / patch‑based editing yet; overwrites full file content.
+7.5 Terminal integration
+Manual command runner:
+✅ /terminal/run endpoint with project‑root‑constrained CWD and timeout.
+UI “Terminal” panel:
+✅ “AI terminal command” panel shows proposals from assistant (terminal_command_proposal JSON).
+✅ “Last terminal run” panel shows command, CWD, exit code, stdout, stderr.
+AI‑assisted commands:
+✅ System prompt teaches the model to emit terminal_command_proposal JSON objects.
+✅ Frontend:
+Parses proposals.
+Lets the user click “Run command”.
+Automatically sends an “I ran the terminal command you proposed…” message with the output back into /chat.
+This matches the “AI‑assisted, human‑approved” design.
+7.6 Memory upgrades (“Remember this”)
+⏳ Not implemented yet:
+No dedicated memory_items table.
+No “Remember this” button / API.
+Retrieval currently uses:
+Past messages.
+Ingested documents & repo chunks.
+7.7 UI 2.0 / layout refactor
+Current state:
+Three columns.
+Right column is vertically stacked sections (Tasks, Docs, Ingestion, Files, Search, Terminal, Usage).
+It can feel dense / cramped.
+Planned:
+Tabs or better grouping on the right (Docs / Tasks / Files / Search / Terminal / Usage).
+More polished, production‑grade layout.
+Status:
+⏳ Not done yet. The current layout is functional but still “v1.5” rather than final UI 2.0.
+Running the system (local dev)
+=================================
+Backend:
+powershell
+Copy code
+cd C:\InfinityWindow\backend
+# Activate virtualenv (example)
+.\.venv\Scripts\activate
+uvicorn app.api.main:app --reload
+Backend served at http://127.0.0.1:8000.
+Frontend:
+powershell
+Copy code
+cd C:\InfinityWindow\frontend
+npm install           # first time
+npm run dev
+Dev server at http://127.0.0.1:5173.
+Git:
+The main branch is typically kept clean and pushed to GitHub.
+The user has already committed & pushed the recent changes (filesystem, usage, terminal, system prompt, etc.).
+Working style & preferences
+==============================
+The human using this system prefers:
+Concrete, step‑by‑step instructions for:
+Which files to edit.
+Exactly what code to replace (often full‑file replacements).
+Which commands to run and in what directory.
+Minimal back‑and‑forth:
+Don’t ask unnecessary clarifying questions when you can propose a reasonable default and adjust if needed.
+Explicit warnings for risky operations:
+For DB schema changes:
+Call out if they must delete or migrate backend/infinitywindow.db.
+For filesystem changes:
+Explain any non‑trivial edits.
+When showing code:
+Prefer self‑contained file contents (especially for App.tsx and main.py) during active development.
+Keep them copy‑pasteable.
+Remember:
+Project root: C:\InfinityWindow.
+Main project’s local_root_path is that root.
+Windows path quirks apply (backslashes, etc.).
+How to “rehydrate” in a fresh ChatGPT conversation
+======================================================
+For the user:
+When you open a new chat and want to continue working on InfinityWindow:
+Paste this entire hydration file.
+Then say something like:
+“You are the InfinityWindow build assistant. Read that hydrate file as the canonical state of my project, then help me with XYZ.”
+If you’ve changed important files (e.g. frontend/src/App.tsx, backend/app/api/main.py, backend/app/llm/openai_client.py, etc.) since this hydration file, paste the current versions so the assistant stays aligned with reality.
+For the assistant:
+After reading this file:
+Treat this as the baseline.
+Ask for specific files only when necessary.
+Use the roadmap section to reason about what’s done vs not.
+When the user says things like:
+“Run X in the backend/frontend”
+“Update this file”
+“Add feature Y”
+You should:
+Propose the corresponding code edits.
+Propose terminal_command_proposal JSON when appropriate.
+Interpret “I ran the terminal command you proposed…” messages correctly.
+Avoid repeating the same terminal commands unnecessarily.

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.db.base import Base
 from app.db.session import engine, get_db
 from app.db import models
+from app.llm import openai_client as openai_module
 from app.llm.openai_client import generate_reply_from_history
 from app.llm.embeddings import get_embedding
 from app.llm.pricing import estimate_call_cost
@@ -47,6 +48,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ],
@@ -78,6 +81,7 @@ class ProjectRead(BaseModel):
     local_root_path: Optional[str] = None
     instruction_text: Optional[str] = None
     instruction_updated_at: Optional[datetime] = None
+    pinned_note_text: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -87,6 +91,7 @@ class ProjectUpdate(BaseModel):
     description: Optional[str] = None
     local_root_path: Optional[str] = None
     instruction_text: Optional[str] = None
+    pinned_note_text: Optional[str] = None
 
 
 class ConversationCreate(BaseModel):
@@ -165,10 +170,12 @@ class ProjectInstructionsRead(BaseModel):
     project_id: int
     instruction_text: Optional[str]
     instruction_updated_at: Optional[datetime]
+    pinned_note_text: Optional[str] = None
 
 
 class ProjectInstructionsPayload(BaseModel):
     instruction_text: Optional[str]
+    pinned_note_text: Optional[str] = None
 
 
 class ProjectDecisionCreate(BaseModel):
@@ -176,6 +183,10 @@ class ProjectDecisionCreate(BaseModel):
     details: Optional[str] = None
     category: Optional[str] = None
     source_conversation_id: Optional[int] = None
+    status: Optional[str] = "recorded"
+    tags: Optional[List[str]] = None
+    follow_up_task_id: Optional[int] = None
+    is_draft: Optional[bool] = None
 
 
 class ProjectDecisionRead(BaseModel):
@@ -186,8 +197,24 @@ class ProjectDecisionRead(BaseModel):
     category: Optional[str]
     source_conversation_id: Optional[int]
     created_at: datetime
+    updated_at: datetime
+    status: str
+    tags: List[str]
+    follow_up_task_id: Optional[int]
+    is_draft: bool
+    auto_detected: bool
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ProjectDecisionUpdate(BaseModel):
+    title: Optional[str] = None
+    details: Optional[str] = None
+    category: Optional[str] = None
+    status: Optional[str] = None
+    tags: Optional[List[str]] = None
+    follow_up_task_id: Optional[int] = None
+    is_draft: Optional[bool] = None
 
 
 class ConversationFolderCreate(BaseModel):
@@ -540,6 +567,25 @@ def _extract_ai_file_edits(reply_text: str) -> tuple[str, List[Dict[str, object]
 # ---------- Helper: AI‑assisted task extraction ----------
 
 
+_TASK_TELEMETRY: Dict[str, int] = {
+    "auto_added": 0,
+    "auto_completed": 0,
+    "auto_deduped": 0,
+}
+
+
+def get_task_telemetry(reset: bool = False) -> Dict[str, int]:
+    snapshot = dict(_TASK_TELEMETRY)
+    if reset:
+        reset_task_telemetry()
+    return snapshot
+
+
+def reset_task_telemetry() -> None:
+    for key in _TASK_TELEMETRY:
+        _TASK_TELEMETRY[key] = 0
+
+
 _TASK_TEXT_NORMALIZER = re.compile(r"[^a-z0-9]+")
 _TASK_COMPLETION_KEYWORDS = (
     "done",
@@ -551,6 +597,19 @@ _TASK_COMPLETION_KEYWORDS = (
     "shipped",
     "resolved",
     "delivered",
+)
+_TASK_INCOMPLETE_HINTS = (
+    "pending",
+    "still need",
+    "still pending",
+    "not done",
+    "not finished",
+    "not yet",
+    "blocked",
+    "in progress",
+    "wip",
+    "todo",
+    "to do",
 )
 
 
@@ -565,6 +624,26 @@ def _token_overlap(normalized_a: str, normalized_b: str) -> float:
     if not tokens_a or not tokens_b:
         return 0.0
     return len(tokens_a & tokens_b) / len(tokens_a)
+
+
+def _decision_to_schema(
+    decision: models.ProjectDecision,
+) -> ProjectDecisionRead:
+    return ProjectDecisionRead(
+        id=decision.id,
+        project_id=decision.project_id,
+        title=decision.title,
+        details=decision.details,
+        category=decision.category,
+        source_conversation_id=decision.source_conversation_id,
+        created_at=decision.created_at,
+        updated_at=decision.updated_at,
+        status=decision.status,
+        tags=_tags_to_list(decision.tags_raw),
+        follow_up_task_id=decision.follow_up_task_id,
+        is_draft=decision.is_draft,
+        auto_detected=decision.auto_detected,
+    )
 
 
 def _line_mentions_completion(line: str) -> bool:
@@ -627,8 +706,24 @@ def auto_update_tasks_from_conversation(
         for line in convo_text_lines[-8:]
         if ":" in line and _line_mentions_completion(line)
     ]
-    if completion_lines:
-        for text in completion_lines:
+    completion_segments: List[str] = []
+    for text in completion_lines:
+        normalized = text.replace(" and ", ". ").replace(";", ".")
+        for fragment in normalized.split("."):
+            clause = fragment.strip()
+            if not clause:
+                continue
+            lowered_clause = clause.lower()
+            if not any(
+                keyword in lowered_clause for keyword in _TASK_COMPLETION_KEYWORDS
+            ):
+                continue
+            if any(hint in lowered_clause for hint in _TASK_INCOMPLETE_HINTS):
+                continue
+            completion_segments.append(clause)
+
+    if completion_segments:
+        for text in completion_segments:
             normalized_line = _normalize_task_text(text)
             if not normalized_line:
                 continue
@@ -650,6 +745,7 @@ def auto_update_tasks_from_conversation(
                 ):
                     task_obj.status = "done"
                     task_obj.updated_at = datetime.utcnow()
+                    _TASK_TELEMETRY["auto_completed"] += 1
                     print(
                         f"[Tasks] Auto-completed '{task_obj.description}' "
                         "based on recent chat."
@@ -753,6 +849,7 @@ def auto_update_tasks_from_conversation(
                     is_duplicate = True
                     break
             if is_duplicate:
+                _TASK_TELEMETRY["auto_deduped"] += 1
                 continue
 
             new_task = models.Task(
@@ -762,10 +859,13 @@ def auto_update_tasks_from_conversation(
             )
             db.add(new_task)
             db.flush()
+            _TASK_TELEMETRY["auto_added"] += 1
             open_task_map[new_task.id] = {
                 "task": new_task,
                 "normalized": normalized_desc,
             }
+
+
 
     except Exception as e:  # noqa: BLE001
         print(f"[WARN] auto_update_tasks_from_conversation failed: {e!r}")
@@ -856,6 +956,77 @@ def auto_title_conversation(
         conversation.title = title
     except Exception as e:  # noqa: BLE001
         print(f"[WARN] auto_title_conversation failed: {e!r}")
+
+
+_DECISION_PATTERN = re.compile(
+    r"(?:decision\s*:|we\s+decided\s+(?:that|to)\s)(.+)", re.IGNORECASE
+)
+
+
+def _normalize_decision_text(value: str) -> str:
+    cleaned = _TASK_TEXT_NORMALIZER.sub(" ", (value or "").lower())
+    return " ".join(cleaned.split())
+
+
+def auto_capture_decisions_from_conversation(
+    db: Session,
+    conversation: models.Conversation,
+    max_messages: int = 12,
+) -> None:
+    recent_messages = (
+        db.query(models.Message)
+        .filter(models.Message.conversation_id == conversation.id)
+        .order_by(models.Message.id.desc())
+        .limit(max_messages)
+        .all()
+    )
+    if not recent_messages:
+        return
+
+    recent_messages = list(reversed(recent_messages))
+    assistant_messages = [
+        msg for msg in recent_messages if (msg.role or "").lower() == "assistant"
+    ]
+    if not assistant_messages:
+        return
+
+    existing_titles = {
+        _normalize_decision_text(dec.title)
+        for dec in db.query(models.ProjectDecision)
+        .filter(models.ProjectDecision.project_id == conversation.project_id)
+        .all()
+    }
+
+    created = 0
+    for message in assistant_messages[-6:]:
+        match = _DECISION_PATTERN.search(message.content or "")
+        if not match:
+            continue
+        statement = match.group(1).strip()
+        if not statement:
+            continue
+        normalized = _normalize_decision_text(statement)
+        if not normalized or normalized in existing_titles:
+            continue
+        title = statement.split(".")[0][:120].strip() or "Decision"
+        decision = models.ProjectDecision(
+            project_id=conversation.project_id,
+            title=title,
+            details=statement,
+            category=None,
+            source_conversation_id=conversation.id,
+            status="draft",
+            tags_raw=None,
+            follow_up_task_id=None,
+            is_draft=True,
+            auto_detected=True,
+        )
+        db.add(decision)
+        existing_titles.add(normalized)
+        created += 1
+
+    if created:
+        db.flush()
 
 
 # ---------- Routes ----------
@@ -964,6 +1135,7 @@ def get_project_instructions(
         "project_id": project.id,
         "instruction_text": project.instruction_text,
         "instruction_updated_at": project.instruction_updated_at,
+        "pinned_note_text": project.pinned_note_text,
     }
 
 
@@ -980,12 +1152,15 @@ def update_project_instructions(
     instructions = _normalize_instruction_text(payload.instruction_text)
     project.instruction_text = instructions
     project.instruction_updated_at = datetime.utcnow()
+    if payload.pinned_note_text is not None:
+        project.pinned_note_text = payload.pinned_note_text.strip() or None
     db.commit()
     db.refresh(project)
     return {
         "project_id": project.id,
         "instruction_text": project.instruction_text,
         "instruction_updated_at": project.instruction_updated_at,
+        "pinned_note_text": project.pinned_note_text,
     }
 
 
@@ -1004,10 +1179,13 @@ def list_project_decisions(
     decisions = (
         db.query(models.ProjectDecision)
         .filter(models.ProjectDecision.project_id == project_id)
-        .order_by(models.ProjectDecision.created_at.desc())
+        .order_by(
+            models.ProjectDecision.is_draft.desc(),
+            models.ProjectDecision.created_at.desc(),
+        )
         .all()
     )
-    return decisions
+    return [_decision_to_schema(decision) for decision in decisions]
 
 
 @app.post(
@@ -1042,17 +1220,78 @@ def create_project_decision(
             status_code=400, detail="Decision title cannot be empty."
         )
 
+    follow_up_task_id = None
+    if payload.follow_up_task_id is not None:
+        task = db.get(models.Task, payload.follow_up_task_id)
+        if task is None or task.project_id != project_id:
+            raise HTTPException(
+                status_code=404,
+                detail="follow_up_task_id not found for this project.",
+            )
+        follow_up_task_id = task.id
+
     decision = models.ProjectDecision(
         project_id=project.id,
         title=title,
         details=(payload.details or "").strip() or None,
         category=(payload.category or "").strip() or None,
         source_conversation_id=payload.source_conversation_id,
+        status=(payload.status or "recorded").strip() or "recorded",
+        tags_raw=_normalize_tags(payload.tags),
+        follow_up_task_id=follow_up_task_id,
+        is_draft=bool(payload.is_draft),
     )
     db.add(decision)
     db.commit()
     db.refresh(decision)
-    return decision
+    return _decision_to_schema(decision)
+
+
+@app.patch(
+    "/decisions/{decision_id}",
+    response_model=ProjectDecisionRead,
+)
+def update_project_decision(
+    decision_id: int,
+    payload: ProjectDecisionUpdate,
+    db: Session = Depends(get_db),
+):
+    decision = db.get(models.ProjectDecision, decision_id)
+    if decision is None:
+        raise HTTPException(status_code=404, detail="Decision not found.")
+
+    if payload.title is not None:
+        cleaned_title = payload.title.strip()
+        if not cleaned_title:
+            raise HTTPException(
+                status_code=400, detail="Decision title cannot be empty."
+            )
+        decision.title = cleaned_title
+    if payload.details is not None:
+        decision.details = payload.details.strip() or None
+    if payload.category is not None:
+        decision.category = payload.category.strip() or None
+    if payload.status is not None:
+        decision.status = payload.status.strip() or "recorded"
+    if payload.tags is not None:
+        decision.tags_raw = _normalize_tags(payload.tags)
+    if payload.follow_up_task_id is not None:
+        if payload.follow_up_task_id == 0:
+            decision.follow_up_task_id = None
+        else:
+            task = db.get(models.Task, payload.follow_up_task_id)
+            if task is None or task.project_id != decision.project_id:
+                raise HTTPException(
+                    status_code=404,
+                    detail="follow_up_task_id not found for this project.",
+                )
+            decision.follow_up_task_id = task.id
+    if payload.is_draft is not None:
+        decision.is_draft = payload.is_draft
+    decision.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(decision)
+    return _decision_to_schema(decision)
 
 
 # ---------- Conversation folders ----------
@@ -1679,6 +1918,24 @@ def get_conversation_usage(
         total_cost_estimate=total_cost,
         records=records,
     )
+
+
+# ---------- Telemetry & diagnostics ----------
+
+
+@app.get("/debug/telemetry")
+def read_telemetry(reset: bool = False) -> Dict[str, Any]:
+    """
+    Return counters for auto-mode routing and autonomous task upkeep.
+
+    Pass `reset=true` to zero the counters after reading them.
+    """
+    llm_snapshot = openai_module.get_llm_telemetry(reset=reset)
+    task_snapshot = get_task_telemetry(reset=reset)
+    return {
+        "llm": llm_snapshot,
+        "tasks": task_snapshot,
+    }
 
 
 # ---------- Filesystem browsing / editing ----------
@@ -2560,6 +2817,10 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
         auto_update_tasks_from_conversation(db, conversation)
     except Exception as e:  # noqa: BLE001
         print(f"[WARN] auto_update_tasks_from_conversation outer failed: {e!r}")
+    try:
+        auto_capture_decisions_from_conversation(db, conversation)
+    except Exception as e:  # noqa: BLE001
+        print(f"[WARN] auto_capture_decisions_from_conversation failed: {e!r}")
 
     # 12) Commit everything
     db.commit()

@@ -245,7 +245,7 @@ Record any problems under `A-Env-*` in test reports.
 
 ---
 
-## 6. Phase D – Filesystem & AI file edits
+## 6. Phase D – Filesystem, Usage & AI file edits
 
 ### D-FS-01 – List and read files
 
@@ -268,6 +268,25 @@ Record any problems under `A-Env-*` in test reports.
   - File is updated and reloads correctly.
 
 ### D-AIEdit-01 – AI file edit with preview diff
+### D-Usage-01 – Usage API returns records
+
+- **Steps**:
+  1. Run several `/chat` calls in the same conversation.
+  2. `GET /conversations/{conversation_id}/usage`.
+- **Expected**:
+  - Summary includes tokens/cost totals.
+  - Records list matches the assistant calls made.
+
+### D-Usage-02 – Usage tab dashboard
+
+- **Steps**:
+  1. Open Usage tab in the UI; select different conversations via the dropdown.
+  2. Review totals, per-model breakdown, recent assistant calls list.
+  3. Click “Refresh” and “Refresh & reset” in the telemetry drawer.
+- **Expected**:
+  - Totals update when selecting a different conversation.
+  - Per-model counts match usage records.
+  - Telemetry refresh/reset updates the counters displayed.
 
 - **Steps**:
   1. Ask assistant to tweak `scratch/test-notes.txt` (e.g., append “123456789”).
@@ -357,18 +376,54 @@ Record any problems under `A-Env-*` in test reports.
 
 ---
 
-## 9. Phase G – Right‑column UI 2.0 regression
+## 9. Phase G – Notes, decisions, folders, memory
 
-For each tab (`Tasks`, `Docs`, `Files`, `Search`, `Terminal`, `Usage`, `Notes`, `Memory`):
+### G-Inst-01 – Project instructions CRUD + prompt injection
 
-- Verify:
-  - Correct header, toolbar, and content.
-  - No missing sections.
-  - Reasonable spacing and scroll behavior.
-- Use the **“Refresh all”** button and confirm:
-  - Tasks, docs, files list, instructions, decisions, folders, memory items, usage, and messages all refresh without errors.
+(Same as previous section.)
 
-Document any visual or behavioral issues by tab ID (e.g., `G-Files-Spacing-01`).
+### G-Inst-02 – Pinned note + diff/preview
+
+- **Steps**:
+  1. In Notes tab, add/edit the pinned note and change instructions without saving.
+  2. Confirm the “Unsaved changes” banner and “View last saved instructions” diff.
+  3. Save and reload via UI/API to ensure pinned note and instructions persist.
+- **Expected**:
+  - Pinned note shows immediately; diff displays previous instructions; saving clears the banner.
+
+### G-Dec-01 – Decision log CRUD (API)
+
+(Same as previous section.)
+
+### G-Dec-02 – Decision filters & actions (UI)
+
+- **Steps**:
+  1. Seed decisions with various statuses/categories/tags.
+  2. In Notes tab, apply status/category/tag/search filters.
+  3. Use inline actions: change status, edit tags, copy text, open linked conversation.
+  4. Use follow-up task/memory buttons and verify the backend updates (`follow_up_task_id`, new memory item).
+- **Expected**:
+  - Filters narrow the list correctly; inline edits persist (confirmed via refresh/API).
+  - Follow-up task/memory hooks create the linked records.
+  - “Open conversation” jumps to the correct chat.
+
+### G-Dec-03 – Decision automation & drafts
+
+- **Steps**:
+  1. Prompt the assistant to emit “Decision: … / We decided …”.
+  2. Refresh decisions; confirm banner and `Draft/Auto` chips for the new entries.
+  3. Mark recorded/dismiss; ensure banner clears; confirm follow-up hooks still work.
+- **Expected**:
+  - Draft decisions appear automatically; confirm/dismiss updates backend state.
+  - Banner disappears once drafts are resolved.
+
+### G-Fold-01 – Conversation folders CRUD + usage
+
+(Same as previous section.)
+
+### G-Mem-01 – Memory items CRUD + retrieval
+
+(Same as previous section.)
 
 ---
 
@@ -380,6 +435,18 @@ Examples (to be expanded as needed):
 - `fs/list` or `fs/read` with illegal `subpath`/`file_path` (absolute path, `..`) → 400 with clear `detail`.
 - Terminal timeouts (e.g., intentionally long‑running command with low timeout) → exit_code -1 and “[Command timed out…]” in stderr.
 - Non‑UTF‑8 file attempts for `/fs/read` → 400 “File is not valid UTF‑8 text; cannot be read as text.”
+
+### H-Debug-01 – Telemetry endpoint sanity
+
+- **Purpose**: Confirm `/debug/telemetry` exposes auto-mode and autonomous TODO counters and supports resetting between runs.
+- **Steps**:
+  1. Call `GET /debug/telemetry` before starting smoke tests; note `llm.auto_routes` and task counters.
+  2. Send at least one auto-mode chat (ideally code + research prompts) and describe TODO items so the maintainer runs.
+  3. Call `/debug/telemetry` again and confirm the counters changed accordingly.
+  4. Call `/debug/telemetry?reset=true` and verify all counters return to zero.
+- **Expected**:
+  - Response includes `llm` (auto route + fallback stats) and `tasks` (auto_added / auto_completed / auto_deduped).
+  - `reset=true` zeroes both sets of counters for the next QA run.
 
 ---
 

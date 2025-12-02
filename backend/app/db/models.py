@@ -3,7 +3,15 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, Float
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    Float,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -24,6 +32,9 @@ class Project(Base):
     )
     instruction_updated_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime, nullable=True
+    )
+    pinned_note_text: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow
@@ -51,6 +62,11 @@ class Project(Base):
     )
     folders: Mapped[List["ConversationFolder"]] = relationship(
         "ConversationFolder",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
+    memory_items: Mapped[List["MemoryItem"]] = relationship(
+        "MemoryItem",
         back_populates="project",
         cascade="all, delete-orphan",
     )
@@ -83,6 +99,11 @@ class Conversation(Base):
     usage_records: Mapped[List["UsageRecord"]] = relationship(
         "UsageRecord", back_populates="conversation", cascade="all, delete-orphan"
     )
+    memory_items: Mapped[List["MemoryItem"]] = relationship(
+        "MemoryItem",
+        back_populates="source_conversation",
+        cascade="all, delete-orphan",
+    )
 
 
 class Message(Base):
@@ -104,6 +125,11 @@ class Message(Base):
     )
     usage_records: Mapped[List["UsageRecord"]] = relationship(
         "UsageRecord", back_populates="message", cascade="all, delete-orphan"
+    )
+    memory_items: Mapped[List["MemoryItem"]] = relationship(
+        "MemoryItem",
+        back_populates="source_message",
+        cascade="all, delete-orphan",
     )
 
 
@@ -246,11 +272,21 @@ class ProjectDecision(Base):
     title: Mapped[str] = mapped_column(String(255))
     details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="recorded")
+    tags_raw: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     source_conversation_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("conversations.id"), nullable=True, index=True
     )
+    follow_up_task_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("tasks.id"), nullable=True
+    )
+    is_draft: Mapped[bool] = mapped_column(Boolean, default=False)
+    auto_detected: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, index=True
     )
 
     project: Mapped["Project"] = relationship(
@@ -258,6 +294,9 @@ class ProjectDecision(Base):
     )
     source_conversation: Mapped[Optional["Conversation"]] = relationship(
         "Conversation", foreign_keys=[source_conversation_id]
+    )
+    follow_up_task: Mapped[Optional["Task"]] = relationship(
+        "Task", foreign_keys=[follow_up_task_id]
     )
 
 
@@ -285,4 +324,52 @@ class ConversationFolder(Base):
     )
     conversations: Mapped[List["Conversation"]] = relationship(
         "Conversation", back_populates="folder"
+    )
+
+
+class MemoryItem(Base):
+    __tablename__ = "memory_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("projects.id"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(255))
+    content: Mapped[str] = mapped_column(Text)
+    tags_raw: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    source_conversation_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("conversations.id"), nullable=True, index=True
+    )
+    source_message_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("messages.id"), nullable=True, index=True
+    )
+    superseded_by_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("memory_items.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    project: Mapped["Project"] = relationship(
+        "Project", back_populates="memory_items"
+    )
+    source_conversation: Mapped[Optional["Conversation"]] = relationship(
+        "Conversation",
+        back_populates="memory_items",
+        foreign_keys=[source_conversation_id],
+    )
+    source_message: Mapped[Optional["Message"]] = relationship(
+        "Message",
+        foreign_keys=[source_message_id],
+        back_populates="memory_items",
+    )
+    superseded_by: Mapped[Optional["MemoryItem"]] = relationship(
+        "MemoryItem", remote_side=[id]
     )

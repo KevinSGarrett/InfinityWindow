@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections import defaultdict
 from typing import Dict, List, Optional, Tuple, Any
 
 from dotenv import load_dotenv
@@ -75,6 +76,31 @@ _RESEARCH_HINTS = (
     "reference",
 )
 
+_PLANNING_HINTS = (
+    "roadmap",
+    "multi-quarter",
+    "multi quarter",
+    "milestone",
+    "milestones",
+    "timeline",
+    "rollbacks",
+    "rollback",
+    "schema evolution",
+    "system design",
+    "architecture",
+    "ingestion pipeline",
+    "telemetry",
+    "strategy",
+    "plan for",
+)
+
+_LLM_TELEMETRY_AUTO_ROUTES: Dict[str, int] = defaultdict(int)
+_LLM_TELEMETRY: Dict[str, Any] = {
+    "auto_routes": _LLM_TELEMETRY_AUTO_ROUTES,
+    "fallback_attempts": 0,
+    "fallback_success": 0,
+}
+
 
 def _get_model_for_mode(mode: str | None) -> str:
     """
@@ -135,10 +161,34 @@ def _infer_auto_submode(messages: List[Dict[str, str]]) -> str:
     if is_researchy:
         return "research"
 
-    if stripped_len < 160 and newline_count <= 1:
+    if any(term in lowered for term in _PLANNING_HINTS):
+        return "deep"
+
+    if stripped_len < 120 and newline_count <= 1:
         return "fast"
 
     return "deep"
+
+
+def _record_auto_route(route: str) -> None:
+    _LLM_TELEMETRY_AUTO_ROUTES[route] += 1
+
+
+def get_llm_telemetry(reset: bool = False) -> Dict[str, Any]:
+    snapshot = {
+        "auto_routes": dict(_LLM_TELEMETRY_AUTO_ROUTES),
+        "fallback_attempts": int(_LLM_TELEMETRY["fallback_attempts"]),
+        "fallback_success": int(_LLM_TELEMETRY["fallback_success"]),
+    }
+    if reset:
+        reset_llm_telemetry()
+    return snapshot
+
+
+def reset_llm_telemetry() -> None:
+    _LLM_TELEMETRY_AUTO_ROUTES.clear()
+    _LLM_TELEMETRY["fallback_attempts"] = 0
+    _LLM_TELEMETRY["fallback_success"] = 0
 
 
 def _is_responses_model(model: str) -> bool:
@@ -427,6 +477,7 @@ def generate_reply_from_history(
     if model is None and normalized_mode == "auto":
         inferred_mode = _infer_auto_submode(messages)
         routed_mode = inferred_mode or "deep"
+        _record_auto_route(routed_mode)
         print(
             f"[LLM] Auto mode heuristics routed this prompt to '{routed_mode}'."
         )
@@ -448,17 +499,24 @@ def generate_reply_from_history(
             candidate_models.append(safety_net)
 
     last_error: Optional[Exception] = None
-    for candidate in candidate_models:
+    fallback_used_in_this_call = False
+    for idx, candidate in enumerate(candidate_models):
         try:
-            return _call_model(
+            result = _call_model(
                 messages=messages,
                 model=candidate,
                 temperature=temperature,
                 max_output_tokens=max_output_tokens,
                 usage_out=usage_out,
             )
+            if fallback_used_in_this_call and idx > 0:
+                _LLM_TELEMETRY["fallback_success"] += 1
+            return result
         except Exception as err:  # noqa: BLE001
             last_error = err
+            if idx < len(candidate_models) - 1:
+                fallback_used_in_this_call = True
+                _LLM_TELEMETRY["fallback_attempts"] += 1
             print(
                 f"[LLM] Model '{candidate}' failed ({err!r}); "
                 "trying next fallback if available."

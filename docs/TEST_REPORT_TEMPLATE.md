@@ -73,6 +73,7 @@ _Use this file as a template for recording results from `docs/TEST_PLAN.md`. Mak
 | C-MsgSearch-01 | Message search          |                |                |
 | C-DocSearch-01 | Document search         |                |                |
 | C-MemorySearch-01 | Memory item retrieval |              |                |
+| C-Search-02 | Search tab filters & open-in UI |                |                |
 
 ### Phase D – Filesystem & AI file edits
 
@@ -81,6 +82,8 @@ _Use this file as a template for recording results from `docs/TEST_PLAN.md`. Mak
 | D-FS-01  | List and read files             |                |                |
 | D-FS-02  | Write file and verify           |                |                |
 | D-AIEdit-01 | AI file edit with diff/preview |              |                |
+| D-Usage-01 | Usage API summary              |                |                |
+| D-Usage-02 | Usage tab dashboard            |                |                |
 
 ### Phase E – Terminal integration
 
@@ -94,7 +97,10 @@ _Use this file as a template for recording results from `docs/TEST_PLAN.md`. Mak
 | Test ID    | Description                          | Result (P/F/B) | Notes / Errors |
 |-----------|--------------------------------------|----------------|----------------|
 | F-Inst-01 | Instructions CRUD + prompt injection |                |                |
+| F-Inst-02 | Pinned note + diff/preview           |                |                |
 | F-Dec-01  | Decision log CRUD                    |                |                |
+| F-Dec-02  | Decision filters & actions (UI)      |                |                |
+| F-Dec-03  | Decision automation & drafts         |                |                |
 | F-Fold-01 | Conversation folders (CRUD + usage)  |                |                |
 | F-Mem-01  | Memory items CRUD + retrieval        |                |                |
 
@@ -120,6 +126,7 @@ For each tab, record at least one “visual sanity” test and any discovered is
 | H-FS-01   | Invalid file path (`..`, absolute) |                |                |
 | H-Term-01 | Terminal timeout / invalid command |                |                |
 | H-Chat-01 | Invalid conversation_id / project_id |              |                |
+| H-Debug-01| Telemetry endpoint sanity          |                |                |
 
 ### Phase I – Performance & durability spot checks
 
