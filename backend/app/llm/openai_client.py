@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Dict, List, Optional, Tuple, Any
 
 from dotenv import load_dotenv
@@ -42,6 +43,38 @@ _DEFAULT_MODELS: Dict[str, str] = {
     "code": "gpt-5.1-codex",
 }
 
+_CODE_HINTS = (
+    "```",
+    "class ",
+    "def ",
+    "function ",
+    "const ",
+    "let ",
+    "var ",
+    "import ",
+    "#include",
+    "public ",
+    "private ",
+    "interface ",
+    "=>",
+)
+
+_RESEARCH_HINTS = (
+    "research",
+    "investigate",
+    "compare",
+    "analysis",
+    "literature review",
+    "survey",
+    "whitepaper",
+    "case study",
+    "statistical",
+    "market",
+    "sources",
+    "citations",
+    "reference",
+)
+
 
 def _get_model_for_mode(mode: str | None) -> str:
     """
@@ -65,6 +98,47 @@ def _get_model_for_mode(mode: str | None) -> str:
 
     # Unknown mode, fall back to AUTO
     return os.getenv("OPENAI_MODEL_AUTO", _DEFAULT_MODELS["auto"])
+
+
+def _extract_last_user_prompt(messages: List[Dict[str, str]]) -> str:
+    for message in reversed(messages):
+        if message.get("role") == "user":
+            content = message.get("content") or ""
+            if isinstance(content, str):
+                return content
+    if messages:
+        fallback = messages[-1].get("content") or ""
+        if isinstance(fallback, str):
+            return fallback
+    return ""
+
+
+def _infer_auto_submode(messages: List[Dict[str, str]]) -> str:
+    """
+    Lightweight heuristic that decides which logical mode auto should route to.
+    """
+    prompt = _extract_last_user_prompt(messages)
+    lowered = prompt.lower()
+    stripped_len = len(prompt.strip())
+    newline_count = prompt.count("\n")
+
+    has_code_block = "```" in prompt or bool(re.search(r"[{};]", prompt))
+    code_hint = any(hint in lowered for hint in _CODE_HINTS)
+    if has_code_block or code_hint:
+        return "code"
+
+    is_researchy = (
+        stripped_len > 800
+        or newline_count > 8
+        or any(term in lowered for term in _RESEARCH_HINTS)
+    )
+    if is_researchy:
+        return "research"
+
+    if stripped_len < 160 and newline_count <= 1:
+        return "fast"
+
+    return "deep"
 
 
 def _is_responses_model(model: str) -> bool:
@@ -347,12 +421,52 @@ def generate_reply_from_history(
         "cost_estimate": <float USD>
       }
     """
-    chosen_model = (model or _get_model_for_mode(mode)).strip()
+    normalized_mode = (mode or "auto").lower()
+    routed_mode = normalized_mode
 
-    return _call_model(
-        messages=messages,
-        model=chosen_model,
-        temperature=temperature,
-        max_output_tokens=max_output_tokens,
-        usage_out=usage_out,
-    )
+    if model is None and normalized_mode == "auto":
+        inferred_mode = _infer_auto_submode(messages)
+        routed_mode = inferred_mode or "deep"
+        print(
+            f"[LLM] Auto mode heuristics routed this prompt to '{routed_mode}'."
+        )
+
+    chosen_model = (model or _get_model_for_mode(routed_mode)).strip()
+
+    candidate_models: List[str] = [chosen_model]
+    if model is None:
+        # Allow graceful fallback if the primary mode-specific model is unavailable.
+        fallback_auto = os.getenv(
+            "OPENAI_MODEL_AUTO", _DEFAULT_MODELS.get("auto", "gpt-4.1")
+        )
+        if fallback_auto and fallback_auto not in candidate_models:
+            candidate_models.append(fallback_auto)
+
+        # Include a lightweight, broadly available model as a last resort.
+        safety_net = os.getenv("OPENAI_MODEL_FAST", _DEFAULT_MODELS.get("fast"))
+        if safety_net and safety_net not in candidate_models:
+            candidate_models.append(safety_net)
+
+    last_error: Optional[Exception] = None
+    for candidate in candidate_models:
+        try:
+            return _call_model(
+                messages=messages,
+                model=candidate,
+                temperature=temperature,
+                max_output_tokens=max_output_tokens,
+                usage_out=usage_out,
+            )
+        except Exception as err:  # noqa: BLE001
+            last_error = err
+            print(
+                f"[LLM] Model '{candidate}' failed ({err!r}); "
+                "trying next fallback if available."
+            )
+
+    # If every candidate failed, bubble up the last error so the caller can surface it.
+    if last_error is not None:
+        raise last_error
+
+    # Should never happen, but keep mypy happy.
+    raise RuntimeError("LLM routing failed with no usable model candidates.")

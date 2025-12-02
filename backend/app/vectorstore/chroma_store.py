@@ -12,6 +12,7 @@ _CHROMA_CLIENT: chromadb.PersistentClient | None = None
 # Collection names
 _MESSAGES_COLLECTION_NAME = "messages"
 _DOCS_COLLECTION_NAME = "docs"
+_MEMORY_COLLECTION_NAME = "memory_items"
 
 
 def get_client() -> chromadb.PersistentClient:
@@ -56,19 +57,20 @@ def add_message_embedding(
     Add a single message embedding to the Chroma 'messages' collection.
     """
     collection = get_messages_collection()
+    metadata = {
+        "message_id": message_id,
+        "conversation_id": conversation_id,
+        "project_id": project_id,
+        "role": role,
+    }
+    if folder_id is not None:
+        metadata["folder_id"] = folder_id
+
     collection.add(
         ids=[str(message_id)],
         embeddings=[embedding],
         documents=[content],
-        metadatas=[
-            {
-                "message_id": message_id,
-                "conversation_id": conversation_id,
-                "project_id": project_id,
-                "role": role,
-                "folder_id": folder_id,
-            }
-        ],
+        metadatas=[metadata],
     )
 
 
@@ -207,3 +209,61 @@ def query_similar_document_chunks(
         where=where,
     )
     return results
+
+
+# --------------------------------------------------------------------
+# Memory item collection helpers
+# --------------------------------------------------------------------
+
+
+def get_memory_collection() -> Collection:
+    client = get_client()
+    collection = client.get_or_create_collection(
+        name=_MEMORY_COLLECTION_NAME,
+        metadata={
+            "description": "InfinityWindow project memory items"
+        },
+    )
+    return collection
+
+
+def add_memory_embedding(
+    memory_id: int,
+    project_id: int,
+    content: str,
+    embedding: List[float],
+) -> None:
+    collection = get_memory_collection()
+    collection.add(
+        ids=[str(memory_id)],
+        embeddings=[embedding],
+        documents=[content],
+        metadatas=[
+            {
+                "memory_id": memory_id,
+                "project_id": project_id,
+            }
+        ],
+    )
+
+
+def delete_memory_embedding(memory_id: int) -> None:
+    collection = get_memory_collection()
+    try:
+        collection.delete(ids=[str(memory_id)])
+    except Exception:
+        # Missing embeddings are not fatal
+        pass
+
+
+def query_similar_memory_items(
+    project_id: int,
+    query_embedding: List[float],
+    n_results: int = 5,
+) -> Dict[str, Any]:
+    collection = get_memory_collection()
+    return collection.query(
+        query_embeddings=[query_embedding],
+        n_results=n_results,
+        where={"project_id": {"$eq": project_id}},
+    )

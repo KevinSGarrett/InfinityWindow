@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import subprocess
+import difflib
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict
@@ -9,6 +11,7 @@ from typing import Optional, List, Dict
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 from app.db.base import Base
@@ -21,6 +24,9 @@ from app.vectorstore.chroma_store import (
     add_message_embedding,
     query_similar_messages,
     query_similar_document_chunks,
+    add_memory_embedding,
+    delete_memory_embedding,
+    query_similar_memory_items,
 )
 from app.api.search import router as search_router
 from app.api.docs import router as docs_router
@@ -213,6 +219,45 @@ class ConversationFolderRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class MemoryItemCreate(BaseModel):
+    title: str
+    content: str
+    tags: Optional[List[str]] = None
+    pinned: bool = False
+    expires_at: Optional[datetime] = None
+    source_conversation_id: Optional[int] = None
+    source_message_id: Optional[int] = None
+    supersedes_memory_id: Optional[int] = None
+
+
+class MemoryItemUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    tags: Optional[List[str]] = None
+    pinned: Optional[bool] = None
+    expires_at: Optional[datetime] = None
+    source_conversation_id: Optional[int] = None
+    source_message_id: Optional[int] = None
+    superseded_by_id: Optional[int] = None
+
+
+class MemoryItemRead(BaseModel):
+    id: int
+    project_id: int
+    title: str
+    content: str
+    tags: List[str]
+    pinned: bool
+    expires_at: Optional[datetime]
+    source_conversation_id: Optional[int]
+    source_message_id: Optional[int]
+    superseded_by_id: Optional[int]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ChatRequest(BaseModel):
     # project this chat belongs to (used if conversation_id is not provided)
     project_id: Optional[int] = None
@@ -261,6 +306,7 @@ class FileAIEditPayload(BaseModel):
     apply_changes: bool = False
     conversation_id: Optional[int] = None
     message_id: Optional[int] = None
+    include_diff: bool = True
 
 
 class TerminalRunPayload(BaseModel):
@@ -288,6 +334,27 @@ def _normalize_instruction_text(value: Optional[str]) -> Optional[str]:
     return trimmed or None
 
 
+def _normalize_tags(tags: Optional[List[str]]) -> Optional[str]:
+    if not tags:
+        return None
+    cleaned = [t.strip() for t in tags if t and t.strip()]
+    if not cleaned:
+        return None
+    return json.dumps(cleaned)
+
+
+def _tags_to_list(raw: Optional[str]) -> List[str]:
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+        if isinstance(data, list):
+            return [str(item) for item in data if isinstance(item, str)]
+    except json.JSONDecodeError:
+        pass
+    return []
+
+
 # ---------- Helper: filesystem ----------
 
 
@@ -296,6 +363,20 @@ def _ensure_project(db: Session, project_id: int) -> models.Project:
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found.")
     return project
+
+
+def _ensure_conversation(
+    db: Session, conversation_id: int, project_id: Optional[int] = None
+) -> models.Conversation:
+    conversation = db.get(models.Conversation, conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    if project_id is not None and conversation.project_id != project_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Conversation does not belong to this project.",
+        )
+    return conversation
 
 
 def _ensure_folder(
@@ -459,6 +540,40 @@ def _extract_ai_file_edits(reply_text: str) -> tuple[str, List[Dict[str, object]
 # ---------- Helper: AI‑assisted task extraction ----------
 
 
+_TASK_TEXT_NORMALIZER = re.compile(r"[^a-z0-9]+")
+_TASK_COMPLETION_KEYWORDS = (
+    "done",
+    "completed",
+    "complete",
+    "finished",
+    "fixed",
+    "merged",
+    "shipped",
+    "resolved",
+    "delivered",
+)
+
+
+def _normalize_task_text(value: str) -> str:
+    cleaned = _TASK_TEXT_NORMALIZER.sub(" ", (value or "").lower())
+    return " ".join(cleaned.split())
+
+
+def _token_overlap(normalized_a: str, normalized_b: str) -> float:
+    tokens_a = set(normalized_a.split())
+    tokens_b = set(normalized_b.split())
+    if not tokens_a or not tokens_b:
+        return 0.0
+    return len(tokens_a & tokens_b) / len(tokens_a)
+
+
+def _line_mentions_completion(line: str) -> bool:
+    lower = (line or "").lower()
+    if not lower.startswith("user:"):
+        return False
+    return any(keyword in lower for keyword in _TASK_COMPLETION_KEYWORDS)
+
+
 def auto_update_tasks_from_conversation(
     db: Session,
     conversation: models.Conversation,
@@ -493,6 +608,60 @@ def auto_update_tasks_from_conversation(
         convo_text_lines.append(f"{who}: {content}")
 
     convo_text = "\n".join(convo_text_lines)
+
+    open_tasks = (
+        db.query(models.Task)
+        .filter(
+            models.Task.project_id == conversation.project_id,
+            models.Task.status == "open",
+        )
+        .all()
+    )
+    open_task_map: Dict[int, Dict[str, object]] = {
+        task.id: {"task": task, "normalized": _normalize_task_text(task.description)}
+        for task in open_tasks
+    }
+
+    completion_lines = [
+        line.split(":", 1)[1].strip()
+        for line in convo_text_lines[-8:]
+        if ":" in line and _line_mentions_completion(line)
+    ]
+    if completion_lines:
+        for text in completion_lines:
+            normalized_line = _normalize_task_text(text)
+            if not normalized_line:
+                continue
+            for info in list(open_task_map.values()):
+                task_obj: models.Task = info["task"]  # type: ignore[assignment]
+                if task_obj.status != "open":
+                    continue
+                normalized_task = info.get("normalized") or ""
+                if not normalized_task:
+                    continue
+                ratio = difflib.SequenceMatcher(
+                    None, normalized_task, normalized_line
+                ).ratio()
+                if (
+                    normalized_task in normalized_line
+                    or normalized_line in normalized_task
+                    or ratio >= 0.72
+                    or _token_overlap(normalized_task, normalized_line) >= 0.6
+                ):
+                    task_obj.status = "done"
+                    task_obj.updated_at = datetime.utcnow()
+                    print(
+                        f"[Tasks] Auto-completed '{task_obj.description}' "
+                        "based on recent chat."
+                    )
+                    info["normalized"] = ""
+        # Remove tasks marked done from duplicate checks
+        open_task_map = {
+            task_id: info
+            for task_id, info in open_task_map.items()
+            if isinstance(info.get("task"), models.Task)
+            and info["task"].status == "open"  # type: ignore[index]
+        }
 
     system_instructions = (
         "You help maintain a TODO list for a long-running software project.\n"
@@ -566,12 +735,37 @@ def auto_update_tasks_from_conversation(
             if existing:
                 continue
 
+            normalized_desc = _normalize_task_text(desc)
+            is_duplicate = False
+            for info in open_task_map.values():
+                normalized_task = info.get("normalized") or ""
+                if not normalized_task:
+                    continue
+                ratio = difflib.SequenceMatcher(
+                    None, normalized_task, normalized_desc
+                ).ratio()
+                if (
+                    normalized_task in normalized_desc
+                    or normalized_desc in normalized_task
+                    or ratio >= 0.78
+                    or _token_overlap(normalized_task, normalized_desc) >= 0.75
+                ):
+                    is_duplicate = True
+                    break
+            if is_duplicate:
+                continue
+
             new_task = models.Task(
                 project_id=conversation.project_id,
                 description=desc,
                 status="open",
             )
             db.add(new_task)
+            db.flush()
+            open_task_map[new_task.id] = {
+                "task": new_task,
+                "normalized": normalized_desc,
+            }
 
     except Exception as e:  # noqa: BLE001
         print(f"[WARN] auto_update_tasks_from_conversation failed: {e!r}")
@@ -1004,10 +1198,230 @@ def _conversation_with_folder_meta(
     conversation.folder_color = folder.color if folder else None
     return conversation
 
+
+def _ensure_memory_item(
+    db: Session, memory_id: int, project_id: Optional[int] = None
+) -> models.MemoryItem:
+    memory_item = db.get(models.MemoryItem, memory_id)
+    if memory_item is None:
+        raise HTTPException(status_code=404, detail="Memory item not found.")
+    if project_id is not None and memory_item.project_id != project_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Memory item does not belong to this project.",
+        )
+    return memory_item
+
+
+def _memory_item_to_read_model(
+    memory_item: models.MemoryItem,
+) -> MemoryItemRead:
+    return MemoryItemRead(
+        id=memory_item.id,
+        project_id=memory_item.project_id,
+        title=memory_item.title,
+        content=memory_item.content,
+        tags=_tags_to_list(memory_item.tags_raw),
+        pinned=memory_item.pinned,
+        expires_at=memory_item.expires_at,
+        source_conversation_id=memory_item.source_conversation_id,
+        source_message_id=memory_item.source_message_id,
+        superseded_by_id=memory_item.superseded_by_id,
+        created_at=memory_item.created_at,
+        updated_at=memory_item.updated_at,
+    )
+
+
+def _active_memory_query(db: Session, project_id: int):
+    now = datetime.utcnow()
+    return (
+        db.query(models.MemoryItem)
+        .filter(models.MemoryItem.project_id == project_id)
+        .filter(
+            models.MemoryItem.superseded_by_id.is_(None),
+        )
+        .filter(
+            (models.MemoryItem.expires_at.is_(None))
+            | (models.MemoryItem.expires_at > now)
+        )
+    )
+
     db.delete(folder)
     db.commit()
 
     return {"status": "deleted", "folder_id": folder_id}
+
+
+# ---------- Memory items ----------
+
+
+@app.get(
+    "/projects/{project_id}/memory",
+    response_model=list[MemoryItemRead],
+)
+def list_memory_items(
+    project_id: int,
+    db: Session = Depends(get_db),
+):
+    _ensure_project(db, project_id)
+    items = (
+        _active_memory_query(db, project_id)
+        .order_by(models.MemoryItem.pinned.desc(), models.MemoryItem.id.desc())
+        .all()
+    )
+    return [_memory_item_to_read_model(item) for item in items]
+
+
+@app.post(
+    "/projects/{project_id}/memory",
+    response_model=MemoryItemRead,
+)
+def create_memory_item(
+    project_id: int,
+    payload: MemoryItemCreate,
+    db: Session = Depends(get_db),
+):
+    project = _ensure_project(db, project_id)
+
+    source_conversation = None
+    source_message = None
+    if payload.source_conversation_id is not None:
+        source_conversation = _ensure_conversation(
+            db, payload.source_conversation_id, project_id=project_id
+        )
+    if payload.source_message_id is not None:
+        source_message = db.get(models.Message, payload.source_message_id)
+        if (
+            source_message is None
+            or source_message.conversation.project_id != project_id
+        ):
+            raise HTTPException(
+                status_code=404,
+                detail="Source message not found for this project.",
+            )
+
+    tags_raw = _normalize_tags(payload.tags)
+    memory_item = models.MemoryItem(
+        project_id=project.id,
+        title=payload.title.strip(),
+        content=payload.content.strip(),
+        tags_raw=tags_raw,
+        pinned=payload.pinned,
+        expires_at=payload.expires_at,
+        source_conversation_id=payload.source_conversation_id,
+        source_message_id=payload.source_message_id,
+    )
+    db.add(memory_item)
+    db.flush()
+
+    if payload.supersedes_memory_id is not None:
+        superseded = _ensure_memory_item(
+            db, payload.supersedes_memory_id, project_id=project_id
+        )
+        superseded.superseded_by_id = memory_item.id
+
+    embedding = get_embedding(memory_item.content)
+    add_memory_embedding(
+        memory_id=memory_item.id,
+        project_id=project.id,
+        content=memory_item.content,
+        embedding=embedding,
+    )
+
+    db.commit()
+    db.refresh(memory_item)
+    return _memory_item_to_read_model(memory_item)
+
+
+@app.get(
+    "/memory_items/{memory_id}",
+    response_model=MemoryItemRead,
+)
+def get_memory_item(memory_id: int, db: Session = Depends(get_db)):
+    memory_item = _ensure_memory_item(db, memory_id)
+    return _memory_item_to_read_model(memory_item)
+
+
+@app.patch(
+    "/memory_items/{memory_id}",
+    response_model=MemoryItemRead,
+)
+def update_memory_item(
+    memory_id: int,
+    payload: MemoryItemUpdate,
+    db: Session = Depends(get_db),
+):
+    memory_item = _ensure_memory_item(db, memory_id)
+    content_changed = False
+
+    if payload.title is not None:
+        memory_item.title = payload.title.strip()
+    if payload.content is not None:
+        memory_item.content = payload.content.strip()
+        content_changed = True
+    if payload.tags is not None:
+        memory_item.tags_raw = _normalize_tags(payload.tags)
+    if payload.pinned is not None:
+        memory_item.pinned = payload.pinned
+    if payload.expires_at is not None:
+        memory_item.expires_at = payload.expires_at
+    if payload.source_conversation_id is not None:
+        _ensure_conversation(
+            db,
+            payload.source_conversation_id,
+            project_id=memory_item.project_id,
+        )
+        memory_item.source_conversation_id = payload.source_conversation_id
+    if payload.source_message_id is not None:
+        source_message = db.get(models.Message, payload.source_message_id)
+        if (
+            source_message is None
+            or source_message.conversation.project_id
+            != memory_item.project_id
+        ):
+            raise HTTPException(
+                status_code=404,
+                detail="Source message not found for this project.",
+            )
+        memory_item.source_message_id = payload.source_message_id
+    if payload.superseded_by_id is not None:
+        if payload.superseded_by_id == memory_item.id:
+            raise HTTPException(
+                status_code=400,
+                detail="Memory item cannot supersede itself.",
+            )
+        if payload.superseded_by_id is None:
+            memory_item.superseded_by_id = None
+        else:
+            superseder = _ensure_memory_item(
+                db,
+                payload.superseded_by_id,
+                project_id=memory_item.project_id,
+            )
+            memory_item.superseded_by_id = superseder.id
+
+    if content_changed:
+        delete_memory_embedding(memory_item.id)
+        embedding = get_embedding(memory_item.content)
+        add_memory_embedding(
+            memory_id=memory_item.id,
+            project_id=memory_item.project_id,
+            content=memory_item.content,
+            embedding=embedding,
+        )
+
+    db.commit()
+    db.refresh(memory_item)
+    return _memory_item_to_read_model(memory_item)
+
+
+@app.delete("/memory_items/{memory_id}")
+def delete_memory_item(memory_id: int, db: Session = Depends(get_db)):
+    memory_item = _ensure_memory_item(db, memory_id)
+    delete_memory_embedding(memory_item.id)
+    db.delete(memory_item)
+    db.commit()
+    return {"status": "deleted", "memory_id": memory_id}
 
 
 # ---------- Conversations ----------
@@ -1150,10 +1564,14 @@ def list_project_tasks(
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found.")
 
+    status_order = case(
+        (models.Task.status == "open", 0),
+        else_=1,
+    )
     tasks = (
         db.query(models.Task)
         .filter(models.Task.project_id == project_id)
-        .order_by(models.Task.created_at.asc())
+        .order_by(status_order, models.Task.updated_at.desc(), models.Task.id.asc())
         .all()
     )
     return tasks
@@ -1524,12 +1942,23 @@ def ai_edit_project_file(
     db.commit()
 
     # 6) Return both versions so the UI (or you in Swagger) can diff
+    diff_text = "\n".join(
+        difflib.unified_diff(
+            original_content.splitlines(),
+            edited_content.splitlines(),
+            fromfile="original",
+            tofile="edited",
+            lineterm="",
+        )
+    )
+
     return {
         "root": str(root),
         "path": str(target.relative_to(root)),
         "applied": applied,
         "original_content": original_content,
         "edited_content": edited_content,
+        "diff": diff_text if payload.include_diff else None,
         "usage": {
             "model": usage_info.get("model"),
             "tokens_in": usage_info.get("tokens_in"),
@@ -1766,6 +2195,43 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
                 "Relevant document excerpts:\n" + "\n\n".join(doc_snippets)
             )
 
+        memory_results = query_similar_memory_items(
+            project_id=conversation.project_id,
+            query_embedding=user_embedding,
+            n_results=5,
+        )
+        mem_ids_nested = memory_results.get("ids", [[]])
+        mem_docs_nested = memory_results.get("documents", [[]])
+        mem_metas_nested = memory_results.get("metadatas", [[]])
+        mem_ids = mem_ids_nested[0] if mem_ids_nested else []
+        mem_docs = mem_docs_nested[0] if mem_docs_nested else []
+        mem_metas = mem_metas_nested[0] if mem_metas_nested else []
+
+        mem_id_ints = [
+            int(meta.get("memory_id", mid))
+            for mid, meta in zip(mem_ids, mem_metas)
+        ]
+        memory_items = {}
+        if mem_id_ints:
+            memory_items = {
+                item.id: item
+                for item in _active_memory_query(db, conversation.project_id)
+                .filter(models.MemoryItem.id.in_(mem_id_ints))
+                .all()
+            }
+
+        memory_snippets: List[str] = []
+        for mid, doc in zip(mem_id_ints, mem_docs):
+            item = memory_items.get(mid)
+            if not item:
+                continue
+            memory_snippets.append(f"[Memory: {item.title}] {doc}")
+
+        if memory_snippets:
+            context_parts.append(
+                "Relevant project memories:\n" + "\n\n".join(memory_snippets)
+            )
+
         if context_parts:
             retrieval_context_text = (
                 "You have access to the following retrieved memory and document excerpts.\n"
@@ -1895,6 +2361,14 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
             }
         )
 
+    pinned_memories = (
+        _active_memory_query(db, project.id)
+        .filter(models.MemoryItem.pinned.is_(True))
+        .order_by(models.MemoryItem.updated_at.desc())
+        .limit(5)
+        .all()
+    )
+
     if project.instruction_text:
         instructions = project.instruction_text.strip()
         if instructions:
@@ -1909,6 +2383,23 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
                     ),
                 }
             )
+
+    if pinned_memories:
+        pinned_lines = "\n".join(
+            f"- {item.title}: {item.content}"
+            for item in pinned_memories
+        )
+        chat_history.append(
+            {
+                "role": "system",
+                "content": (
+                    "Pinned project memories:\n"
+                    f"{pinned_lines}\n\n"
+                    "Respect these pinned memories unless the user explicitly "
+                    "says they are outdated."
+                ),
+            }
+        )
 
     # Optional retrieval context as an additional system message
     if retrieval_context_text:
