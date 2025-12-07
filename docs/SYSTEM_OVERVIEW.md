@@ -45,6 +45,7 @@ Main backend responsibilities:
 - Search endpoints over messages (and, where implemented, docs/memory) using Chroma.
 - Filesystem and terminal endpoints scoped to the project root.
 - Telemetry endpoint (`/debug/telemetry`) exposing model routing and task automation counters.
+- Usage endpoint (`/conversations/{id}/usage`) with cost/tokens per conversation; `/debug/telemetry?reset=true` clears task/LLM counters.
 
 ### 2.2 Frontend (React + Vite)
 

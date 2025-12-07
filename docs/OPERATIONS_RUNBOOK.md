@@ -183,6 +183,7 @@ Playwright specs currently cover:
 - Right‑column tabs.
 - Files tab (browsing + editor).
 - Notes + Memory tabs.
+- Tasks tab (suggestions, confidence chip), usage telemetry, accessibility/empty states.
 
 ---
 
@@ -220,15 +221,15 @@ Playwright specs currently cover:
    - `make ci` from repo root.
 
 5. **Run Playwright UI tests**:
-   - As described above.
+   - As described above (`npm run test:e2e`).
+   - Ensure backend on 8000 and frontend on 5173/5174; suite includes tasks-suggestions, tasks-confidence, ui-smoke/chat-smoke/extended, ui-accessibility-phase3.
 
 6. **Execute selected manual tests** from `docs/TEST_PLAN.md`:
    - Especially for areas changed since the last window.
 
 7. **Document results**:
-   - Use `docs/TEST_REPORT_TEMPLATE.md` to capture a new report.
-   - Update `docs/PROGRESS.md` and `docs/TODO_CHECKLIST.md` with outcomes and follow‑ups.
-   - Mirror any ISSUE-00x entries from the report into `docs/ISSUES_LOG.md` (same ID, summary, fix, verification link) so future runs can reference the historical record quickly.
+   - Use `docs/TEST_REPORT_TEMPLATE.md` (and task-focused `docs/TEST_REPORT_2025-12-08_TASKS.md` as a reference) to capture a new report.
+   - Update `docs/PROGRESS.md`, `docs/TODO_CHECKLIST.md`, and `docs/tasks/ISSUES.md` / `docs/ISSUES_LOG.md` with outcomes and follow‑ups. Keep ISSUE IDs in sync.
 
 This runbook should be treated as the operational backbone for keeping InfinityWindow healthy across windows and environments.
 

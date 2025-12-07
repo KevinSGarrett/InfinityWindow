@@ -3,6 +3,14 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: './tests',
   timeout: 60_000,
+  testMatch: [
+    'tests/ui-smoke.spec.ts',
+    'tests/ui-chat-smoke.spec.ts',
+    'tests/ui-extended.spec.ts',
+    'tests/tasks-suggestions.spec.ts',
+    'tests/tasks-confidence.spec.ts',
+    'tests/ui-accessibility-phase3.spec.ts',
+  ],
   use: {
     baseURL: 'http://localhost:5173',
     headless: true,

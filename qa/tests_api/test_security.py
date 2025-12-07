@@ -6,12 +6,13 @@ from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
-from hypothesis import given, strategies as st
+from hypothesis import HealthCheck, given, settings, strategies as st
 
 from app.api import main as api_main
 
 
-@given(st.text().filter(lambda s: ".." in s))
+@settings(suppress_health_check=[HealthCheck.filter_too_much])
+@given(st.sampled_from(["..", "../x", "x/..", "0..", "..\\foo", "bar\\..\\baz"]))
 def test_safe_join_blocks_parent_segments(bad_path: str):
     """K-SEC-FS-02: _safe_join rejects traversal attempts."""
     root = Path(".").resolve()

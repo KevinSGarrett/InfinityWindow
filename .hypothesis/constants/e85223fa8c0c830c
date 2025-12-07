@@ -1,0 +1,4 @@
+# file: C:\InfinityWindow\backend\app\db\models.py
+# hypothesis_version: 6.148.7
+
+[0.0, 100, 255, 512, 1024, 'Conversation', 'ConversationFolder', 'Document', 'DocumentChunk', 'DocumentSection', 'FileIngestionState', 'IngestionJob', 'MemoryItem', 'Message', 'Project', 'ProjectDecision', 'Task', 'UsageRecord', 'all, delete-orphan', 'chunks', 'conversation', 'conversation_folders', 'conversations', 'conversations.id', 'decisions', 'document', 'document_chunks', 'document_sections', 'document_sections.id', 'documents', 'documents.id', 'file_ingestion_state', 'folder', 'folders', 'ingestion_jobs', 'memory_items', 'memory_items.id', 'message', 'messages', 'messages.id', 'normal', 'open', 'pending', 'project', 'project_decisions', 'project_id', 'projects', 'projects.id', 'recorded', 'relative_path', 'section', 'sections', 'source_conversation', 'source_message', 'task_suggestions', 'tasks', 'tasks.id', 'usage_records']

@@ -194,6 +194,7 @@ npm run test:e2e            # in another
 4. **Verify with tests**:
    - Run `qa/run_smoke.py` for backend‑affecting changes.
    - Run Playwright specs if you touched UI flows.
+   - Current dev defaults: backend on 8000; frontend on 5173/5174; `npm run test:e2e` (covers tasks-confidence, tasks-suggestions, ui-smoke/chat-smoke/extended, ui-accessibility-phase3); API suite via `PowerShell: $env:PYTHONPATH='..'; pytest tests_api` (upstream SQLAlchemy utcnow warnings only). Telemetry reset: `GET /debug/telemetry?reset=true` clears counters.
 
 5. **Avoid breaking QA helpers**:
    - Keep `tools/reset_qa_env.py` working: if DB paths or ports change, update the script.

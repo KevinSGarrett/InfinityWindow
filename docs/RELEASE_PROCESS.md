@@ -24,10 +24,11 @@ Before calling a window “done” or cutting a release:
   - [ ] New or modified files are committed with clear messages.
 
 - **Backend / frontend health**
-  - [ ] Backend starts cleanly with `uvicorn app.api.main:app --reload`.
+  - [ ] Backend starts cleanly with `uvicorn app.api.main:app --host 127.0.0.1 --port 8000 --reload`.
   - [ ] Frontend builds successfully (`npm run build`).
   - [ ] Smoke tests pass (`python -m qa.run_smoke`).
-  - [ ] Playwright UI tests pass (`npm run test:e2e`) for key flows.
+  - [ ] Playwright UI tests pass (`npm run test:e2e`) on backend 8000 (suite includes tasks-confidence, tasks-suggestions, ui-smoke/chat-smoke/extended, ui-accessibility-phase3).
+  - [ ] API suite passes (`PowerShell: $env:PYTHONPATH='..'; pytest tests_api`; upstream SQLAlchemy utcnow warnings accepted).
 
 - **QA / CI**
   - [ ] In the QA copy (`C:\InfinityWindow_QA`), `make ci` has been run recently and the result recorded in `docs/PROGRESS.md`.
@@ -74,7 +75,8 @@ Before calling a window “done” or cutting a release:
      - `docs/TODO_CHECKLIST.md`
      - `docs/CHANGELOG.md`
      - `docs/DECISIONS_LOG.md` (if any global decisions were made)
-   - Ensure `docs/SYSTEM_OVERVIEW.md` is still accurate.
+     - `docs/tasks/ISSUES.md` and `docs/ISSUES_LOG.md` (keep ISSUE IDs consistent)
+   - Ensure `docs/SYSTEM_OVERVIEW.md` and `docs/SYSTEM_MATRIX.md` are accurate.
 
 4. **Commit and push**
    - In `C:\InfinityWindow`:

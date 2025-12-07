@@ -976,6 +976,14 @@ body {
   color: #374151;
 }
 
+.task-confidence-chip {
+  background: #e0f2fe;
+  color: #075985;
+  border-radius: 0.45rem;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.7rem;
+}
+
 .task-priority-chip.priority-critical {
   background: #fee2e2;
   color: #991b1b;
@@ -2600,6 +2608,12 @@ body {
 .usage-telemetry-empty {
   font-size: 0.78rem;
   color: #6b7280;
+}
+
+.usage-telemetry-sub {
+  color: #6b7280;
+  font-size: 0.7rem;
+  margin-top: 2px;
 }
 
 /* Buttons */

@@ -26,6 +26,7 @@ Stored primarily in:
   - Files under the project root (as configured per project).
   - AI edits are applied to real files on disk when accepted.
   - Filesystem endpoints guard against path escapes; `fs/read` accepts `file_path` or `subpath`, and `fs/ai_edit` accepts `instruction` or `instructions`.
+  - Telemetry and usage are local: `GET /debug/telemetry` exposes in-memory counters; `GET /conversations/{id}/usage` shows model usage/cost per conversation.
 
 ### 1.2 External data (LLM provider)
 

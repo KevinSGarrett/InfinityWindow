@@ -128,4 +128,18 @@ Future changes should append new dated sections here, with a brief description a
 - **Telemetry & usage**
   - `/debug/telemetry` documents task suggestion confidence stats; usage now reports non-zero cost with pricing table updates.
 
+## 2025‑12‑08 – Telemetry, confidence chips, API/UI alignment (backend 8000)
+
+- **Usage & telemetry**
+  - Standardized backend target to `http://127.0.0.1:8000` across Playwright, helpers, and API docs.
+  - `/debug/telemetry?reset=true` now returns cleared counters; Usage tab shows confidence buckets and recent task actions.
+  - Pricing table covers `gpt-5-nano`, `gpt-5-pro`, `gpt-5.1-codex`; usage cost reflects the model mix.
+- **Tasks UI**
+  - Confidence chip per task row; priority/blocked chips; suggestion drawer hardened.
+  - Playwright: `tasks-confidence.spec.ts`, `tasks-suggestions.spec.ts`, `ui-smoke`, `ui-chat-smoke`, `ui-extended`, `ui-accessibility-phase3` green on backend 8000.
+- **Docs**
+  - `API_REFERENCE_UPDATED.md` is the primary API reference; legacy `API_REFERENCE.md` links to it.
+  - `SYSTEM_MATRIX.md`, `SYSTEM_OVERVIEW.md`, `RIGHT_COLUMN_UI_PLAN.md`, `RELEASE_PROCESS.md`, `SECURITY_PRIVACY.md` refreshed for current surfaces, telemetry reset, and usage endpoint.
+  - Task-focused docs under `docs/tasks/` expanded with exhaustive test plan (≥98/100 target) and issue tracking.
+
 

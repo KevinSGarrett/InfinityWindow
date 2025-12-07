@@ -61,6 +61,9 @@ The “OS for long‑running projects” metaphor: InfinityWindow tries to keep 
   - Terminal scoped run no longer needs `project_id` in body; path param is injected.
 - Pricing/usage:
   - Pricing table includes `gpt-5-nano`, `gpt-5-pro`, `gpt-5.1-codex`; usage cost reflects these.
+- Telemetry/port:
+  - Backend standard dev/QA target: `http://127.0.0.1:8000` (Playwright and helpers expect this).
+  - `/debug/telemetry?reset=true` returns cleared counters; Usage tab shows confidence buckets and recent task actions.
 - Repo/document ingestion:
   - `app/llm/embeddings.py` exposes `embed_texts_batched`, honoring `MAX_EMBED_TOKENS_PER_BATCH` / `MAX_EMBED_ITEMS_PER_BATCH`.
   - `app/ingestion/docs_ingestor.py` + `app/ingestion/github_ingestor.py` handle text and repo ingestion via `IngestionJob` records.

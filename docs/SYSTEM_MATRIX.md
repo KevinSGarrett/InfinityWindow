@@ -47,9 +47,11 @@ Use it when you need to answer questions like:
 |                | `DELETE /tasks/{task_id}`                                              | Delete task. |
 |                | `POST /projects/{project_id}/auto_update_tasks`                        | Auto‑maintenance based on conversations (also runs post‑chat when enabled). |
 | **Automation** | `auto_update_tasks_from_conversation` in `app/api/main.py`            | Auto‑adds tasks, dedupes, marks tasks done based on completion phrases. |
-| **Telemetry**  | `TASK_TELEMETRY_COUNTERS` in `app/api/main.py`                         | Counts auto‑added/auto‑completed/auto‑deduped tasks. |
+| **Telemetry**  | `TASK_TELEMETRY_COUNTERS` in `app/api/main.py`                         | Counts auto‑added/auto‑completed/auto‑deduped tasks; `/debug/telemetry?reset=true` clears counters; task actions include confidence/status/priority/blocked/auto_notes. |
 | **Tests / QA** | `qa/tasks_autoloop_probe.py`                                           | Verifies auto‑add and auto‑complete behavior in a clean project. |
 |                | `docs/TEST_PLAN.md` – B‑Tasks‑02                                       | Manual test for autonomous TODO maintenance loop. |
+|                | `docs/TEST_PLAN.md` – B‑Tasks‑03 / B‑Tasks-E2E / B‑Tasks-Noisy         | Additional chat→tasks API coverage. |
+|                | `docs/tasks/TEST_PLAN_TASKS.md`                                        | Exhaustive task automation/UI plan (≥98/100 target). |
 
 ---
 

@@ -7,7 +7,7 @@ import difflib
 import re
 import time
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List, Dict, Deque, Any, Literal
 
@@ -71,6 +71,15 @@ class ProjectCreate(BaseModel):
     local_root_path: Optional[str] = None
     instruction_text: Optional[str] = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def validate_name(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        name = values.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("name must be a non-empty string")
+        values["name"] = name.strip()
+        return values
+
 
 class ProjectRead(BaseModel):
     id: int
@@ -90,6 +99,16 @@ class ProjectUpdate(BaseModel):
     local_root_path: Optional[str] = None
     instruction_text: Optional[str] = None
     pinned_note_text: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_name(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        name = values.get("name")
+        if name is not None:
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError("name must be a non-empty string")
+            values["name"] = name.strip()
+        return values
 
 
 class ConversationCreate(BaseModel):
@@ -151,6 +170,9 @@ class TaskRead(BaseModel):
     priority: str
     blocked_reason: Optional[str]
     auto_notes: Optional[str]
+    auto_confidence: Optional[float] = None
+    auto_last_action: Optional[str] = None
+    auto_last_action_at: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -646,8 +668,8 @@ def _safe_join(root: Path, relative_path: str) -> Path:
             detail="Path must be relative to the project local_root_path.",
         )
 
-    # Disallow any attempt to go up with ".."
-    if any(part == ".." for part in rel_obj.parts):
+    # Disallow any attempt to go up with ".." even when embedded in a segment
+    if any(".." in part for part in rel_obj.parts):
         raise HTTPException(
             status_code=400,
             detail="Path may not contain '..' segments.",
@@ -756,6 +778,8 @@ def get_task_telemetry(reset: bool = False) -> Dict[str, int]:
         snapshot["confidence_buckets"] = bucket
     if reset:
         reset_task_telemetry()
+        snapshot = dict(_TASK_TELEMETRY)
+        actions = []
     return snapshot
 
 
@@ -820,12 +844,20 @@ _TASK_PRIORITY_CRITICAL = (
     "sev 1",
     "p0",
     "critical",
+    "p0 blocker",
     "urgent bug",
     "blocker",
     "security",
     "vulnerability",
     "breach",
     "data leak",
+    "payment down",
+    "checkout down",
+    "login down",
+    "incident p0",
+    "p0 incident",
+    "major outage",
+    "severe",
 )
 _TASK_PRIORITY_HIGH = (
     "urgent",
@@ -837,6 +869,14 @@ _TASK_PRIORITY_HIGH = (
     "auth",
     "login failure",
     "rate limit",
+    "p1 bug",
+    "degraded",
+    "incident",
+    "hotfix",
+    "regression",
+    "latency",
+    "slow query",
+    "perf",
 )
 _TASK_PRIORITY_LOW = (
     "cleanup",
@@ -844,6 +884,9 @@ _TASK_PRIORITY_LOW = (
     "follow-up later",
     "nit",
     "optional",
+    "idea",
+    "brainstorm",
+    "later",
 )
 _TASK_BLOCKED_PATTERNS = (
     re.compile(r"blocked by (?P<reason>.+)", re.IGNORECASE),
@@ -851,6 +894,38 @@ _TASK_BLOCKED_PATTERNS = (
     re.compile(r"after we (?P<reason>.+)", re.IGNORECASE),
     re.compile(r"waiting for (?P<reason>.+)", re.IGNORECASE),
     re.compile(r"need .* before (?P<reason>.+)", re.IGNORECASE),
+    re.compile(r"pending approval from (?P<reason>.+)", re.IGNORECASE),
+    re.compile(r"needs review from (?P<reason>.+)", re.IGNORECASE),
+    re.compile(r"blocked on (?P<reason>.+)", re.IGNORECASE),
+    re.compile(r"waiting on (?P<reason>.+)", re.IGNORECASE),
+    re.compile(r"once we (?P<reason>.+)", re.IGNORECASE),
+)
+_TASK_VAGUE_INTENT_HINTS = (
+    "analysis",
+    "analyze",
+    "investigate",
+    "look into",
+    "think about",
+    "notes",
+    "thoughts",
+    "discussion",
+    "review conversation",
+    "brainstorm",
+    "explore",
+)
+_TASK_ACTION_VERBS = (
+    "implement",
+    "add",
+    "build",
+    "fix",
+    "resolve",
+    "ship",
+    "deliver",
+    "write",
+    "refactor",
+    "deploy",
+    "document",
+    "create",
 )
 _TASK_ADD_CONFIDENCE_THRESHOLD = 0.7
 _TASK_COMPLETE_CONFIDENCE_THRESHOLD = 0.7
@@ -893,11 +968,30 @@ def _estimate_completion_confidence(similarity: float, overlap: float) -> float:
     return _clamp_confidence(raw)
 
 
+def _intent_penalty(description: str) -> float:
+    """
+    Penalize vague/analysis-only intents so they fall into the suggestion queue
+    instead of creating noisy “analysis” tasks.
+    """
+    lowered = (description or "").lower()
+    token_count = len(lowered.split())
+    if token_count <= 3:
+        return 0.25
+    if any(hint in lowered for hint in _TASK_VAGUE_INTENT_HINTS):
+        # If no clear action verb, treat as vague analysis.
+        if not any(verb in lowered for verb in _TASK_ACTION_VERBS):
+            return 0.25
+        # If both present, apply a smaller penalty.
+        return 0.12
+    return 0.0
+
+
 def _estimate_add_confidence(description: str, max_similarity: float) -> float:
     word_count = len(description.split())
     length_score = min(word_count / 12.0, 1.0)
     novelty = 1.0 - max_similarity
-    raw = 0.35 + 0.4 * length_score + 0.25 * novelty
+    penalty = _intent_penalty(description)
+    raw = 0.35 + 0.4 * length_score + 0.25 * novelty - penalty
     return _clamp_confidence(raw)
 
 
@@ -912,7 +1006,7 @@ def _record_task_action(
     details: Optional[Dict[str, Any]] = None,
 ) -> None:
     entry: Dict[str, Any] = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "action": action_type,
         "confidence": _clamp_confidence(confidence),
         "task_id": getattr(task, "id", None),
@@ -920,9 +1014,43 @@ def _record_task_action(
         "project_id": project_id or getattr(task, "project_id", None),
         "conversation_id": conversation_id,
     }
+    if isinstance(task, models.Task):
+        entry["task_status"] = task.status
+        entry["task_priority"] = task.priority
+        entry["task_blocked_reason"] = task.blocked_reason
+        if task.auto_notes:
+            entry["task_auto_notes"] = task.auto_notes
     if details:
         entry["details"] = details
+        # Lift common detail fields for convenience in telemetry/Usage UI.
+        if "matched_text" in details:
+            entry["matched_text"] = details.get("matched_text")
+        if "priority" in details and "task_priority" not in entry:
+            entry["task_priority"] = details.get("priority")
+        if "blocked_reason" in details and "task_blocked_reason" not in entry:
+            entry["task_blocked_reason"] = details.get("blocked_reason")
     _TASK_ACTION_HISTORY.appendleft(entry)
+
+
+def _attach_task_action_metadata(tasks: List[models.Task]) -> None:
+    """
+    Enrich Task objects with latest auto action metadata (confidence/action/time).
+    """
+    if not tasks:
+        return
+    latest_by_task: Dict[int, Dict[str, Any]] = {}
+    for action in _TASK_ACTION_HISTORY:
+        tid = action.get("task_id")
+        if tid is None:
+            continue
+        if tid not in latest_by_task:
+            latest_by_task[tid] = action
+    for task in tasks:
+        meta = latest_by_task.get(task.id)
+        if meta:
+            task.auto_confidence = meta.get("confidence")
+            task.auto_last_action = meta.get("action")
+            task.auto_last_action_at = meta.get("timestamp")
 
 
 def _create_task_suggestion(
@@ -1145,10 +1273,10 @@ def auto_update_tasks_from_conversation(
                     )
                     if confidence >= 0.6:  # lower threshold for short completions
                         task_obj.status = "done"
-                        task_obj.updated_at = datetime.utcnow()
+                        task_obj.updated_at = datetime.now(timezone.utc)
                         completion_note = (
-                            f"Closed automatically on {datetime.utcnow().isoformat()} "
-                            f"after the user said: \"{text}\""
+                            f"Closed automatically on {datetime.now(timezone.utc).isoformat()} "
+                            f"(confidence {confidence:.2f}) after the user said: \"{text}\""
                         )
                         if task_obj.auto_notes:
                             task_obj.auto_notes = (
@@ -1166,7 +1294,11 @@ def auto_update_tasks_from_conversation(
                             task=task_obj,
                             confidence=confidence,
                             conversation_id=conversation.id,
-                            details={"matched_text": text},
+                            details={
+                                "matched_text": text,
+                                "priority": task_obj.priority,
+                                "blocked_reason": task_obj.blocked_reason,
+                            },
                         )
                     else:
                         _create_task_suggestion(
@@ -1379,7 +1511,7 @@ def auto_update_tasks_from_conversation(
                 priority=priority,
                 blocked_reason=blocked_reason,
                 auto_notes=(
-                    f"Added automatically on {datetime.utcnow().isoformat()} "
+                    f"Added automatically on {datetime.now(timezone.utc).isoformat()} "
                     f"based on recent chat."
                 ),
             )
@@ -1391,7 +1523,11 @@ def auto_update_tasks_from_conversation(
                 task=new_task,
                 confidence=add_confidence,
                 conversation_id=conversation.id,
-                details={"source": "auto_update"},
+                details={
+                    "source": "auto_update",
+                    "priority": priority,
+                    "blocked_reason": blocked_reason,
+                },
             )
             open_task_map[new_task.id] = {
                 "task": new_task,
@@ -1612,7 +1748,7 @@ def create_project(
         description=payload.description,
         local_root_path=payload.local_root_path,
         instruction_text=instructions,
-        instruction_updated_at=datetime.utcnow() if instructions else None,
+        instruction_updated_at=datetime.now(timezone.utc) if instructions else None,
     )
     db.add(project)
     _commit_with_retry(db)
@@ -1662,7 +1798,9 @@ def update_project(
     if payload.instruction_text is not None:
         instructions = _normalize_instruction_text(payload.instruction_text)
         project.instruction_text = instructions
-        project.instruction_updated_at = datetime.utcnow()
+        project.instruction_updated_at = datetime.now(timezone.utc)
+    if payload.pinned_note_text is not None:
+        project.pinned_note_text = payload.pinned_note_text.strip() or None
 
     _commit_with_retry(db)
     db.refresh(project)
@@ -1701,7 +1839,7 @@ def update_project_instructions(
     project = _ensure_project(db, project_id)
     instructions = _normalize_instruction_text(payload.instruction_text)
     project.instruction_text = instructions
-    project.instruction_updated_at = datetime.utcnow()
+    project.instruction_updated_at = datetime.now(timezone.utc)
     if payload.pinned_note_text is not None:
         project.pinned_note_text = payload.pinned_note_text.strip() or None
     db.commit()
@@ -1838,7 +1976,7 @@ def update_project_decision(
             decision.follow_up_task_id = task.id
     if payload.is_draft is not None:
         decision.is_draft = payload.is_draft
-    decision.updated_at = datetime.utcnow()
+    decision.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(decision)
     return _decision_to_schema(decision)
@@ -2035,7 +2173,7 @@ def _memory_item_to_read_model(
 
 
 def _active_memory_query(db: Session, project_id: int):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     return (
         db.query(models.MemoryItem)
         .filter(models.MemoryItem.project_id == project_id)
@@ -2403,6 +2541,7 @@ def list_project_tasks(
         )
         .all()
     )
+    _attach_task_action_metadata(tasks)
     _cleanup_stale_suggestions(db, project_id)
     return tasks
 
@@ -2644,7 +2783,7 @@ def approve_task_suggestion(
         db.flush()
         suggestion.target_task_id = new_task.id
         suggestion.status = "approved"
-        suggestion.updated_at = datetime.utcnow()
+        suggestion.updated_at = datetime.now(timezone.utc)
         _record_task_action(
             "suggestion_approved_add",
             task=new_task,
@@ -2658,10 +2797,10 @@ def approve_task_suggestion(
                 status_code=400, detail="Suggestion missing target task."
             )
         suggestion.target_task.status = "done"
-        suggestion.target_task.updated_at = datetime.utcnow()
+        suggestion.target_task.updated_at = datetime.now(timezone.utc)
         completion_note = (
             f"Closed via suggestion {suggestion.id} on "
-            f"{datetime.utcnow().isoformat()} after the user approved an automation hint."
+            f"{datetime.now(timezone.utc).isoformat()} after the user approved an automation hint."
         )
         if suggestion.target_task.auto_notes:
             suggestion.target_task.auto_notes = (
@@ -2670,7 +2809,7 @@ def approve_task_suggestion(
         else:
             suggestion.target_task.auto_notes = completion_note
         suggestion.status = "approved"
-        suggestion.updated_at = datetime.utcnow()
+        suggestion.updated_at = datetime.now(timezone.utc)
         _record_task_action(
             "suggestion_approved_complete",
             task=suggestion.target_task,
@@ -2703,7 +2842,7 @@ def dismiss_task_suggestion(
             status_code=400, detail="Suggestion is not pending dismissal."
         )
     suggestion.status = "dismissed"
-    suggestion.updated_at = datetime.utcnow()
+    suggestion.updated_at = datetime.now(timezone.utc)
     _commit_with_retry(db)
     db.refresh(suggestion)
     try:
@@ -2739,7 +2878,7 @@ def _cleanup_stale_suggestions(db: Session, project_id: int) -> None:
             task = db.get(models.Task, s.target_task_id)
             if task and task.status == "done":
                 s.status = "dismissed"
-                s.updated_at = datetime.utcnow()
+                s.updated_at = datetime.now(timezone.utc)
     db.commit()
 
 
@@ -2843,6 +2982,60 @@ def read_telemetry(reset: bool = False) -> Dict[str, Any]:
         "tasks": task_snapshot,
         "ingestion": ingestion_snapshot,
     }
+
+
+class SeedTaskActionPayload(BaseModel):
+    project_id: int
+    description: str
+    action: Literal["auto_added", "auto_completed", "auto_dismissed"] = "auto_added"
+    confidence: float = 0.9
+    status: Optional[str] = None
+    auto_notes: Optional[str] = None
+
+
+@app.post("/debug/seed_task_action", response_model=TaskRead)
+def seed_task_action(payload: SeedTaskActionPayload, db: Session = Depends(get_db)):
+    """
+    Test helper: seed a task with automation metadata for UI/QA.
+    Creates the task if it does not exist; records a task action with confidence.
+    """
+    project = db.get(models.Project, payload.project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    task = (
+        db.query(models.Task)
+        .filter(
+            models.Task.project_id == payload.project_id,
+            models.Task.description == payload.description,
+        )
+        .first()
+    )
+    if task is None:
+        task = models.Task(
+            project_id=payload.project_id,
+            description=payload.description,
+            status="open",
+            priority="normal",
+        )
+        db.add(task)
+        db.flush()
+
+    if payload.status:
+        task.status = payload.status
+    if payload.auto_notes:
+        task.auto_notes = payload.auto_notes
+
+    _record_task_action(
+        payload.action,
+        task=task,
+        confidence=payload.confidence,
+        project_id=payload.project_id,
+        details={"source": "debug_seed"},
+    )
+    db.commit()
+    db.refresh(task)
+    return task
 
 
 @app.post(
@@ -3294,7 +3487,7 @@ def create_ingestion_job_endpoint(
     if payload.kind != "repo":
         job.status = "failed"
         job.error_message = f"Unsupported ingestion kind: {payload.kind}"
-        job.finished_at = datetime.utcnow()
+        job.finished_at = datetime.now(timezone.utc)
         _commit_with_retry(db)
         db.refresh(job)
         return job
@@ -3303,7 +3496,7 @@ def create_ingestion_job_endpoint(
     if not source_path.is_dir():
         job.status = "failed"
         job.error_message = f"Root path is not a directory: {payload.source}"
-        job.finished_at = datetime.utcnow()
+        job.finished_at = datetime.now(timezone.utc)
         _commit_with_retry(db)
         db.refresh(job)
         return job

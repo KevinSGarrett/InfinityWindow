@@ -48,6 +48,7 @@ _Use this file as a template for recording results from `docs/TEST_PLAN.md`. Mak
 | B-Tasks-01| Tasks CRUD + auto‑extraction        |                |                |
 | B-Tasks-02| Autonomous TODO maintenance loop    |                |                |
 | B-Tasks-03| Suggested-change queue & telemetry  |                |                |
+| B-Tasks-04| Task automation/UI exhaustive (see docs/tasks/TEST_PLAN_TASKS.md) |                | Use alongside main plan for ≥98/100 task coverage |
 | B-Docs-01 | Docs CRUD + ingestion happy path    |                |                |
 | B-Docs-02 | Ingestion reuse & hash skipping     |                |                |
 | B-Docs-03 | Progress metrics (files/bytes/time) |                |                |

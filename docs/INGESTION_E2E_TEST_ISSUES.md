@@ -8,7 +8,7 @@ This document tracks issues found during automated E2E testing of the Large Repo
 **Test Suite**: `qa/ingestion_e2e_test.py`  
 **Results**: 6/7 tests passed (Python API tests)
 
-**Note**: Playwright UI tests require frontend to be running (now auto-started via webServer config). Backend is expected on `http://127.0.0.1:8000` (earlier runs used 8001 temporarily).
+**Note**: Playwright UI tests require frontend to be running (now auto-started via webServer config). Backend is expected on `http://127.0.0.1:8000` (earlier runs used 8001 temporarily; standardized on 8000).
 
 ---
 

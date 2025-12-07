@@ -115,13 +115,14 @@ No terminal or memory content here.
 
 ### 3.6 Usage tab
 
-**Goal**: Clear summary of model usage for the current conversation.
+**Goal**: Clear summary of model usage for the current conversation, including task telemetry/confidence.
 
 - Header: “Usage (this conversation)”.
 - Body:
   - Totals: tokens in/out, total cost.
   - Scrollable list of recent usage records (model, tokens, message id, timestamp).
-  - Height limit should be generous enough that ~10 entries look natural (current cap bumped to 220px; can be tuned).
+  - Task telemetry: confidence buckets, recent task actions (status/priority/blocked/auto_notes, confidence), Refresh/Reset actions.
+  - Height limit should be generous enough that ~10 entries look natural (current cap bumped to ~220px; can be tuned).
 
 ### 3.7 Notes tab
 

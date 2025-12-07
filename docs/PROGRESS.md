@@ -18,6 +18,20 @@ _Updated from `Hydration_File_002.txt`, `To_Do_List_001.txt`, and `Cursor_Chat_L
 - **Right‑column UI 2.0**: partially implemented; layout is currently under active iteration based on UX feedback.
 - **CI attempt (2025‑12‑05)**: `make ci` currently fails with “No rule to make target 'ci'.” – add/restore a CI target or document the correct command.
 
+## 2025‑12‑08 – QA updates (port-aligned to 8000)
+
+- Playwright e2e suite green on backend `http://127.0.0.1:8000` after aligning API base in helpers/specs (`ui-smoke`, `ui-chat-smoke`, `ui-extended`, `tasks-suggestions`, `tasks-confidence`); stabilized with seeded data and less brittle waits.
+- Confidence chip + Usage telemetry buckets verified in UI via `tasks-confidence.spec.ts`; tasks suggestions and extended flows stable with pre-seeded instructions/decisions/memory/tasks.
+
+## 2025‑12‑08 – Final validation
+- Playwright suite (including `ui-accessibility-phase3.spec.ts`) green on 8000; `npm run test:e2e` passes all 6 specs.
+- API suite green (`PYTHONPATH='..' pytest tests_api`), only upstream SQLAlchemy `utcnow` deprecation warnings remain.
+- Telemetry reset now clears counters on response; app code uses `datetime.now(timezone.utc)` (utcnow calls remain only in SQLAlchemy internals).
+
+## 2025‑12‑09 – Tasks heuristics + regression
+- Backend: intent guardrails (penalize vague “analysis” asks), expanded priority/blocked vocab, audit snippets include confidence/matched_text, telemetry lifts matched_text/priority/blocked into recent actions.
+- Playwright targeted (tasks-confidence, tasks-suggestions, ui-smoke, ui-chat-smoke, ui-extended) green on backend 8000 after suggestions test stabilization.
+- API suite: `PYTHONPATH='.;backend' pytest qa/tests_api` → 10 passed, 1 xfailed (expected), warnings only from upstream SQLAlchemy `datetime.utcnow()` internals.
 ## Non‑ingestion coverage plan (2025‑12‑05)
 
 - Automated Playwright smokes to run: `ui-smoke.spec.ts`, `ui-chat-smoke.spec.ts`, `ui-extended.spec.ts` (covers notes reload, decision log, folders, files, terminal, search, suggestions).

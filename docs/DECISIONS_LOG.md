@@ -83,4 +83,13 @@ A simple pattern for entries:
 - **Rationale**: Batched embeddings keep us under provider limits, and job records make the UX predictable (start → see progress → view errors). Hash-based skipping avoids re-ingesting thousands of files when only a handful changed.
 - **Implications**: All future ingestion flows (docs, repos, blueprints) must route through the job API and batching helper; `MAX_EMBED_*` defaults must stay documented in `CONFIG_ENV.md`. Blueprint/Autopilot ingestion (Phase T) will build on the same tables and endpoints rather than inventing a parallel system.
 
+### 2025-12-08 – Standardize local backend port and telemetry reset behavior
+
+- **Context**: Playwright/UI/API tests and docs had drifted between ports 8000 and 8001; telemetry reset endpoint previously echoed pre-reset counters.
+- **Decision**:
+  - Standardize backend to `http://127.0.0.1:8000` for dev/QA, reflected in Playwright helpers/config, docs, and API references.
+  - Make `/debug/telemetry?reset=true` return cleared counters immediately; ensure Usage tab shows confidence buckets and recent task actions based on that state.
+- **Rationale**: Eliminates flaky UI/API tests from port mismatches and provides reliable telemetry resets for repeated QA runs.
+- **Implications**: Future config changes must update `CONFIG_ENV.md`, Playwright config, `API_REFERENCE_UPDATED.md`, and `PROGRESS.md`; telemetry contract (reset → zeroed response) is now considered stable.
+
 Add new decisions below this line as the system evolves.

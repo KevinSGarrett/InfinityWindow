@@ -85,6 +85,9 @@ type Task = {
   priority: string;
   blocked_reason?: string | null;
   auto_notes?: string | null;
+  auto_confidence?: number | null;
+  auto_last_action?: string | null;
+  auto_last_action_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -117,6 +120,10 @@ type TaskTelemetryAction = {
   confidence: number;
   task_id?: number | null;
   task_description?: string | null;
+  task_status?: string | null;
+  task_priority?: string | null;
+  task_blocked_reason?: string | null;
+  task_auto_notes?: string | null;
   project_id?: number | null;
   conversation_id?: number | null;
   details?: Record<string, any>;
@@ -3892,6 +3899,12 @@ function App() {
                               >
                                 {task.priority || "normal"}
                               </span>
+                          {typeof task.auto_confidence === "number" && (
+                            <span className="task-confidence-chip">
+                              {(task.auto_last_action || "auto").replaceAll("_", " ")} ·{" "}
+                              {task.auto_confidence.toFixed(2)}
+                            </span>
+                          )}
                               {task.blocked_reason && (
                                 <span className="task-blocked-chip">
                                   Blocked: {task.blocked_reason}
@@ -6008,6 +6021,115 @@ function App() {
                                 </span>
                               </li>
                             </ul>
+                          </div>
+                          <div className="usage-telemetry-section">
+                            <div className="usage-telemetry-title">
+                              Confidence stats
+                            </div>
+                            {telemetry.tasks.confidence_stats ? (
+                              <ul className="usage-telemetry-list">
+                                <li>
+                                  <span className="usage-label">Min</span>
+                                  <span className="usage-value">
+                                    {telemetry.tasks.confidence_stats.min}
+                                  </span>
+                                </li>
+                                <li>
+                                  <span className="usage-label">Max</span>
+                                  <span className="usage-value">
+                                    {telemetry.tasks.confidence_stats.max}
+                                  </span>
+                                </li>
+                                <li>
+                                  <span className="usage-label">Avg</span>
+                                  <span className="usage-value">
+                                    {telemetry.tasks.confidence_stats.avg}
+                                  </span>
+                                </li>
+                                <li>
+                                  <span className="usage-label">Count</span>
+                                  <span className="usage-value">
+                                    {telemetry.tasks.confidence_stats.count}
+                                  </span>
+                                </li>
+                              </ul>
+                            ) : (
+                              <div className="usage-telemetry-empty">
+                                No confidence data yet.
+                              </div>
+                            )}
+                            {telemetry.tasks.confidence_buckets && (
+                              <ul className="usage-telemetry-list">
+                                <li>
+                                  <span className="usage-label">&lt;0.4</span>
+                                  <span className="usage-value">
+                                    {telemetry.tasks.confidence_buckets.lt_0_4}
+                                  </span>
+                                </li>
+                                <li>
+                                  <span className="usage-label">0.4–0.7</span>
+                                  <span className="usage-value">
+                                    {telemetry.tasks.confidence_buckets["0_4_0_7"]}
+                                  </span>
+                                </li>
+                                <li>
+                                  <span className="usage-label">≥0.7</span>
+                                  <span className="usage-value">
+                                    {telemetry.tasks.confidence_buckets.gte_0_7}
+                                  </span>
+                                </li>
+                              </ul>
+                            )}
+                          </div>
+                          <div className="usage-telemetry-section">
+                            <div className="usage-telemetry-title">
+                              Recent task actions
+                            </div>
+                            {telemetry.tasks.recent_actions &&
+                            telemetry.tasks.recent_actions.length > 0 ? (
+                              <ul className="usage-telemetry-list">
+                                {telemetry.tasks.recent_actions
+                                  .slice(0, 8)
+                                  .map((a, idx) => (
+                                    <li key={`${a.timestamp}-${idx}`}>
+                                      <div className="usage-label">
+                                        {a.action} · conf {a.confidence.toFixed(2)}
+                                      </div>
+                                  <div className="usage-telemetry-sub">
+                                        {a.task_description ?? "—"}
+                                      </div>
+                                      <div className="usage-telemetry-sub">
+                                        {a.task_status ? `status: ${a.task_status}` : ""}
+                                        {a.task_priority
+                                          ? ` · priority: ${a.task_priority}`
+                                          : ""}
+                                        {a.task_blocked_reason
+                                          ? ` · blocked: ${a.task_blocked_reason}`
+                                          : ""}
+                                      </div>
+                                      {a.details?.matched_text ? (
+                                        <div className="usage-telemetry-sub">
+                                          matched: {a.details.matched_text}
+                                        </div>
+                                      ) : null}
+                                      {a.timestamp ? (
+                                        <div className="usage-telemetry-sub">
+                                          at: {a.timestamp}
+                                        </div>
+                                      ) : null}
+                                      {a.task_auto_notes ? (
+                                        <div className="usage-telemetry-sub">
+                                          notes: {a.task_auto_notes}
+                                        </div>
+                                      ) : null}
+                                    </li>
+                                  ))}
+                              </ul>
+                            ) : (
+                              <div className="usage-telemetry-empty">
+                                No recent task actions recorded yet.
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}

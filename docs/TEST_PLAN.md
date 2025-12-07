@@ -190,6 +190,35 @@ Record any problems under `A-Env-*` in test reports.
   - Approve/dismiss endpoints work and mutate the task list accordingly.
   - Telemetry counters and `recent_actions` capture each action with timestamps/confidence.
 
+### B-Tasks-E2E – Chat → tasks auto-add/auto-complete (API)
+
+- **Purpose**: Ensure the post-chat auto-update hook creates tasks from chat and marks them done when completions are mentioned.
+- **Steps**:
+  1. `POST /chat` with `project_id` and a message containing two TODOs (e.g., “Add login page” and “Fix logout bug”).
+  2. `GET /projects/{id}/tasks` and verify both tasks are present and `open`.
+  3. `POST /chat` on the same conversation stating that one task is done (e.g., “The login page task is done now.”).
+  4. `GET /projects/{id}/tasks` and verify the mentioned task is `done` and the other remains `open`.
+- **Expected**:
+  - Tasks are added automatically after chat without manual calls to `auto_update_tasks`.
+  - Follow-up chat marks the matching task `done` and leaves unrelated tasks `open`.
+
+### B-Tasks-Noisy – Chat → tasks with noisy conversation (API)
+
+- **Purpose**: Ensure auto-add/complete still works when the conversation includes unrelated chatter.
+- **Steps**:
+  1. `POST /chat` with a mix of unrelated chatter and two TODOs (e.g., “Finish the payment retry flow” and “Document the new API responses”).
+  2. `GET /projects/{id}/tasks` and verify both tasks are present and `open`.
+  3. `POST /chat` on the same conversation with noise plus one completion (e.g., “Payment retry flow is done; docs are still pending.”).
+  4. `GET /projects/{id}/tasks` and verify the mentioned task is `done` and the other remains `open`.
+- **Expected**:
+  - Tasks are added despite noisy context.
+  - Completion detection closes the right task and leaves others open.
+
+- **Telemetry & Usage quick checks**  
+  - `GET /debug/telemetry` before/after chat to see task counters and confidence buckets.  
+  - `GET /conversations/{id}/usage` to confirm non-zero cost totals after chat; compare with Usage tab.  
+  - For exhaustive task automation/UI coverage (target ≥98/100), also run `docs/tasks/TEST_PLAN_TASKS.md` alongside this plan; it aligns with the current green Playwright + API suites on port 8000 and documents stability aids (seed data, refresh-all).
+
 #### Large repo ingestion test harness (B-Docs-01 → B-Docs-07) — long-running
 
 - **Reset & project**: Run `tools/reset_qa_env.py --confirm` (or delete `backend\infinitywindow.db` + `backend\chroma_data`) and create `POST /projects { "name": "Ingestion QA", "local_root_path": "C:\\InfinityWindow" }`.

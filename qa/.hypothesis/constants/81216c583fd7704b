@@ -1,0 +1,4 @@
+# file: C:\InfinityWindow\backend\app\api\docs.py
+# hypothesis_version: 6.148.7
+
+[400, 404, '/docs/text', '/docs/{doc_id}', 'Document not found.', 'Project not found.', 'deleted', 'doc_id', 'docs', 'ignore', 'status', 'text/markdown', 'text/plain', 'utf-8']

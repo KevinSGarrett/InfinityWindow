@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { createTestProject, waitForBackend } from './helpers/api';
 
 const TEST_REPO_PATH = process.env.TEST_REPO_PATH || 'C:\\InfinityWindow';
-const API_BASE = process.env.PLAYWRIGHT_API_BASE ?? 'http://127.0.0.1:8001';
+const API_BASE = process.env.PLAYWRIGHT_API_BASE ?? 'http://127.0.0.1:8000';
 const UI_BASE = process.env.PLAYWRIGHT_UI_BASE ?? 'http://localhost:5173';
 
 test.describe('UI Chat Smoke - Chat, Remember, Usage, Search', () => {

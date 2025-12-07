@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 
 from sqlalchemy.orm import Session
@@ -182,7 +182,7 @@ def ingest_repo_job(
     """
     job.status = "running"
     job.error_message = None
-    job.started_at = datetime.utcnow()
+    job.started_at = datetime.now(timezone.utc)
     job.finished_at = None
     job.processed_items = 0
     job.processed_bytes = 0
@@ -193,7 +193,7 @@ def ingest_repo_job(
     if not root.is_dir():
         job.status = "failed"
         job.error_message = f"Root path is not a directory: {job.source}"
-        job.finished_at = datetime.utcnow()
+        job.finished_at = datetime.now(timezone.utc)
         db.commit()
         _record_ingest_event("jobs_failed")
         raise ValueError(job.error_message)
@@ -262,7 +262,7 @@ def ingest_repo_job(
                 cancelled = True
                 job.status = "cancelled"
                 job.error_message = "Cancelled by user"
-                job.finished_at = datetime.utcnow()
+                job.finished_at = datetime.now(timezone.utc)
                 db.commit()
                 break
 
@@ -290,13 +290,13 @@ def ingest_repo_job(
                     project_id=job.project_id,
                     relative_path=rel_path,
                     sha256=sha,
-                    last_ingested_at=datetime.utcnow(),
+                    last_ingested_at=datetime.now(timezone.utc),
                 )
                 db.add(state)
                 existing_states[rel_path] = state
             else:
                 state.sha256 = sha
-                state.last_ingested_at = datetime.utcnow()
+                state.last_ingested_at = datetime.now(timezone.utc)
 
             job.processed_items += 1
             job.processed_bytes += size
@@ -314,7 +314,7 @@ def ingest_repo_job(
     except Exception as exc:
         job.status = "failed"
         job.error_message = str(exc)
-        job.finished_at = datetime.utcnow()
+        job.finished_at = datetime.now(timezone.utc)
         db.commit()
         _record_ingest_event(
             "jobs_failed",
@@ -358,7 +358,7 @@ def ingest_repo_job(
 
     job.status = "completed"
     job.error_message = None
-    job.finished_at = datetime.utcnow()
+    job.finished_at = datetime.now(timezone.utc)
     job.meta = {
         **(job.meta or {}),
         "include_globs": include_patterns,

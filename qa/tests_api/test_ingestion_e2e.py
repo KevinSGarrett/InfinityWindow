@@ -17,7 +17,7 @@ def test_basic_ingestion_happy_path(client, tmp_path):
     proj_resp = client.post(
         "/projects",
         json={
-            "name": "Ingestion QA",
+            "name": f"Ingestion QA {time.time_ns()}",
             "local_root_path": str(repo_root),
             "description": "fixture project",
         },

@@ -9,7 +9,7 @@ It is not an exhaustive OpenAPI spec, but a practical reference for development 
 
 ## 1. Projects & conversations
 
-> Note: A more current, detailed guide is available at `docs/API_REFERENCE_UPDATED.md`. Use that for the latest endpoints and payload examples; this file remains as the legacy quick reference.
+> Note: A more current, detailed guide is available at `docs/API_REFERENCE_UPDATED.md`. Use that for the latest endpoints and payload examples; this file remains as the legacy quick reference. Base dev URL: `http://127.0.0.1:8000`.
 
 ### 1.1 Projects
 
@@ -72,8 +72,11 @@ It is not an exhaustive OpenAPI spec, but a practical reference for development 
 - **DELETE `/tasks/{task_id}`**  
   Delete a task (helpful for cleaning artifacts).
 
-- **POST `/projects/{project_id}/auto_update_tasks`** *(name may vary)*  
-  Trigger autonomous task maintenance based on recent conversation history.
+- **POST `/projects/{project_id}/auto_update_tasks`**  
+  Trigger autonomous task maintenance based on recent conversation history. (Scoped route; body need not include `project_id`.)
+
+- **GET `/projects/{project_id}/tasks/overview`**  
+  Returns both tasks and pending low-confidence suggestions (add/complete) in one call.
 
 ---
 

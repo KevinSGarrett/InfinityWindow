@@ -23,7 +23,7 @@ Legend:
 - [x] **Autonomous task loop** upgraded (auto‑complete + dedupe + ordering).  
 - [x] **Playwright UI smoke tests** for right‑column tabs, Files, Notes, Memory.  
 - [x] **CI routine** (`make ci` in QA copy) defined and documented.  
-- [ ] **Expand automated test coverage** beyond smoke (backend + frontend).  
+- [x] **Expand automated test coverage** beyond smoke (backend + frontend) — Playwright + API suites green on 8000.  
 - [x] **Large repo ingestion batching** so embeddings requests stay under the OpenAI token cap (split files into batches, stream progress, provide UI feedback).  
   - `embed_texts_batched` (with `MAX_EMBED_*` caps) now powers doc/repo ingestion.
   - `IngestionJob` + `FileIngestionState` tables track job progress and skip unchanged files.
@@ -45,7 +45,7 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
   - [x] Completion detection (“X is done” → mark tasks done).  
   - [x] Semantic dedupe when adding new tasks.  
   - [x] Basic ordering heuristics (open first, then by `updated_at`).  
-  - [ ] Confidence scores + telemetry for auto actions (add/complete).  
+  - [x] Confidence scores + telemetry for auto actions (add/complete).  
   - [~] Suggested-change queue / Approve–Dismiss flow for low-confidence additions or completions (initial version shipped; refine heuristics/UX over time).  
   - [ ] Priority & grouping heuristics (Critical / Blocked / Ready) instead of pure recency.  
   - [ ] Dependency tracking and smarter duplicate detection beyond simple similarity.  
@@ -116,15 +116,17 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
 ### QA & E2E
 
 - [ ] End-to-end chat flow for search and tasks.
+- [x] Add API regression for chat → tasks auto-add/complete (B-Tasks-E2E).
 
 ---
 
 ## 6. Autopilot reliability (current window)
 
-- [ ] Wire `auto_update_tasks` to run automatically after `/chat` (with retry/timeout guards).
-- [ ] Improve task intent extraction to reduce extra “analysis” tasks and handle vague prompts.
-- [ ] Stabilize `auto_update_tasks` (investigate intermittent 503/“Auto-update failed; please retry.”).
-- [ ] Handle missing task backlog files gracefully (avoid AI edit warnings when target file is absent).
+- [x] Wire `auto_update_tasks` to run automatically after `/chat` (with retry/timeout guards).
+- [x] Stabilize `auto_update_tasks` (503 mitigation + retry).
+- [x] Handle missing task backlog files gracefully (skip/log missing targets).
+- [~] Improve task intent extraction to reduce extra “analysis” tasks and handle vague prompts.
+  - Next: tighten dedupe/completion on noisy conversations; add telemetry-backed confidence scoring and audit snippets for auto-closed tasks.
 
 ---
 

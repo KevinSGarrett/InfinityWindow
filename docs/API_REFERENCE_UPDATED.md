@@ -92,6 +92,7 @@ This version reflects the latest backend behavior after 2025-12-06 fixes. Base U
 Notes:
 - `status` is validated (e.g., `open`, `in_progress`, `blocked`, `done`); invalid values return 422.
 - `priority` accepts `critical`, `high`, `normal`, `low`.
+- `auto_confidence`, `auto_last_action`, `auto_last_action_at`, and `auto_notes` are returned on tasks to surface automation metadata; confidence chips appear in the Tasks UI.
 
 ---
 

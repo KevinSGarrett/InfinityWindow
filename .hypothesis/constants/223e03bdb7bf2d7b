@@ -1,0 +1,4 @@
+# file: C:\InfinityWindow\backend\app\llm\pricing.py
+# hypothesis_version: 6.148.7
+
+[0.0, 0.05, 0.15, 0.2, 0.6, 1.25, 1.5, 2.5, 5.0, 10.0, 12.0, 15.0, 18.0, 1000000.0, 'gpt-4.1', 'gpt-4.1-mini', 'gpt-5-nano', 'gpt-5-pro', 'gpt-5.1', 'gpt-5.1-codex']
