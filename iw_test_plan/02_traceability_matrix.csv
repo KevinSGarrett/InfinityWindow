@@ -1,0 +1,17 @@
+Area,Feature,Doc/Source,API/UI,Test IDs (primary)
+Projects,CRUD, selection, renaming,SYSTEM_OVERVIEW.md,API+UI,A-Proj-01..03, U-Proj-01..06
+Conversations,Folders, messages, streaming,SYSTEM_MATRIX.md,API+UI,A-Conv-01..06, U-Conv-01..08
+Chat pipeline,Model routing, fallbacks, tokens,HYDRATION_2025-12-02.md,API,C-Chat-01..12
+Tasks,Auto‑update from conversation,HYDRATION_2025-12-02.md,API+UI,C-Tasks-01..09, U-Tasks-01..07
+Docs ingestion,Batching, hashing, cancel, metrics,MANUAL_TEST_GUIDE_INGESTION.md,API+UI,D-Docs-01..12, U-Docs-01..06
+Search,Query correctness & recall,SYSTEM_OVERVIEW.md,API+UI,E-Search-01..10, U-Search-01..06
+Files,Tree, preview, AI edits,SYSTEM_OVERVIEW.md,API+UI,F-Files-01..12, U-Files-01..07
+Terminal,Start/stop, output, cancel,SYSTEM_OVERVIEW.md,API+UI,G-Term-01..12, U-Term-01..07
+Usage,Token/time counters,SYSTEM_OVERVIEW.md,UI,H-Usage-01..06, U-Usage-01..03
+Notes/Memory/Decisions,CRUD and linking,SYSTEM_OVERVIEW.md,API+UI,I-Notes-01..06, I-Memory-01..08, I-Dec-01..05
+Telemetry,/debug/telemetry parity,HYDRATION_2025-12-02.md,API,J-Tel-01..08
+Security,STRIDE & OWASP top 10,SECURITY_PRIVACY.md,API+System,K-SEC-01..36
+Performance,Ingestion, search, chat,OPERATIONS_RUNBOOK.md,System,L-Perf-01..16
+Resilience,Crash consistency, restart,OPERATIONS_RUNBOOK.md,System,M-Res-01..18
+Accessibility,Keyboard, ARIA, contrast,RIGHT_COLUMN_UI_PLAN.md,UI,N-A11y-01..20
+Release,Gates & smoke,RELEASE_PROCESS.md,System,R-Rel-01..10

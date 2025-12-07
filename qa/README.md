@@ -29,6 +29,7 @@ backend\.venv\Scripts\python.exe -m qa.run_smoke
 | --- | --- |
 | `message_search_probe` | Inserts a unique token via `/chat` and asserts `/search/messages` returns the user + assistant messages. |
 | `tasks_autoloop_probe` | Creates a throwaway project/conversation, runs the autonomous TODO maintainer, and verifies that completion statements mark tasks done + insert follow-ups. |
+| `ingestion_probe` | Spins up a temporary repo, runs `/projects/{id}/ingestion_jobs`, confirms batching completes, verifies the status endpoint, ensures a second run skips unchanged files, and forces a failure to check error reporting. |
 | `mode_routing_probe` | Patches `_call_model` to capture models, then hits `/chat` with all explicit modes and four auto-mode scenarios (code, research, lightweight, planning). |
 
 If any probe raises, `qa.run_smoke` exits with a non-zero status and prints the

@@ -36,9 +36,10 @@ Before calling a window “done” or cutting a release:
 - **Docs**
   - [ ] `docs/SYSTEM_OVERVIEW.md` matches current behavior.
   - [ ] `docs/SYSTEM_MATRIX.md` is updated for new/changed features.
+  - [ ] `docs/API_REFERENCE_UPDATED.md` is the primary API doc; keep `docs/API_REFERENCE.md` pointer intact.
   - [ ] `docs/PROGRESS.md` and `docs/TODO_CHECKLIST.md` reflect what was done and what remains.
   - [ ] `docs/CHANGELOG.md` has an entry summarizing the window.
-  - [ ] Any new patterns or constraints are captured in `DEV_GUIDE.md` / `AGENT_GUIDE.md`.
+  - [ ] Any new patterns or constraints are captured in `DEV_GUIDE.md` / `AGENT_GUIDE.md` / `AUTOPILOT_*` docs (if relevant).
 
 ---
 

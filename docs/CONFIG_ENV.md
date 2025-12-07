@@ -21,6 +21,11 @@ Backend configuration is typically provided via a `.env` file in `backend/` or t
   Filesystem path where Chroma stores its collections.  
   Default in development: `backend/chroma_data/`.
 
+- **`AUTO_UPDATE_TASKS_AFTER_CHAT`** (optional)  
+  Controls the automatic task upkeep hook after `/chat`.  
+  - Default: `true` (any of `0/false/no/off` disables it).  
+  - If disabled, you can still trigger upkeep manually via `POST /projects/{project_id}/auto_update_tasks`.
+
 ### 1.2 Model selection
 
 InfinityWindow uses **chat modes** (`auto`, `fast`, `deep`, `budget`, `research`, `code`) which map to underlying models in `app/llm/openai_client.py`.
@@ -63,7 +68,28 @@ The `auto` mode uses `_infer_auto_submode` to pick between:
 - `fast` – short, simple prompts.
 - `deep` – everything else.
 
-### 1.3 CORS & networking
+### 1.3 Autopilot / role-based model aliases (planned)
+
+> The following environment variables are part of the **Autopilot design** described in `MODEL_MATRIX.md`.  
+> They are not all wired into the current codebase yet.
+
+Planned role-specific env vars:
+
+- `OPENAI_MODEL_SUMMARY` – conversation summaries, short doc summaries.
+- `OPENAI_MODEL_SNAPSHOT` – project snapshot generation.
+- `OPENAI_MODEL_BLUEPRINT` – blueprint outline extraction & merge.
+- `OPENAI_MODEL_PLAN_TASKS` – PlanNode → Task decomposition.
+- `OPENAI_MODEL_MANAGER` – ManagerAgent planning & retrospectives.
+- `OPENAI_MODEL_WORKER_CODE` – code worker (feature implementation, refactors).
+- `OPENAI_MODEL_WORKER_TEST` – test worker (test design/analysis).
+- `OPENAI_MODEL_WORKER_DOC` – docs worker (docs sync with code/blueprint).
+- `OPENAI_MODEL_ALIGNMENT` – alignment checks for risky edits/commands.
+- `OPENAI_MODEL_INTENT` – intent classifier for chat messages.
+- `OPENAI_MODEL_RESEARCH_DEEP` – deep/extended research tasks.
+
+Defaults and wiring for these variables are specified in `docs/MODEL_MATRIX.md`. As Autopilot modules are implemented, they should use role-based helpers (`get_model_for_role`, `call_model_for_role`) rather than hard‑coding model IDs.
+
+### 1.4 CORS & networking
 
 - **`CORS_ALLOW_ORIGINS`** (optional)  
   Comma‑separated list of allowed origins.  
@@ -145,7 +171,36 @@ No special env vars are required for telemetry today, but future work may add to
 
 ---
 
-## 5. Extending configuration
+## 5. Embeddings & Ingestion Batching
+
+Repo/document ingestion now uses `embed_texts_batched`, which reads the following environment variables:
+
+- **`OPENAI_EMBEDDING_MODEL`**  
+  Model used for embeddings (messages/docs/memory/ingestion).  
+  - Default: `text-embedding-3-small`.
+
+- **`MAX_EMBED_TOKENS_PER_BATCH`**  
+  Approximate token cap per embeddings API call during ingestion.  
+  - Default: `50000`. Lower this if you hit provider limits; raise cautiously if your plan allows larger payloads.
+
+- **`MAX_EMBED_ITEMS_PER_BATCH`**  
+  Maximum number of text chunks per embeddings request.  
+  - Default: `256`. Helps throttle memory usage during large ingests.
+
+### 5.1 Future knobs (design-only)
+
+> The following variables are part of the Autopilot/blueprint design. They are not wired into the current codebase yet.
+
+- **`MAX_CONTEXT_TOKENS_PER_CALL`**  
+  Planned soft cap on tokens passed to a single chat/model call (used by the future context builder).  
+  - Example default: `24000`.
+
+- **`AUTOPILOT_MAX_TOKENS_PER_RUN`**  
+  Planned cap on total tokens a single `ExecutionRun` may consume before the Manager pauses for human approval.
+
+---
+
+## 6. Extending configuration
 
 When adding new configurable behavior:
 

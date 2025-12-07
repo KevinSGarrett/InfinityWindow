@@ -125,7 +125,10 @@ You should:
 3. Update `docs/SYSTEM_MATRIX.md`:
    - Add new endpoints/models/components to the relevant tables.
 4. If behavior touches configuration, API, or security:
-   - Update `docs/API_REFERENCE.md`, `docs/CONFIG_ENV.md`, and/or `docs/SECURITY_PRIVACY.md` as needed.
+   - Update `docs/API_REFERENCE.md`, `docs/API_REFERENCE_UPDATED.md`, `docs/CONFIG_ENV.md`, and/or `docs/SECURITY_PRIVACY.md` as needed.
+5. When you add or change APIs or fix defects uncovered in QA:
+   - Log the issue and resolution in `docs/ISSUES_LOG.md`.
+   - Keep `docs/API_REFERENCE_UPDATED.md` fully aligned with the backend so QA can rely on it for request shapes and new endpoints (e.g., task delete/overview, ingestion jobs).
 
 Documentation and code should tell the same story; avoid leaving them out of sync.
 
@@ -165,5 +168,11 @@ Documentation and code should tell the same story; avoid leaving them out of syn
   - `docs/TEST_REPORT_*.md`
   - `docs/OPERATIONS_RUNBOOK.md` (once filled)
 
-Use this guide as your behavioral contract when acting in this repository. When you’re unsure, prefer to read more (code + docs) and make smaller, reversible changes.
+- **Future Autopilot & blueprint design**:
+  - `docs/AUTOPILOT_PLAN.md`
+  - `docs/AUTOPILOT_LEARNING.md`
+  - `docs/AUTOPILOT_LIMITATIONS.md`
+  - `docs/MODEL_MATRIX.md`
+
+Use this guide as your behavioral contract when acting in this repository. When you’re unsure, prefer to read more (code + docs) and make smaller, reversible changes. For Autopilot work specifically, always respect the additional safety constraints in `AUTOPILOT_LIMITATIONS.md` and keep docs/QA artifacts in sync as new capabilities are implemented.
 

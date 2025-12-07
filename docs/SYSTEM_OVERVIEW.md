@@ -56,7 +56,7 @@ Main backend responsibilities:
 - **Styling**: `frontend/src/App.css` for the 3‑column layout and right‑tab UI.
 - **UI tests**: Playwright tests in `frontend/tests/` validate the right‑column tabs and key panels.
 
-The frontend talks to the backend via JSON APIs described in `docs/API_REFERENCE.md`.
+The frontend talks to the backend via JSON APIs described in `docs/API_REFERENCE_UPDATED.md` (primary) and the legacy quick reference `docs/API_REFERENCE.md`.
 
 ---
 
@@ -131,7 +131,7 @@ The frontend talks to the backend via JSON APIs described in `docs/API_REFERENCE
 **Docs**:
 
 - `Document` model for project‑scoped documents.
-- Endpoints for listing, creating, and updating docs.
+- Endpoints for listing, creating, updating, and deleting docs (see `API_REFERENCE_UPDATED.md`).
 - Docs tab in the right column shows and edits these documents.
 
 **Notes & Project Instructions**:
@@ -145,15 +145,15 @@ The frontend talks to the backend via JSON APIs described in `docs/API_REFERENCE
 
 **Decision Log**:
 
-- `Decision` (or equivalent model) records structured decisions per project.
-- Endpoints to list/add decisions.
-- Notes tab includes a simple decision list (title, details, timestamps) wired to these endpoints.
+- `Decision` records structured decisions per project.
+- Endpoints to list/add/patch/delete decisions.
+- Notes tab includes a decision list (title, details, status/tags, timestamps) wired to these endpoints.
 
 **Memory Items**:
 
 - `MemoryItem` model holds long‑term, project‑scoped facts:
-  - Title, content, tags, and timestamps.
-- Chroma collection for memory embeddings in `chroma_store.py`.
+  - Title, content, tags, timestamps, optional pinned flag.
+- Chroma collection for memory embeddings in `chroma_store.py` stores `title` in metadata for memory search.
 - Endpoints under `/projects/{project_id}/memory` manage items.
 - Memory tab:
   - Lists memory items.
@@ -170,11 +170,12 @@ Some endpoints and retrieval logic are focused on memory search for chat; these 
 - All file operations are relative to a project’s `local_root_path`.
 - The backend rejects paths that attempt to escape this root (e.g., via `..`).
 
-**Endpoints** (see `API_REFERENCE.md`):
+**Endpoints** (see `API_REFERENCE_UPDATED.md`):
 
-- List a directory subtree.
-- Read file content.
-- Write file content or apply an AI‑proposed edit under a safe join.
+- `GET /projects/{id}/fs/list` – list a directory subtree.
+- `GET /projects/{id}/fs/read` – read file content (`file_path` or `subpath`).
+- `PUT /projects/{id}/fs/write` – write file content (optional create dirs).
+- `POST /projects/{id}/fs/ai_edit` – apply/preview AI edit (`instruction` or `instructions`).
 
 **Frontend (Files tab)**:
 
@@ -197,7 +198,8 @@ AI file‑edit behavior is currently implemented via API calls behind this Files
 - Endpoint to run commands in a subprocess with:
   - `cwd` constrained under the project root.
   - Timeouts and trimmed output.
-- Endpoint to list recent manual terminal history.
+  - Scoped variant injects `project_id` from the path (body `project_id` optional).
+- Endpoint to list recent manual terminal history (stub/placeholder).
 
 **Frontend (Terminal tab)**:
 
@@ -220,14 +222,55 @@ The assistant can propose commands in natural language; you copy or adapt them i
 
 **Docs/Memory**:
 
-- Where implemented, similar endpoints exist for searching docs and memory collections.
+- Search endpoints for docs and memory collections.
+- Memory search returns `memory_id`, `title`, `content`, `distance`.
 - The Search tab (right column) surfaces these searches in a unified UI.
 
-Search has been explicitly tested and fixed so that message search behaves correctly in the “QA 2025‑12‑02” test run (see `docs/TEST_REPORT_2025-12-02.md`).
+Search has been explicitly tested and fixed so that message search behaves correctly in the “QA 2025‑12‑02” test run (see `docs/TEST_REPORT_2025-12-02.md`). Memory search was fixed to include `title` and remove duplicate handlers (2025‑12‑06).
 
 ---
 
-### 3.7 Usage & Telemetry
+### 3.7 Repo & Document Ingestion
+
+**Data model additions**:
+
+- `Document` (described above) stores the ingested file/text.
+- `IngestionJob` tracks long-running repo/document ingests (kind, `source`, status, counts, error).
+- `FileIngestionState` stores SHA‑256 digests per project/path so subsequent ingests skip unchanged files.
+
+**Backend pipeline**:
+
+- `ingest_text_document` chunks text, calls `embed_texts_batched`, writes chunks + embeddings to Chroma/SQLite.
+- `embed_texts_batched` (in `app/llm/embeddings.py`) enforces `MAX_EMBED_TOKENS_PER_BATCH` (50k default) and `MAX_EMBED_ITEMS_PER_BATCH` (256 default) so embedding calls stay within provider limits.
+- `ingest_repo_job` runs via FastAPI background tasks:
+  - Discovers files, hashes them, and skips unchanged files based on `FileIngestionState`.
+  - Streams progress back to the DB (`processed_items`, `processed_bytes`, timestamps).
+  - Supports cancellation by honoring the `cancel_requested` flag between files.
+- Telemetry counters capture jobs started/completed/failed/cancelled plus total bytes processed so `/debug/telemetry` can report ingest health.
+
+**Endpoints**:
+
+- `POST /docs/text` / `POST /projects/{id}/docs/text` – ingest ad-hoc pasted text (Docs tab).
+- `POST /projects/{id}/ingestion_jobs` – queue a repo ingest (currently `kind="repo"`).
+- `GET /projects/{id}/ingestion_jobs/{job_id}` – poll progress/results (files and bytes processed, timestamps, errors).
+- `GET /projects/{id}/ingestion_jobs` – job history (status, duration, errors) for auditing.
+- `POST /projects/{id}/ingestion_jobs/{job_id}/cancel` – request cancellation.
+
+**Frontend (Docs tab)**:
+
+- Text ingest form for quick notes/specs.
+- Repo ingest form:
+  - Input for root path + optional name prefix.
+-  - Button triggers `POST /ingestion_jobs` and immediately returns to show live status.
+-  - Progress panel displays status, processed files, bytes, duration, and a Cancel button for running jobs.
+-  - Job history table (last 20 jobs) with status, bytes, duration, and any errors.
+- Once a job completes, the Docs list auto-refreshes so newly ingested files appear immediately.
+
+This batching infrastructure is also the foundation for future blueprint ingestion (Phase T); only repo ingestion is live today.
+
+---
+
+### 3.8 Usage & Telemetry
 
 **Usage**:
 
@@ -245,7 +288,7 @@ Search has been explicitly tested and fixed so that message search behaves corre
 
 ---
 
-### 3.8 Right-Hand Workbench UI
+### 3.9 Right-Hand Workbench UI
 
 The right‑hand column is organized into **eight tabs**:
 
@@ -263,7 +306,7 @@ Additional behaviors:
 - Keyboard shortcuts (Alt+1..8) switch directly to each tab.
 - A “Refresh all” control refreshes data for all right‑hand panels.
 - Search tab provides filters (conversation, folder, document), grouped results, and “open in” shortcuts to jump into conversations or the Docs tab.
-- Usage tab includes a conversation selector, aggregate metrics (tokens/cost/calls), per-model breakdown, recent call list, and the shared routing/tasks telemetry drawer.
+- Usage tab includes a conversation selector, aggregate metrics (tokens/cost/calls), per-model breakdown, recent call list, and the shared routing/tasks telemetry drawer (task suggestion confidence, etc.).
 - Notes tab adds pinned notes, an instructions diff preview, decision status/tag filters, inline editing, follow-up task hooks, and memory/clipboard exports for each decision card.
 
 Playwright tests (`right-column.spec.ts`, `files-tab.spec.ts`, `notes-memory.spec.ts`) guard against regressions in this layout.
@@ -339,9 +382,69 @@ The “Autonomous TODO maintenance” behavior is intentionally conservative and
 
 ---
 
-## 5. QA, Operations, and Evolution
+## 5. Planned: Autopilot, Blueprint Graph & Learning Layer [design-only]
 
-### 5.1 QA Artifacts
+> The features in this section are **designs for future versions**, captured in `docs/AUTOPILOT_PLAN.md` and related docs.  
+> They are **not** present in the current codebase and should be treated as roadmap items.
+
+### 5.1 Blueprint & Plan graph (future)
+
+- Introduces `Blueprint` and `PlanNode` models so large specs (e.g., 500k‑word documents) can be ingested into a structured plan:
+  - Phases → epics → features → stories → task specs.
+- PlanNodes link back to blueprint text via anchors and offsets and forward to `Task`s via linking tables.
+- Planned UI:
+  - Blueprint selector and Plan tree in the Tasks tab.
+  - “Generate tasks for this node” actions that create structured tasks from PlanNodes.
+
+### 5.2 ExecutionRuns, ExecutionSteps & workers (future)
+
+- Adds `ExecutionRun` / `ExecutionStep` models to track multi‑step automations:
+  - Each run belongs to a project (and optionally a conversation/task) and has a type and status.
+  - Steps log tool calls (`read_file`, `write_file`, `run_terminal`, `search_docs/messages`, etc.), inputs, outputs, and rollback data.
+- Planned worker agents (code/test/docs) will:
+  - Use existing Files/Terminal/Search endpoints.
+  - Record all actions as ExecutionSteps.
+  - Support “Revert run” by replaying rollback data.
+- Planned UI:
+  - A Runs panel/tab listing runs, statuses, and steps.
+  - Diff viewers for code edits and alignment badges for risky operations.
+
+### 5.3 ManagerAgent & Autonomy modes (future)
+
+- A ManagerAgent will:
+  - Select candidate tasks based on PlanNodes, dependencies, difficulty, and risk.
+  - Start/advance runs subject to `Project.max_parallel_runs` and `autonomy_mode` (`"off" | "suggest" | "semi_auto" | "full_auto"`).
+  - Use an intent classifier to react to messages like “start building”, “pause autopilot”, “adjust plan”.
+  - Expose `/projects/{id}/autopilot_tick` as a heartbeat endpoint called by the frontend.
+- Planned UI additions:
+  - Autopilot dropdown (Off / Suggest / Semi / Full) and Pause/Resume toggle in the header.
+  - Status pill showing whether Autopilot is idle, running, waiting for approval, or in error.
+  - “Explain current plan” button that surfaces ManagerAgent’s view of phases, tasks, and runs.
+
+### 5.4 Learning layer & plan refinement (future)
+
+- ExecutionRuns and Tasks will accumulate learning signals:
+  - `Task.difficulty_score`, `Task.rework_count`, “planned vs actual” PlanNodes.
+  - `PlanNode.learned_priority`, `PlanNode.learned_risk_level`, inferred dependencies.
+  - `ExecutionRun.outcome` and `learning_notes` for each run.
+- ManagerAgent will periodically run retrospectives and `refine_plan`:
+  - Re‑order tasks and phases.
+  - Split/merge tasks.
+  - Suggest blueprint pivots when new versions are uploaded.
+- A `/projects/{id}/learning_metrics` endpoint will expose aggregate metrics for the UI and QA.
+
+For full details, see:
+
+- `docs/AUTOPILOT_PLAN.md`
+- `docs/AUTOPILOT_LEARNING.md`
+- `docs/AUTOPILOT_LIMITATIONS.md`
+- `docs/MODEL_MATRIX.md`
+
+---
+
+## 6. QA, Operations, and Evolution
+
+### 6.1 QA Artifacts
 
 - **Test plan**: `docs/TEST_PLAN.md` – detailed manual+automated test cases.
 - **Test reports**: `docs/TEST_REPORT_*.md` – records of actual runs (e.g., `2025-12-02`).
@@ -351,7 +454,7 @@ The “Autonomous TODO maintenance” behavior is intentionally conservative and
   - Mode routing probe.
 - **UI tests**: Playwright specs in `frontend/tests/`.
 
-### 5.2 Operations
+### 6.2 Operations
 
 - **Day‑to‑day running**:
   - Backend: `uvicorn app.api.main:app --reload`.
@@ -364,16 +467,16 @@ The “Autonomous TODO maintenance” behavior is intentionally conservative and
 
 Details live in `docs/OPERATIONS_RUNBOOK.md`.
 
-### 5.3 Roadmap & Future Work
+### 6.3 Roadmap & Future Work
 
 Planned and partially implemented features are tracked in:
 
 - `docs/PROGRESS.md` – by window and version (v3/v4+).
 - `docs/TODO_CHECKLIST.md` – checkbox view of outstanding work.
 
-These documents are the canonical place to see what is **planned** vs. what is implemented today.
+These documents are the canonical place to see what is **planned** vs. what is implemented today. Autopilot/Blueprint/Learning work is tracked there under future phases until it ships.
 
 ---
 
-InfinityWindow is evolving, but the features and behaviors described above reflect the current, working system. For anything implementation‑specific, consult the code referenced in `docs/SYSTEM_MATRIX.md` and use the QA artifacts to understand how correctness is defined and tested.***
+InfinityWindow is evolving, but the features and behaviors described in sections 1–4 reflect the current, working system. Autopilot and related plans in section 5 are **designs**; consult the code referenced in `docs/SYSTEM_MATRIX.md` and the QA artifacts for what is actually implemented today.
 

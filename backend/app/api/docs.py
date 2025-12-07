@@ -39,6 +39,27 @@ class DocumentIngestResponse(BaseModel):
     num_chunks: int
 
 
+class DocumentCreate(BaseModel):
+    project_id: int
+    title: str
+    description: Optional[str] = None
+
+
+class DocumentCreateScoped(BaseModel):
+    """
+    Project-scoped document creation (metadata only).
+    Path supplies project_id.
+    """
+
+    title: str
+    description: Optional[str] = None
+
+
+class DocumentUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+
+
 # ---------- Endpoints ----------
 
 
@@ -70,6 +91,38 @@ def create_text_document(
         document=document,
         num_chunks=num_chunks,
     )
+
+
+class ProjectDocumentCreate(BaseModel):
+    name: str
+    text: str
+    description: Optional[str] = None
+
+
+@router.post(
+    "/projects/{project_id}/docs/text",
+    response_model=DocumentIngestResponse,
+)
+def create_project_text_document(
+    project_id: int,
+    payload: ProjectDocumentCreate,
+    db: Session = Depends(get_db),
+):
+    """
+    Create and ingest a text document under a project.
+    """
+    try:
+        document, num_chunks = ingest_text_document(
+            db=db,
+            project_id=project_id,
+            name=payload.name,
+            text=payload.text,
+            description=payload.description,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return DocumentIngestResponse(document=document, num_chunks=num_chunks)
 
 
 @router.post("/docs/upload_text_file", response_model=DocumentIngestResponse)
@@ -151,3 +204,65 @@ def list_project_documents(
         .all()
     )
     return docs
+
+
+@router.post("/projects/{project_id}/docs", response_model=DocumentRead)
+def create_project_document(
+    project_id: int,
+    payload: DocumentCreateScoped,
+    db: Session = Depends(get_db),
+):
+    """
+    Create a simple document record for a project (metadata only).
+    """
+    project = db.get(models.Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    doc = models.Document(
+        project_id=project_id,
+        name=payload.title,
+        description=payload.description,
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+    return doc
+
+
+@router.get("/docs/{doc_id}", response_model=DocumentRead)
+def get_document(doc_id: int, db: Session = Depends(get_db)):
+    doc = db.get(models.Document, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    return doc
+
+
+@router.patch("/docs/{doc_id}", response_model=DocumentRead)
+def patch_document(
+    doc_id: int,
+    payload: DocumentUpdate,
+    db: Session = Depends(get_db),
+):
+    doc = db.get(models.Document, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    if payload.title is not None:
+        doc.name = payload.title
+    if payload.description is not None:
+        doc.description = payload.description
+    db.commit()
+    db.refresh(doc)
+    return doc
+
+
+@router.delete("/docs/{doc_id}")
+def delete_document(doc_id: int, db: Session = Depends(get_db)):
+    """
+    Delete a document by id.
+    """
+    doc = db.get(models.Document, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    db.delete(doc)
+    db.commit()
+    return {"status": "deleted", "doc_id": doc_id}

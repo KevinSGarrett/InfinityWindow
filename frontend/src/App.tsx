@@ -57,6 +57,8 @@ type MessageSearchHit = {
   role: string;
   content: string;
   distance: number;
+  folder_name?: string | null;
+  folder_color?: string | null;
 };
 
 type DocSearchHit = {
@@ -80,6 +82,44 @@ type Task = {
   project_id: number;
   description: string;
   status: string; // "open" | "done"
+  priority: string;
+  blocked_reason?: string | null;
+  auto_notes?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type TaskSuggestion = {
+  id: number;
+  project_id: number;
+  conversation_id: number | null;
+  target_task_id: number | null;
+  action_type: "add" | "complete" | string;
+  payload: Record<string, any>;
+  confidence: number;
+  status: string;
+  task_description?: string | null;
+  task_status?: string | null;
+  task_priority?: string | null;
+  task_blocked_reason?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type TaskOverview = {
+  tasks: Task[];
+  suggestions: TaskSuggestion[];
+};
+
+type TaskTelemetryAction = {
+  timestamp: string;
+  action: string;
+  confidence: number;
+  task_id?: number | null;
+  task_description?: string | null;
+  project_id?: number | null;
+  conversation_id?: number | null;
+  details?: Record<string, any>;
 };
 
 type UsageRecord = {
@@ -92,6 +132,25 @@ type UsageRecord = {
   tokens_out: number | null;
   cost_estimate: number | null;
   created_at: string;
+};
+
+type IngestionJob = {
+  id: number;
+  project_id: number;
+  kind: string;
+  source: string;
+  status: string;
+  total_items: number;
+  processed_items: number;
+  total_bytes: number;
+  processed_bytes: number;
+  cancel_requested: boolean;
+  error_message?: string | null;
+  meta?: Record<string, any> | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 type ConversationUsage = {
@@ -112,7 +171,22 @@ type TelemetrySnapshot = {
     auto_added: number;
     auto_completed: number;
     auto_deduped: number;
+    auto_suggested: number;
+    recent_actions: TaskTelemetryAction[];
+    confidence_stats?: {
+      min: number;
+      max: number;
+      avg: number;
+      count: number;
+    };
+    confidence_buckets?: {
+      lt_0_4: number;
+      "0_4_0_7": number;
+      gte_0_7: number;
+    };
+    suggestions?: TaskSuggestion[];
   };
+  ingestion: Record<string, any>;
 };
 
 type ProjectDecision = {
@@ -207,7 +281,47 @@ type FileEntry = {
   rel_path: string;
 };
 
-const BACKEND_BASE = "http://127.0.0.1:8000";
+const formatBytes = (value?: number | null): string => {
+  if (!value || value <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let bytes = value;
+  let unitIndex = 0;
+  while (bytes >= 1024 && unitIndex < units.length - 1) {
+    bytes /= 1024;
+    unitIndex += 1;
+  }
+  const precision = unitIndex === 0 ? 0 : bytes < 10 ? 1 : 0;
+  return `${bytes.toFixed(precision)} ${units[unitIndex]}`;
+};
+
+const formatDuration = (
+  startedAt?: string | null,
+  finishedAt?: string | null
+): string | null => {
+  if (!startedAt) return null;
+  const start = new Date(startedAt).getTime();
+  const end = finishedAt ? new Date(finishedAt).getTime() : Date.now();
+  if (Number.isNaN(start) || Number.isNaN(end)) return null;
+  const seconds = Math.max(0, Math.round((end - start) / 1000));
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  if (mins === 0) return `${secs}s`;
+  return `${mins}m ${secs.toString().padStart(2, "0")}s`;
+};
+
+const formatDateTime = (value?: string | null): string | null => {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString();
+};
+
+// Allow overriding backend base via Vite env; default to localhost:8000.
+// For QA runs we set VITE_API_BASE; fallback remains 8000.
+const BACKEND_BASE =
+  (typeof import.meta !== "undefined" &&
+    (import.meta as any)?.env?.VITE_API_BASE) ||
+  "http://127.0.0.1:8000";
 
 function App() {
   // Backend / projects
@@ -262,6 +376,31 @@ function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTaskDescription, setNewTaskDescription] = useState("");
   const [isSavingTask, setIsSavingTask] = useState(false);
+  const [taskSuggestions, setTaskSuggestions] = useState<TaskSuggestion[]>([]);
+  const [isLoadingTaskSuggestions, setIsLoadingTaskSuggestions] =
+    useState(false);
+  const [taskSuggestionError, setTaskSuggestionError] = useState<string | null>(
+    null
+  );
+  const [showAllTaskSuggestions, setShowAllTaskSuggestions] = useState(false);
+  const [showSuggestionsPanel, setShowSuggestionsPanel] = useState(false);
+  const [processingSuggestionIds, setProcessingSuggestionIds] = useState<
+    Set<number>
+  >(new Set());
+  const setSuggestionProcessing = useCallback(
+    (id: number, processing: boolean) => {
+      setProcessingSuggestionIds((prev) => {
+        const next = new Set(prev);
+        if (processing) {
+          next.add(id);
+        } else {
+          next.delete(id);
+        }
+        return next;
+      });
+    },
+    []
+  );
 
   // Usage (per conversation)
   const [usage, setUsage] = useState<ConversationUsage | null>(null);
@@ -362,6 +501,13 @@ function App() {
   const [repoRootPath, setRepoRootPath] = useState("C:\\InfinityWindow");
   const [repoNamePrefix, setRepoNamePrefix] = useState("InfinityWindow/");
   const [isIngestingRepo, setIsIngestingRepo] = useState(false);
+  const [repoIngestionJob, setRepoIngestionJob] =
+    useState<IngestionJob | null>(null);
+  const repoIngestionPollRef = useRef<number | null>(null);
+  const [repoIngestionJobs, setRepoIngestionJobs] = useState<IngestionJob[]>(
+    []
+  );
+  const [isLoadingRepoJobs, setIsLoadingRepoJobs] = useState(false);
 
   // Search
   const [searchTab, setSearchTab] = useState<"messages" | "docs">("messages");
@@ -412,6 +558,13 @@ function App() {
   const [showAllDecisions, setShowAllDecisions] = useState(false);
   const draftSeenRef = useRef<Set<number>>(new Set());
 
+  const stopRepoIngestionPolling = useCallback(() => {
+    if (repoIngestionPollRef.current !== null) {
+      window.clearInterval(repoIngestionPollRef.current);
+      repoIngestionPollRef.current = null;
+    }
+  }, []);
+
   const addToast = useCallback((message: string, type: "success" | "error") => {
     const id = Date.now();
     setToasts((prev) => [...prev, { id, message, type }]);
@@ -427,6 +580,12 @@ function App() {
       }, 0);
     }
   }, [showCommandPalette]);
+
+  useEffect(() => {
+    return () => {
+      stopRepoIngestionPolling();
+    };
+  }, [stopRepoIngestionPolling]);
 
   const commandPaletteActions = useMemo(
     () => [
@@ -496,6 +655,14 @@ function App() {
     );
   }, [commandPaletteActions, commandPaletteQuery]);
   const visibleTasks = showAllTasks ? tasks : tasks.slice(0, 5);
+  const pendingTaskSuggestions = useMemo(
+    () => taskSuggestions.filter((s) => s.status === "pending"),
+    [taskSuggestions]
+  );
+  const pendingSuggestionCount = pendingTaskSuggestions.length;
+  const visibleTaskSuggestions = showAllTaskSuggestions
+    ? pendingTaskSuggestions
+    : pendingTaskSuggestions.slice(0, 3);
   const visibleDocs = showAllDocs ? projectDocs : projectDocs.slice(0, 5);
   const availableDecisionCategories = useMemo(() => {
     const categories = new Set<string>();
@@ -562,6 +729,18 @@ function App() {
     decisionCategoryFilter !== "all" ||
     decisionTagFilter !== "all" ||
     decisionSearchQuery.trim().length > 0;
+
+  useEffect(() => {
+    if (pendingSuggestionCount > 0 && !showSuggestionsPanel) {
+      setShowSuggestionsPanel(true);
+    }
+  }, [pendingSuggestionCount, showSuggestionsPanel]);
+
+  useEffect(() => {
+    if (showSuggestionsPanel && !telemetry && !isLoadingTelemetry) {
+      loadTelemetry(false);
+    }
+  }, [showSuggestionsPanel, telemetry, isLoadingTelemetry]);
 
   const groupedMessageHits = useMemo(() => {
     if (!searchMessageHits.length) {
@@ -791,6 +970,34 @@ function App() {
     }
   };
 
+  const loadRepoIngestionJobs = useCallback(
+    async (projectId: number) => {
+      setIsLoadingRepoJobs(true);
+      try {
+        const res = await fetch(
+          `${BACKEND_BASE}/projects/${projectId}/ingestion_jobs?limit=20`
+        );
+        if (!res.ok) {
+          console.error("Fetching ingestion jobs failed:", res.status);
+          return;
+        }
+        const jobs: IngestionJob[] = await res.json();
+        setRepoIngestionJobs(jobs);
+      } catch (error) {
+        console.error("Fetching ingestion jobs threw:", error);
+      } finally {
+        setIsLoadingRepoJobs(false);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (selectedProjectId && rightTab === "docs") {
+      loadRepoIngestionJobs(selectedProjectId);
+    }
+  }, [selectedProjectId, rightTab, loadRepoIngestionJobs]);
+
   const loadFolders = async (projectId: number) => {
     setIsLoadingFolders(true);
     try {
@@ -841,13 +1048,23 @@ function App() {
 
 
   const loadTasks = async (projectId: number) => {
+    setIsLoadingTaskSuggestions(true);
+    setTaskSuggestionError(null);
     try {
-      const res = await fetch(`${BACKEND_BASE}/projects/${projectId}/tasks`);
-      if (!res.ok) return;
-      const data: Task[] = await res.json();
-      setTasks(data);
+      const res = await fetch(
+        `${BACKEND_BASE}/projects/${projectId}/tasks/overview`
+      );
+      if (!res.ok) throw new Error(`Failed with status ${res.status}`);
+      const data: TaskOverview = await res.json();
+      setTasks(data.tasks || []);
+      setTaskSuggestions(data.suggestions || []);
     } catch (e) {
-      console.error("Fetching tasks failed:", e);
+      console.error("Fetching tasks overview failed:", e);
+      setTaskSuggestionError("Could not load tasks/suggestions.");
+      setTasks([]);
+      setTaskSuggestions([]);
+    } finally {
+      setIsLoadingTaskSuggestions(false);
     }
   };
 
@@ -1960,6 +2177,9 @@ function App() {
       setMessages([]);
       setProjectDocs([]);
       setTasks([]);
+      setTaskSuggestions([]);
+      setTaskSuggestionError(null);
+      setIsLoadingTaskSuggestions(false);
       setUsage(null);
       setFolders([]);
       setMemoryItems([]);
@@ -2160,7 +2380,7 @@ function App() {
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: trimmed }),
+          body: JSON.stringify({ title: trimmed }),
         }
       );
 
@@ -2512,14 +2732,70 @@ function App() {
         return;
       }
 
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === task.id ? { ...t, status: newStatus } : t
-        )
-      );
+      if (selectedProjectId) {
+        await loadTasks(selectedProjectId);
+      }
     } catch (e) {
       console.error("Update task threw:", e);
       alert("Unexpected error while updating task.");
+    }
+  };
+
+  const handleApproveTaskSuggestion = async (
+    suggestion: TaskSuggestion
+  ): Promise<void> => {
+    if (!selectedProjectId) {
+      addToast("Select a project first", "error");
+      return;
+    }
+    setSuggestionProcessing(suggestion.id, true);
+    try {
+      const res = await fetch(
+        `${BACKEND_BASE}/task_suggestions/${suggestion.id}/approve`,
+        {
+          method: "POST",
+        }
+      );
+      if (!res.ok) {
+        throw new Error(`Status ${res.status}`);
+      }
+      await Promise.all([
+        loadTasks(selectedProjectId),
+      ]);
+      addToast("Suggestion applied", "success");
+    } catch (e) {
+      console.error("Approve suggestion failed:", e);
+      addToast("Failed to apply suggestion", "error");
+    } finally {
+      setSuggestionProcessing(suggestion.id, false);
+    }
+  };
+
+  const handleDismissTaskSuggestion = async (
+    suggestion: TaskSuggestion
+  ): Promise<void> => {
+    if (!selectedProjectId) {
+      addToast("Select a project first", "error");
+      return;
+    }
+    setSuggestionProcessing(suggestion.id, true);
+    try {
+      const res = await fetch(
+        `${BACKEND_BASE}/task_suggestions/${suggestion.id}/dismiss`,
+        {
+          method: "POST",
+        }
+      );
+      if (!res.ok) {
+        throw new Error(`Status ${res.status}`);
+      }
+      await loadTasks(selectedProjectId);
+      addToast("Suggestion dismissed", "success");
+    } catch (e) {
+      console.error("Dismiss suggestion failed:", e);
+      addToast("Failed to dismiss suggestion", "error");
+    } finally {
+      setSuggestionProcessing(suggestion.id, false);
     }
   };
 
@@ -2582,6 +2858,88 @@ function App() {
 
   // ---------- Repo ingestion handlers ----------
 
+  const handleRefreshIngestionJobs = () => {
+    if (selectedProjectId) {
+      loadRepoIngestionJobs(selectedProjectId);
+    }
+  };
+
+  const handleCancelIngestionJob = async (jobId: number) => {
+    if (!selectedProjectId) return;
+    try {
+      const res = await fetch(
+        `${BACKEND_BASE}/projects/${selectedProjectId}/ingestion_jobs/${jobId}/cancel`,
+        {
+          method: "POST",
+        }
+      );
+      if (!res.ok) {
+        console.error("Cancel ingestion job failed:", res.status);
+        addToast("Failed to cancel ingestion job", "error");
+        return;
+      }
+      const job: IngestionJob = await res.json();
+      if (repoIngestionJob && repoIngestionJob.id === job.id) {
+        setRepoIngestionJob(job);
+      }
+      await loadRepoIngestionJobs(selectedProjectId);
+      addToast("Ingestion job cancellation requested", "success");
+    } catch (error) {
+      console.error("Cancel ingestion job threw:", error);
+      addToast("Failed to cancel ingestion job", "error");
+    }
+  };
+
+  const pollRepoIngestionJob = async (
+    projectId: number,
+    jobId: number
+  ): Promise<void> => {
+    try {
+      const res = await fetch(
+        `${BACKEND_BASE}/projects/${projectId}/ingestion_jobs/${jobId}`
+      );
+      if (!res.ok) {
+        return;
+      }
+
+      const job: IngestionJob = await res.json();
+      setRepoIngestionJob(job);
+
+      if (job.status === "completed") {
+        stopRepoIngestionPolling();
+        setIsIngestingRepo(false);
+        addToast("Repo ingestion completed", "success");
+        await loadProjectDocs(projectId);
+        await loadRepoIngestionJobs(projectId);
+      } else if (job.status === "failed") {
+        stopRepoIngestionPolling();
+        setIsIngestingRepo(false);
+        addToast(job.error_message || "Repo ingestion failed", "error");
+        await loadRepoIngestionJobs(projectId);
+      } else if (job.status === "cancelled") {
+        stopRepoIngestionPolling();
+        setIsIngestingRepo(false);
+        addToast("Repo ingestion cancelled", "success");
+        await loadRepoIngestionJobs(projectId);
+      }
+    } catch (error) {
+      console.error("Failed to poll ingestion job", error);
+    }
+  };
+
+  const startRepoIngestionPolling = (
+    projectId: number,
+    jobId: number
+  ): void => {
+    stopRepoIngestionPolling();
+    pollRepoIngestionJob(projectId, jobId);
+    // Poll every 5 seconds instead of 2 to reduce database contention
+    // SQLite can have locking issues with frequent concurrent reads/writes
+    repoIngestionPollRef.current = window.setInterval(() => {
+      pollRepoIngestionJob(projectId, jobId);
+    }, 5000);
+  };
+
   const handleIngestRepo = async () => {
     if (!selectedProjectId) {
       alert("No project selected.");
@@ -2593,28 +2951,39 @@ function App() {
     }
 
     setIsIngestingRepo(true);
+    setRepoIngestionJob(null);
+    stopRepoIngestionPolling();
     try {
-      const res = await fetch(`${BACKEND_BASE}/github/ingest_local_repo`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          project_id: selectedProjectId,
-          root_path: repoRootPath.trim(),
-          name_prefix: repoNamePrefix.trim() || "",
-          include_globs: null,
-        }),
-      });
+      const res = await fetch(
+        `${BACKEND_BASE}/projects/${selectedProjectId}/ingestion_jobs`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            kind: "repo",
+            source: repoRootPath.trim(),
+            name_prefix: repoNamePrefix.trim() || null,
+            include_globs: null,
+          }),
+        }
+      );
 
       if (!res.ok) {
         console.error("Repo ingestion failed:", res.status);
         alert("Repo ingestion failed; see backend logs.");
+        setIsIngestingRepo(false);
         return;
       }
 
-      await loadProjectDocs(selectedProjectId);
+      const job: IngestionJob = await res.json();
+      setRepoIngestionJob(job);
+      startRepoIngestionPolling(selectedProjectId, job.id);
+      await loadRepoIngestionJobs(selectedProjectId);
     } catch (e) {
       console.error("Repo ingestion threw:", e);
       alert("Unexpected error while ingesting repo.");
+      setIsIngestingRepo(false);
+      stopRepoIngestionPolling();
     } finally {
       setIsIngestingRepo(false);
     }
@@ -2888,69 +3257,69 @@ function App() {
                       const isRenaming =
                         c.id === renamingConversationId;
 
-                      return (
-                        <li key={c.id}>
-                          <div
-                            className={
+                  return (
+                    <li key={c.id}>
+                      <div
+                        className={
                               "conversation-row" +
                               (isActive ? " active" : "")
-                            }
-                          >
-                            {isRenaming ? (
-                              <>
-                                <input
-                                  className="conversation-rename-input"
-                                  value={renameTitle}
-                                  onChange={(e) =>
-                                    setRenameTitle(e.target.value)
-                                  }
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") {
-                                      handleRenameConversation(c.id);
-                                    } else if (e.key === "Escape") {
-                                      setRenamingConversationId(null);
-                                      setRenameTitle("");
-                                    }
-                                  }}
-                                  autoFocus
-                                />
+                        }
+                      >
+                        {isRenaming ? (
+                          <>
+                            <input
+                              className="conversation-rename-input"
+                              value={renameTitle}
+                              onChange={(e) =>
+                                setRenameTitle(e.target.value)
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handleRenameConversation(c.id);
+                                } else if (e.key === "Escape") {
+                                  setRenamingConversationId(null);
+                                  setRenameTitle("");
+                                }
+                              }}
+                              autoFocus
+                            />
                                 <div className="conversation-actions">
-                                  <button
-                                    type="button"
-                                    className="btn-secondary small"
+                            <button
+                              type="button"
+                              className="btn-secondary small"
                                     onClick={() =>
                                       handleRenameConversation(c.id)
                                     }
-                                  >
-                                    Save
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="btn-link small"
-                                    onClick={() => {
-                                      setRenamingConversationId(null);
-                                      setRenameTitle("");
-                                    }}
-                                  >
-                                    Cancel
-                                  </button>
+                            >
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-link small"
+                              onClick={() => {
+                                setRenamingConversationId(null);
+                                setRenameTitle("");
+                              }}
+                            >
+                              Cancel
+                            </button>
                                 </div>
-                              </>
-                            ) : (
-                              <>
+                          </>
+                        ) : (
+                          <>
                                 <div className="conversation-main">
-                                  <button
-                                    type="button"
-                                    className={
-                                      "conversation-item" +
-                                      (isActive ? " active" : "")
-                                    }
-                                    onClick={() =>
-                                      setSelectedConversationId(c.id)
-                                    }
-                                  >
+                            <button
+                              type="button"
+                              className={
+                                "conversation-item" +
+                                (isActive ? " active" : "")
+                              }
+                              onClick={() =>
+                                setSelectedConversationId(c.id)
+                              }
+                            >
                                     {c.title || `Chat #${c.id}`}
-                                  </button>
+                            </button>
                                   {selectedFolderId === "all" && (
                                     <span
                                       className="conversation-folder-pill"
@@ -2964,16 +3333,16 @@ function App() {
                                   )}
                                 </div>
                                 <div className="conversation-actions">
-                                  <button
-                                    type="button"
-                                    className="btn-link small"
-                                    onClick={() => {
-                                      setRenamingConversationId(c.id);
-                                      setRenameTitle(c.title || "");
-                                    }}
-                                  >
-                                    Rename
-                                  </button>
+                            <button
+                              type="button"
+                              className="btn-link small"
+                              onClick={() => {
+                                setRenamingConversationId(c.id);
+                                setRenameTitle(c.title || "");
+                              }}
+                            >
+                              Rename
+                            </button>
                                   <select
                                     className="folder-assign-select"
                                     value={
@@ -3006,13 +3375,13 @@ function App() {
                                       ))}
                                   </select>
                                 </div>
-                              </>
-                            )}
-                          </div>
-                        </li>
-                      );
-                    })}
-                </ul>
+                          </>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
               </div>
             )}
           </div>
@@ -3435,62 +3804,265 @@ function App() {
                         {showAllTasks ? "Show less" : "Show more"}
                       </button>
                     )}
+                    <button
+                      type="button"
+                      className={
+                        "btn-link tiny suggestions-toggle" +
+                        (showSuggestionsPanel ? " active" : "")
+                      }
+                      onClick={() =>
+                        setShowSuggestionsPanel((prev) => !prev)
+                      }
+                    >
+                      Suggested changes
+                      <span className="tab-pill">
+                        {pendingSuggestionCount}
+                      </span>
+                    </button>
                   </div>
                 </div>
                 <div className="tab-section-body">
-                  <div className="tasks-new condensed">
-                    <input
-                      className="tasks-input"
-                      type="text"
-                      placeholder="Add a task..."
-                      value={newTaskDescription}
-                      onChange={(e) => setNewTaskDescription(e.target.value)}
-                      onKeyDown={handleNewTaskKeyDown}
-                    />
-                    <button
-                      className="btn-secondary small"
-                      type="button"
-                      onClick={handleAddTask}
-                      disabled={
-                        isSavingTask ||
-                        !newTaskDescription.trim() ||
-                        !selectedProjectId
-                      }
-                    >
-                      Add
-                    </button>
+                  <div className="task-legend">
+                    <span className="task-priority-chip priority-critical">
+                      Critical
+                    </span>
+                    <span className="task-priority-chip priority-high">
+                      High
+                    </span>
+                    <span className="task-priority-chip priority-normal">
+                      Normal
+                    </span>
+                    <span className="task-priority-chip priority-low">Low</span>
+                    <span className="task-blocked-chip subtle">
+                      Blocked shown when a blocker is detected
+                    </span>
                   </div>
+                  <div className="tasks-new condensed">
+                <input
+                  className="tasks-input"
+                  type="text"
+                      placeholder="Add a task..."
+                  value={newTaskDescription}
+                  onChange={(e) => setNewTaskDescription(e.target.value)}
+                  onKeyDown={handleNewTaskKeyDown}
+                />
+                <button
+                  className="btn-secondary small"
+                  type="button"
+                  onClick={handleAddTask}
+                  disabled={
+                    isSavingTask ||
+                    !newTaskDescription.trim() ||
+                    !selectedProjectId
+                  }
+                >
+                  Add
+                </button>
+              </div>
                   <div className="tasks-list compact">
-                    {selectedProjectId == null ? (
-                      <div className="tasks-empty">No project selected.</div>
-                    ) : tasks.length === 0 ? (
+                {selectedProjectId == null ? (
+                  <div className="tasks-empty">No project selected.</div>
+                ) : tasks.length === 0 ? (
+                  <div className="tasks-empty">
+                    No tasks yet. Add one above.
+                  </div>
+                ) : (
+                  <ul>
+                    {visibleTasks.map((task) => {
+                      const priority = (task.priority || "normal").toLowerCase();
+                      return (
+                      <li key={task.id} className="task-item">
+                        <input
+                          type="checkbox"
+                          checked={task.status === "done"}
+                          onChange={() => handleToggleTaskStatus(task)}
+                        />
+                          <div className="task-body">
+                        <div
+                          className={
+                            "task-text" +
+                            (task.status === "done" ? " done" : "")
+                          }
+                        >
+                          {task.description}
+                            </div>
+                            <div className="task-meta">
+                              <span
+                                className={`task-priority-chip priority-${priority}`}
+                              >
+                                {task.priority || "normal"}
+                              </span>
+                              {task.blocked_reason && (
+                                <span className="task-blocked-chip">
+                                  Blocked: {task.blocked_reason}
+                                </span>
+                              )}
+                            </div>
+                            {task.auto_notes && (
+                              <div className="task-notes">
+                                {task.auto_notes}
+                              </div>
+                            )}
+                        </div>
+                      </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+                </div>
+              </section>
+              {showSuggestionsPanel && (
+                <section className="tab-section">
+                  <div className="tab-section-header">
+                    <div>
+                      <span className="tab-section-title">
+                        Suggested changes
+                      </span>
+                      <span className="tab-pill">
+                        {pendingSuggestionCount}
+                      </span>
+                    </div>
+                    <div className="tab-toolbar">
+                      {selectedProjectId && (
+                        <button
+                          type="button"
+                          className="btn-link tiny"
+                          onClick={() => loadTasks(selectedProjectId)}
+                        >
+                          Refresh suggestions
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="btn-link tiny"
+                        onClick={() => loadTelemetry(false)}
+                      >
+                        Refresh telemetry
+                      </button>
+                      {pendingSuggestionCount > 3 && (
+                        <button
+                          type="button"
+                          className="btn-link tiny"
+                          onClick={() =>
+                            setShowAllTaskSuggestions((prev) => !prev)
+                          }
+                        >
+                          {showAllTaskSuggestions ? "Show less" : "Show more"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="tab-section-body suggestions-body">
+                    <div className="suggestion-telemetry">
+                      <div className="suggestion-telemetry-item">
+                        <span className="label">Auto-added</span>
+                        <span>{telemetry?.tasks.auto_added ?? "—"}</span>
+                      </div>
+                      <div className="suggestion-telemetry-item">
+                        <span className="label">Auto-completed</span>
+                        <span>{telemetry?.tasks.auto_completed ?? "—"}</span>
+                      </div>
+                      <div className="suggestion-telemetry-item">
+                        <span className="label">Auto-suggested</span>
+                        <span>{telemetry?.tasks.auto_suggested ?? "—"}</span>
+                      </div>
+                    </div>
+                    {taskSuggestionError && (
+                      <div className="suggestion-error">
+                        {taskSuggestionError}
+                      </div>
+                    )}
+                    {isLoadingTaskSuggestions ? (
+                      <div className="tasks-empty">Loading suggestions…</div>
+                    ) : pendingSuggestionCount === 0 ? (
                       <div className="tasks-empty">
-                        No tasks yet. Add one above.
+                        No pending suggestions right now.
                       </div>
                     ) : (
-                      <ul>
-                        {visibleTasks.map((task) => (
-                          <li key={task.id} className="task-item">
-                            <input
-                              type="checkbox"
-                              checked={task.status === "done"}
-                              onChange={() => handleToggleTaskStatus(task)}
-                            />
-                            <div
-                              className={
-                                "task-text" +
-                                (task.status === "done" ? " done" : "")
-                              }
+                      <ul className="suggestion-list">
+                        {visibleTaskSuggestions.map((suggestion) => {
+                          const isProcessing = processingSuggestionIds.has(
+                            suggestion.id
+                          );
+                          const candidateDescription =
+                            suggestion.action_type === "add"
+                              ? suggestion.payload?.description ||
+                                "(no description provided)"
+                              : `Mark "${suggestion.task_description || "task"}" as done.`;
+                          const confidencePercent = Math.round(
+                            suggestion.confidence * 100
+                          );
+                          const derivedPriority =
+                            suggestion.payload?.priority ||
+                            suggestion.task_priority ||
+                            "normal";
+                          const blockedReason =
+                            suggestion.payload?.blocked_reason ||
+                            suggestion.task_blocked_reason ||
+                            null;
+                          return (
+                            <li
+                              key={suggestion.id}
+                              className="suggestion-item"
                             >
-                              {task.description}
-                            </div>
-                          </li>
-                        ))}
+                              <div className="suggestion-heading">
+                                <span
+                                  className={`suggestion-pill action-${suggestion.action_type}`}
+                                >
+                                  {suggestion.action_type === "add"
+                                    ? "Add task"
+                                    : "Complete task"}
+                                </span>
+                                <span className="suggestion-confidence">
+                                  {confidencePercent}% confidence
+                                </span>
+                              </div>
+                              <div className="suggestion-description">
+                                {candidateDescription}
+                              </div>
+                              <div className="task-meta suggestion-meta">
+                                <span
+                                  className={`task-priority-chip priority-${derivedPriority.toLowerCase()}`}
+                                >
+                                  {derivedPriority}
+                                </span>
+                              {blockedReason && (
+                                  <span className="task-blocked-chip">
+                                  Blocked: {blockedReason}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="suggestion-actions">
+                                <button
+                                  type="button"
+                                  className="btn-secondary tiny"
+                                  onClick={() =>
+                                    handleApproveTaskSuggestion(suggestion)
+                                  }
+                                  disabled={isProcessing}
+                                >
+                                  {isProcessing ? "Applying…" : "Approve"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-link tiny"
+                                  onClick={() =>
+                                    handleDismissTaskSuggestion(suggestion)
+                                  }
+                                  disabled={isProcessing}
+                                >
+                                  {isProcessing ? "Working…" : "Dismiss"}
+                                </button>
+                              </div>
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
                   </div>
-                </div>
-              </section>
+                </section>
+              )}
             </div>
           )}
 
@@ -3525,14 +4097,14 @@ function App() {
                 </div>
                 <div className="tab-section-body">
                   <div className="project-docs-list compact">
-                    {selectedProjectId == null ? (
-                      <div className="docs-empty">No project selected.</div>
-                    ) : projectDocs.length === 0 ? (
-                      <div className="docs-empty">
-                        No documents yet. Ingest one below.
-                      </div>
-                    ) : (
-                      <ul>
+                {selectedProjectId == null ? (
+                  <div className="docs-empty">No project selected.</div>
+                ) : projectDocs.length === 0 ? (
+                  <div className="docs-empty">
+                    No documents yet. Ingest one below.
+                  </div>
+                ) : (
+                  <ul>
                         {visibleDocs.map((doc) => (
                           <li
                             key={doc.id}
@@ -3543,84 +4115,228 @@ function App() {
                                 : "")
                             }
                           >
-                            <div className="project-doc-name">{doc.name}</div>
-                            {doc.description && (
-                              <div className="project-doc-description">
-                                {doc.description}
-                              </div>
-                            )}
-                            <div className="project-doc-id">
-                              Doc ID {doc.id}
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
+                        <div className="project-doc-name">{doc.name}</div>
+                        {doc.description && (
+                          <div className="project-doc-description">
+                            {doc.description}
+                          </div>
+                        )}
+                        <div className="project-doc-id">
+                          Doc ID {doc.id}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
                   <details className="ingest-collapsible">
                     <summary>Ingest text document</summary>
-                    <div className="ingest-textdoc-form">
-                      <input
-                        className="ingest-input"
-                        type="text"
-                        placeholder="Name"
-                        value={newDocName}
-                        onChange={(e) => setNewDocName(e.target.value)}
-                      />
-                      <input
-                        className="ingest-input"
-                        type="text"
-                        placeholder="Description (optional)"
-                        value={newDocDescription}
-                        onChange={(e) =>
-                          setNewDocDescription(e.target.value)
-                        }
-                      />
-                      <textarea
-                        className="ingest-textarea"
-                        placeholder="Paste document text here..."
-                        value={newDocText}
-                        onChange={(e) => setNewDocText(e.target.value)}
-                      />
-                      <button
-                        className="btn-secondary"
-                        type="button"
-                        onClick={handleIngestTextDoc}
-                        disabled={isIngestingTextDoc}
-                      >
-                        {isIngestingTextDoc
-                          ? "Ingesting…"
-                          : "Ingest text doc"}
-                      </button>
-                    </div>
+                <div className="ingest-textdoc-form">
+                  <input
+                    className="ingest-input"
+                    type="text"
+                    placeholder="Name"
+                    value={newDocName}
+                    onChange={(e) => setNewDocName(e.target.value)}
+                  />
+                  <input
+                    className="ingest-input"
+                    type="text"
+                    placeholder="Description (optional)"
+                    value={newDocDescription}
+                    onChange={(e) =>
+                      setNewDocDescription(e.target.value)
+                    }
+                  />
+                  <textarea
+                    className="ingest-textarea"
+                    placeholder="Paste document text here..."
+                    value={newDocText}
+                    onChange={(e) => setNewDocText(e.target.value)}
+                  />
+                  <button
+                    className="btn-secondary"
+                    type="button"
+                    onClick={handleIngestTextDoc}
+                    disabled={isIngestingTextDoc}
+                  >
+                    {isIngestingTextDoc
+                      ? "Ingesting…"
+                      : "Ingest text doc"}
+                  </button>
+                </div>
                   </details>
                   <details className="ingest-collapsible">
                     <summary>Ingest local repo</summary>
-                    <div className="ingest-repo-form">
-                      <input
-                        className="ingest-input"
-                        type="text"
-                        placeholder="Root path (e.g. C:\\InfinityWindow)"
-                        value={repoRootPath}
-                        onChange={(e) => setRepoRootPath(e.target.value)}
-                      />
-                      <input
-                        className="ingest-input"
-                        type="text"
-                        placeholder="Name prefix (e.g. InfinityWindow/)"
-                        value={repoNamePrefix}
-                        onChange={(e) =>
-                          setRepoNamePrefix(e.target.value)
-                        }
-                      />
-                      <button
-                        className="btn-secondary"
-                        type="button"
-                        onClick={handleIngestRepo}
-                        disabled={isIngestingRepo}
-                      >
-                        {isIngestingRepo ? "Ingesting…" : "Ingest repo"}
-                      </button>
+                <div className="ingest-repo-form">
+                  <input
+                    className="ingest-input"
+                    type="text"
+                    placeholder="Root path (e.g. C:\\InfinityWindow)"
+                    value={repoRootPath}
+                    onChange={(e) => setRepoRootPath(e.target.value)}
+                  />
+                  <input
+                    className="ingest-input"
+                    type="text"
+                    placeholder="Name prefix (e.g. InfinityWindow/)"
+                    value={repoNamePrefix}
+                    onChange={(e) =>
+                      setRepoNamePrefix(e.target.value)
+                    }
+                  />
+                  <button
+                    className="btn-secondary"
+                    type="button"
+                    onClick={handleIngestRepo}
+                    disabled={isIngestingRepo}
+                  >
+                    {isIngestingRepo ? "Queueing…" : "Ingest repo"}
+                  </button>
+                  {repoIngestionJob &&
+                    repoIngestionJob.project_id === selectedProjectId && (
+                      <div className="ingest-job-status">
+                        <div className="ingest-job-row">
+                          <span>
+                            Status:{" "}
+                            <strong>{repoIngestionJob.status}</strong>
+                          </span>
+                          {repoIngestionJob.status === "running" && (
+                            <button
+                              type="button"
+                              className="btn-link tiny"
+                              onClick={() =>
+                                handleCancelIngestionJob(
+                                  repoIngestionJob.id
+                                )
+                              }
+                            >
+                              Cancel job
+                            </button>
+                          )}
+                        </div>
+                        <div className="ingest-job-progress">
+                          {repoIngestionJob.total_items ? (
+                            <span>
+                              {repoIngestionJob.processed_items}/
+                              {repoIngestionJob.total_items} files
+                            </span>
+                          ) : null}
+                          {repoIngestionJob.total_bytes ? (
+                            <span>
+                              {formatBytes(
+                                repoIngestionJob.processed_bytes
+                              )}{" "}
+                              / {formatBytes(repoIngestionJob.total_bytes)}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="ingest-job-meta">
+                          {formatDuration(
+                            repoIngestionJob.started_at,
+                            repoIngestionJob.finished_at
+                          ) && (
+                            <span>
+                              Duration:{" "}
+                              {formatDuration(
+                                repoIngestionJob.started_at,
+                                repoIngestionJob.finished_at
+                              )}
+                            </span>
+                          )}
+                          {formatDateTime(repoIngestionJob.started_at) && (
+                            <span>
+                              Started:{" "}
+                              {formatDateTime(repoIngestionJob.started_at)}
+                            </span>
+                          )}
+                          {formatDateTime(repoIngestionJob.finished_at) && (
+                            <span>
+                              Finished:{" "}
+                              {formatDateTime(repoIngestionJob.finished_at)}
+                            </span>
+                          )}
+                        </div>
+                        {repoIngestionJob.error_message && (
+                          <div className="ingest-job-error">
+                            {repoIngestionJob.error_message}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                </div>
+                  </details>
+                  <details className="ingest-collapsible">
+                    <summary>Recent ingestion jobs</summary>
+                    <div className="ingest-history">
+                      <div className="ingest-history-toolbar">
+                        <button
+                          type="button"
+                          className="btn-link tiny"
+                          onClick={handleRefreshIngestionJobs}
+                          disabled={
+                            isLoadingRepoJobs || !selectedProjectId
+                          }
+                        >
+                          Refresh
+                        </button>
+                      </div>
+                      {isLoadingRepoJobs ? (
+                        <div className="ingest-history-empty">
+                          Loading ingestion jobs…
+                        </div>
+                      ) : repoIngestionJobs.length === 0 ? (
+                        <div className="ingest-history-empty">
+                          No ingestion jobs yet.
+                        </div>
+                      ) : (
+                        <div className="ingest-history-table-wrapper">
+                          <table className="ingest-history-table">
+                            <thead>
+                              <tr>
+                                <th>ID</th>
+                                <th>Status</th>
+                                <th>Files</th>
+                                <th>Bytes</th>
+                                <th>Duration</th>
+                                <th>Finished</th>
+                                <th>Error</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {repoIngestionJobs.map((job) => (
+                                <tr key={job.id}>
+                                  <td>{job.id}</td>
+                                  <td>{job.status}</td>
+                                  <td>
+                                    {job.processed_items}/
+                                    {job.total_items ?? 0}
+                                  </td>
+                                  <td>
+                                    {formatBytes(job.processed_bytes)} /{" "}
+                                    {formatBytes(job.total_bytes)}
+                                  </td>
+                                  <td>
+                                    {formatDuration(
+                                      job.started_at,
+                                      job.finished_at
+                                    ) || "—"}
+                                  </td>
+                                  <td>
+                                    {formatDateTime(job.finished_at) ||
+                                      "—"}
+                                  </td>
+                                  <td>
+                                    {job.error_message
+                                      ? job.error_message
+                                      : "—"}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </div>
                   </details>
                 </div>
@@ -3719,9 +4435,9 @@ function App() {
                             ? `Project-specific instructions:\n${projectInstructions}`
                             : "(No instructions will be injected.)"}
                         </pre>
-                      </div>
-                    </>
-                  )}
+              </div>
+            </>
+          )}
                 </div>
               </section>
 
@@ -4247,147 +4963,147 @@ function App() {
                   </div>
                 </div>
                 <div className="tab-section-body">
-                  <div className="files-panel">
-                    {selectedProjectId == null ? (
-                      <div className="files-empty">No project selected.</div>
-                    ) : fsError ? (
-                      <div className="files-error">{fsError}</div>
-                    ) : (
-                      <>
-                        <div className="files-location-row">
-                          <div className="files-location">
-                            Location: {fsDisplayPath || "."}
-                            {fsRoot && (
-                              <span className="files-root-hint">
-                                {" "}
-                                (root: {fsRoot})
+              <div className="files-panel">
+                {selectedProjectId == null ? (
+                  <div className="files-empty">No project selected.</div>
+                ) : fsError ? (
+                  <div className="files-error">{fsError}</div>
+                ) : (
+                  <>
+                    <div className="files-location-row">
+                      <div className="files-location">
+                        Location: {fsDisplayPath || "."}
+                        {fsRoot && (
+                          <span className="files-root-hint">
+                            {" "}
+                            (root: {fsRoot})
+                          </span>
+                        )}
+                      </div>
+                      <div className="files-location-actions">
+                        <button
+                          type="button"
+                          className="btn-secondary small"
+                          onClick={handleFsUp}
+                          disabled={
+                            !fsCurrentSubpath || fsIsLoadingList
+                          }
+                        >
+                          ↑ Up
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-secondary small"
+                          onClick={handleFsRefresh}
+                          disabled={fsIsLoadingList}
+                        >
+                          Refresh
+                        </button>
+                      </div>
+                    </div>
+                    <div className="files-list">
+                      {fsIsLoadingList ? (
+                        <div className="files-empty">
+                          Loading files…
+                        </div>
+                      ) : fsEntries.length === 0 ? (
+                        <div className="files-empty">
+                          No files or folders at this level.
+                        </div>
+                      ) : (
+                        <ul>
+                          {fsEntries.map((entry) => {
+                            const isSelected =
+                              !entry.is_dir &&
+                              fsSelectedRelPath === entry.rel_path;
+                            return (
+                              <li
+                                key={entry.rel_path}
+                                className="file-list-item"
+                              >
+                                <button
+                                  type="button"
+                                  className={
+                                    "file-list-entry-button" +
+                                    (isSelected ? " selected" : "")
+                                  }
+                                      onClick={() => handleOpenFsEntry(entry)}
+                                >
+                                  <span className="file-list-name">
+                                    {entry.is_dir ? "📁" : "📄"}{" "}
+                                    {entry.name}
+                                  </span>
+                                  {!entry.is_dir &&
+                                    entry.size != null && (
+                                      <span className="file-list-meta">
+                                        {entry.size} bytes
+                                      </span>
+                                    )}
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+
+                    {fsSelectedRelPath && (
+                      <div className="file-editor">
+                        <div className="file-editor-header">
+                          <div className="file-editor-title">
+                            Editing: {fsSelectedRelPath}
+                            {hasUnsavedFileChanges && (
+                              <span className="unsaved-indicator">
+                                ● Unsaved changes
                               </span>
                             )}
                           </div>
-                          <div className="files-location-actions">
+                          <div className="file-editor-controls">
+                            <label className="show-original-toggle">
+                              <input
+                                type="checkbox"
+                                checked={fsShowOriginal}
+                                onChange={(e) =>
+                                  setFsShowOriginal(e.target.checked)
+                                }
+                              />
+                              Show original
+                            </label>
                             <button
                               type="button"
                               className="btn-secondary small"
-                              onClick={handleFsUp}
+                              onClick={handleSaveFile}
                               disabled={
-                                !fsCurrentSubpath || fsIsLoadingList
+                                    fsIsSavingFile || !hasUnsavedFileChanges
                               }
                             >
-                              ↑ Up
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-secondary small"
-                              onClick={handleFsRefresh}
-                              disabled={fsIsLoadingList}
-                            >
-                              Refresh
+                                  {fsIsSavingFile ? "Saving…" : "Save file"}
                             </button>
                           </div>
                         </div>
-                        <div className="files-list">
-                          {fsIsLoadingList ? (
-                            <div className="files-empty">
-                              Loading files…
+                        <textarea
+                          className="file-editor-textarea"
+                          value={fsEditedContent}
+                          onChange={(e) =>
+                            setFsEditedContent(e.target.value)
+                          }
+                          disabled={fsIsLoadingFile}
+                        />
+                        {fsShowOriginal && (
+                          <div className="file-original-box">
+                            <div className="file-original-label">
+                              Original (read-only)
                             </div>
-                          ) : fsEntries.length === 0 ? (
-                            <div className="files-empty">
-                              No files or folders at this level.
-                            </div>
-                          ) : (
-                            <ul>
-                              {fsEntries.map((entry) => {
-                                const isSelected =
-                                  !entry.is_dir &&
-                                  fsSelectedRelPath === entry.rel_path;
-                                return (
-                                  <li
-                                    key={entry.rel_path}
-                                    className="file-list-item"
-                                  >
-                                    <button
-                                      type="button"
-                                      className={
-                                        "file-list-entry-button" +
-                                        (isSelected ? " selected" : "")
-                                      }
-                                      onClick={() => handleOpenFsEntry(entry)}
-                                    >
-                                      <span className="file-list-name">
-                                        {entry.is_dir ? "📁" : "📄"}{" "}
-                                        {entry.name}
-                                      </span>
-                                      {!entry.is_dir &&
-                                        entry.size != null && (
-                                          <span className="file-list-meta">
-                                            {entry.size} bytes
-                                          </span>
-                                        )}
-                                    </button>
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          )}
-                        </div>
-
-                        {fsSelectedRelPath && (
-                          <div className="file-editor">
-                            <div className="file-editor-header">
-                              <div className="file-editor-title">
-                                Editing: {fsSelectedRelPath}
-                                {hasUnsavedFileChanges && (
-                                  <span className="unsaved-indicator">
-                                    ● Unsaved changes
-                                  </span>
-                                )}
-                              </div>
-                              <div className="file-editor-controls">
-                                <label className="show-original-toggle">
-                                  <input
-                                    type="checkbox"
-                                    checked={fsShowOriginal}
-                                    onChange={(e) =>
-                                      setFsShowOriginal(e.target.checked)
-                                    }
-                                  />
-                                  Show original
-                                </label>
-                                <button
-                                  type="button"
-                                  className="btn-secondary small"
-                                  onClick={handleSaveFile}
-                                  disabled={
-                                    fsIsSavingFile || !hasUnsavedFileChanges
-                                  }
-                                >
-                                  {fsIsSavingFile ? "Saving…" : "Save file"}
-                                </button>
-                              </div>
-                            </div>
-                            <textarea
-                              className="file-editor-textarea"
-                              value={fsEditedContent}
-                              onChange={(e) =>
-                                setFsEditedContent(e.target.value)
-                              }
-                              disabled={fsIsLoadingFile}
-                            />
-                            {fsShowOriginal && (
-                              <div className="file-original-box">
-                                <div className="file-original-label">
-                                  Original (read-only)
-                                </div>
-                                <pre className="file-original-content">
-                                  {fsOriginalContent}
-                                </pre>
-                              </div>
-                            )}
+                            <pre className="file-original-content">
+                              {fsOriginalContent}
+                            </pre>
                           </div>
                         )}
-                      </>
+                      </div>
                     )}
-                  </div>
+                  </>
+                )}
+              </div>
                 </div>
               </section>
 
@@ -4398,39 +5114,39 @@ function App() {
                   </div>
                 </div>
                 <div className="tab-section-body">
-                  <div className="fileedit-panel">
-                    {selectedConversationId == null ? (
-                      <div className="fileedit-empty">
-                        No conversation selected.
+              <div className="fileedit-panel">
+                {selectedConversationId == null ? (
+                  <div className="fileedit-empty">
+                    No conversation selected.
+                  </div>
+                ) : !fileEditProposal ? (
+                  <div className="fileedit-empty">
+                    No AI file edit proposals in the latest assistant
+                    reply.
+                  </div>
+                ) : (
+                  <>
+                    <div className="fileedit-path">
+                      <span className="fileedit-label">File:</span>{" "}
+                      <span className="fileedit-value">
+                        {fileEditProposal.file_path}
+                      </span>
+                    </div>
+                    <div className="fileedit-reason">
+                      <span className="fileedit-label">Reason:</span>{" "}
+                      <span className="fileedit-value">
+                        {fileEditProposal.reason}
+                      </span>
+                    </div>
+                    <div className="fileedit-instruction">
+                      <span className="fileedit-label">
+                        Instruction:
+                      </span>
+                      <div className="fileedit-instruction-text">
+                        {fileEditProposal.instruction}
                       </div>
-                    ) : !fileEditProposal ? (
-                      <div className="fileedit-empty">
-                        No AI file edit proposals in the latest assistant
-                        reply.
-                      </div>
-                    ) : (
-                      <>
-                        <div className="fileedit-path">
-                          <span className="fileedit-label">File:</span>{" "}
-                          <span className="fileedit-value">
-                            {fileEditProposal.file_path}
-                          </span>
-                        </div>
-                        <div className="fileedit-reason">
-                          <span className="fileedit-label">Reason:</span>{" "}
-                          <span className="fileedit-value">
-                            {fileEditProposal.reason}
-                          </span>
-                        </div>
-                        <div className="fileedit-instruction">
-                          <span className="fileedit-label">
-                            Instruction:
-                          </span>
-                          <div className="fileedit-instruction-text">
-                            {fileEditProposal.instruction}
-                          </div>
-                        </div>
-                        <div className="fileedit-buttons">
+                    </div>
+                    <div className="fileedit-buttons">
                           <button
                             type="button"
                             className="btn-secondary small"
@@ -4441,37 +5157,37 @@ function App() {
                               ? "Previewing…"
                               : "Preview edit"}
                           </button>
-                          <button
-                            type="button"
-                            className="btn-secondary small"
-                            onClick={handleApplyFileEdit}
-                            disabled={isApplyingFileEdit}
-                          >
-                            {isApplyingFileEdit
-                              ? "Applying…"
-                              : "Apply AI edit"}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-link small"
-                            onClick={handleDismissFileEditProposal}
-                          >
-                            Dismiss
-                          </button>
-                        </div>
-                        {fileEditStatus && (
-                          <div className="fileedit-status">
-                            {fileEditStatus}
-                          </div>
-                        )}
+                      <button
+                        type="button"
+                        className="btn-secondary small"
+                        onClick={handleApplyFileEdit}
+                        disabled={isApplyingFileEdit}
+                      >
+                        {isApplyingFileEdit
+                          ? "Applying…"
+                          : "Apply AI edit"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-link small"
+                        onClick={handleDismissFileEditProposal}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                    {fileEditStatus && (
+                      <div className="fileedit-status">
+                        {fileEditStatus}
+                      </div>
+                    )}
                         {fileEditError && (
                           <div className="fileedit-error">{fileEditError}</div>
-                        )}
+                )}
                         {fileEditPreview && (
                           <div className="fileedit-preview">
                             <div className="fileedit-preview-label">
                               Preview diff
-                            </div>
+              </div>
                             {fileEditPreview.diff ? (
                               <pre className="diff-view">
                                 {fileEditPreview.diff}
@@ -4506,49 +5222,49 @@ function App() {
                   </div>
                 </div>
                 <div className="tab-section-body">
-                  <div className="search-tabs">
-                    <button
-                      className={
-                        "search-tab" +
-                        (searchTab === "messages" ? " active" : "")
-                      }
-                      type="button"
-                      onClick={() => setSearchTab("messages")}
-                    >
-                      Messages
-                    </button>
-                    <button
-                      className={
-                        "search-tab" +
-                        (searchTab === "docs" ? " active" : "")
-                      }
-                      type="button"
-                      onClick={() => setSearchTab("docs")}
-                    >
-                      Docs
-                    </button>
-                  </div>
-                  <div className="search-box">
-                    <textarea
-                      className="search-input"
-                      placeholder={
-                        searchTab === "messages"
-                          ? "Search in chat history..."
-                          : "Search in ingested documents..."
-                      }
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      onKeyDown={handleSearchKeyDown}
-                    />
-                    <button
-                      className="btn-secondary"
-                      type="button"
-                      onClick={handleSearch}
-                      disabled={isSearching || !searchQuery.trim()}
-                    >
-                      {isSearching ? "Searching…" : "Search"}
-                    </button>
-                  </div>
+              <div className="search-tabs">
+                <button
+                  className={
+                    "search-tab" +
+                    (searchTab === "messages" ? " active" : "")
+                  }
+                  type="button"
+                  onClick={() => setSearchTab("messages")}
+                >
+                  Messages
+                </button>
+                <button
+                  className={
+                    "search-tab" +
+                    (searchTab === "docs" ? " active" : "")
+                  }
+                  type="button"
+                  onClick={() => setSearchTab("docs")}
+                >
+                  Docs
+                </button>
+              </div>
+              <div className="search-box">
+                <textarea
+                  className="search-input"
+                  placeholder={
+                    searchTab === "messages"
+                      ? "Search in chat history..."
+                      : "Search in ingested documents..."
+                  }
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={handleSearchKeyDown}
+                />
+                <button
+                  className="btn-secondary"
+                  type="button"
+                  onClick={handleSearch}
+                  disabled={isSearching || !searchQuery.trim()}
+                >
+                  {isSearching ? "Searching…" : "Search"}
+                </button>
+              </div>
                   <div className="search-filters">
                     {searchTab === "messages" ? (
                       <>
@@ -4648,13 +5364,13 @@ function App() {
                       </>
                     )}
                   </div>
-                  <div className="search-results">
-                    {searchTab === "messages" ? (
+              <div className="search-results">
+                {searchTab === "messages" ? (
                       groupedMessageHits.length === 0 ? (
-                        <div className="search-empty">
-                          No message results yet. Try a query.
-                        </div>
-                      ) : (
+                    <div className="search-empty">
+                      No message results yet. Try a query.
+                    </div>
+                  ) : (
                         <div className="search-groups">
                           {groupedMessageHits.map((group) => (
                             <div
@@ -4693,27 +5409,27 @@ function App() {
                                 {group.hits.map((hit, idx) => (
                                   <li
                                     key={`${hit.message_id}-${idx}`}
-                                    className="search-result-item"
-                                  >
-                                    <div className="search-result-meta">
+                          className="search-result-item"
+                        >
+                          <div className="search-result-meta">
                                       {hit.role} · distance{" "}
                                       {hit.distance.toFixed(3)}
-                                    </div>
-                                    <div className="search-result-content">
-                                      {hit.content}
-                                    </div>
-                                  </li>
-                                ))}
-                              </ul>
+                          </div>
+                          <div className="search-result-content">
+                            {hit.content}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
                             </div>
                           ))}
                         </div>
-                      )
+                  )
                     ) : groupedDocHits.length === 0 ? (
-                      <div className="search-empty">
-                        No doc results yet. Try a query.
-                      </div>
-                    ) : (
+                  <div className="search-empty">
+                    No doc results yet. Try a query.
+                  </div>
+                ) : (
                       <div className="search-groups">
                         {groupedDocHits.map((group) => (
                           <div
@@ -4745,23 +5461,23 @@ function App() {
                               {group.hits.map((hit, idx) => (
                                 <li
                                   key={`${hit.chunk_id}-${idx}`}
-                                  className="search-result-item"
-                                >
-                                  <div className="search-result-meta">
+                        className="search-result-item"
+                      >
+                        <div className="search-result-meta">
                                     Chunk {hit.chunk_index} · distance{" "}
                                     {hit.distance.toFixed(3)}
-                                  </div>
-                                  <div className="search-result-content">
-                                    {hit.content}
-                                  </div>
-                                </li>
-                              ))}
-                            </ul>
+                        </div>
+                        <div className="search-result-content">
+                          {hit.content}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
                           </div>
                         ))}
                       </div>
-                    )}
-                  </div>
+                )}
+              </div>
                 </div>
               </section>
             </div>
@@ -4858,126 +5574,126 @@ function App() {
                     )}
                   </div>
 
-                  <div className="terminal-panel">
-                    {selectedConversationId == null ? (
-                      <div className="terminal-empty">
-                        No conversation selected.
-                      </div>
-                    ) : !terminalProposal ? (
-                      <div className="terminal-empty">
-                        No AI terminal command proposals in the latest
-                        assistant reply.
-                      </div>
-                    ) : (
-                      <>
-                        <div className="terminal-row">
-                          <span className="terminal-label">CWD:</span>{" "}
-                          <span className="terminal-value">
-                            {terminalProposal.cwd &&
-                            terminalProposal.cwd.trim()
-                              ? terminalProposal.cwd
-                              : "(project root)"}
-                          </span>
-                        </div>
-                        <div className="terminal-row">
-                          <span className="terminal-label">
-                            Command:
-                          </span>{" "}
-                          <span className="terminal-value mono">
-                            {terminalProposal.command}
-                          </span>
-                        </div>
-                        {terminalProposal.reason && (
-                          <div className="terminal-row">
-                            <span className="terminal-label">
-                              Reason:
-                            </span>{" "}
-                            <span className="terminal-value">
-                              {terminalProposal.reason}
-                            </span>
-                          </div>
-                        )}
-                        <div className="terminal-buttons">
-                          <button
-                            type="button"
-                            className="btn-secondary small"
-                            onClick={handleRunTerminalProposal}
-                            disabled={isRunningTerminalCommand}
-                          >
-                            {isRunningTerminalCommand
-                              ? "Running…"
-                              : "Run command"}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-link small"
-                            onClick={() => setTerminalProposal(null)}
-                          >
-                            Dismiss
-                          </button>
-                        </div>
-                        {terminalError && (
-                          <div className="terminal-status terminal-status-error">
-                            {terminalError}
-                          </div>
-                        )}
-                      </>
-                    )}
+              <div className="terminal-panel">
+                {selectedConversationId == null ? (
+                  <div className="terminal-empty">
+                    No conversation selected.
                   </div>
+                ) : !terminalProposal ? (
+                  <div className="terminal-empty">
+                    No AI terminal command proposals in the latest
+                    assistant reply.
+                  </div>
+                ) : (
+                  <>
+                    <div className="terminal-row">
+                      <span className="terminal-label">CWD:</span>{" "}
+                      <span className="terminal-value">
+                        {terminalProposal.cwd &&
+                        terminalProposal.cwd.trim()
+                          ? terminalProposal.cwd
+                          : "(project root)"}
+                      </span>
+                    </div>
+                    <div className="terminal-row">
+                      <span className="terminal-label">
+                        Command:
+                      </span>{" "}
+                      <span className="terminal-value mono">
+                        {terminalProposal.command}
+                      </span>
+                    </div>
+                    {terminalProposal.reason && (
+                      <div className="terminal-row">
+                        <span className="terminal-label">
+                          Reason:
+                        </span>{" "}
+                        <span className="terminal-value">
+                          {terminalProposal.reason}
+                        </span>
+                      </div>
+                    )}
+                    <div className="terminal-buttons">
+                      <button
+                        type="button"
+                        className="btn-secondary small"
+                        onClick={handleRunTerminalProposal}
+                        disabled={isRunningTerminalCommand}
+                      >
+                        {isRunningTerminalCommand
+                          ? "Running…"
+                          : "Run command"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-link small"
+                        onClick={() => setTerminalProposal(null)}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                    {terminalError && (
+                      <div className="terminal-status terminal-status-error">
+                        {terminalError}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
 
-                  <div className="terminal-output-panel">
-                    {!terminalResult ? (
-                      <div className="terminal-empty">
-                        No terminal command has been run yet from this UI.
-                      </div>
-                    ) : (
-                      <>
-                        <div className="terminal-output-meta">
-                          <div>
-                            <span className="terminal-label">
-                              Command:
-                            </span>{" "}
-                            <span className="terminal-value mono">
-                              {terminalResult.command}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="terminal-label">CWD:</span>{" "}
-                            <span className="terminal-value">
-                              {terminalResult.cwd &&
-                              terminalResult.cwd.trim()
-                                ? terminalResult.cwd
-                                : "(project root)"}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="terminal-label">
-                              Exit code:
-                            </span>{" "}
-                            <span className="terminal-value">
-                              {terminalResult.exit_code}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="terminal-output-note">
-                          (This output was also sent to the assistant so it
-                          can decide what to do next.)
-                        </div>
-                        <div className="terminal-output-block">
-                          <div className="terminal-output-label">STDOUT</div>
-                          <pre className="terminal-output-stdout">
-                            {terminalResult.stdout || "(no stdout)"}
-                          </pre>
-                        </div>
-                        <div className="terminal-output-block">
-                          <div className="terminal-output-label">STDERR</div>
-                          <pre className="terminal-output-stderr">
-                            {terminalResult.stderr || "(no stderr)"}
-                          </pre>
-                        </div>
-                      </>
-                    )}
+              <div className="terminal-output-panel">
+                {!terminalResult ? (
+                  <div className="terminal-empty">
+                    No terminal command has been run yet from this UI.
                   </div>
+                ) : (
+                  <>
+                    <div className="terminal-output-meta">
+                      <div>
+                        <span className="terminal-label">
+                          Command:
+                        </span>{" "}
+                        <span className="terminal-value mono">
+                          {terminalResult.command}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="terminal-label">CWD:</span>{" "}
+                        <span className="terminal-value">
+                          {terminalResult.cwd &&
+                          terminalResult.cwd.trim()
+                            ? terminalResult.cwd
+                            : "(project root)"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="terminal-label">
+                          Exit code:
+                        </span>{" "}
+                        <span className="terminal-value">
+                          {terminalResult.exit_code}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="terminal-output-note">
+                      (This output was also sent to the assistant so it
+                      can decide what to do next.)
+                    </div>
+                    <div className="terminal-output-block">
+                      <div className="terminal-output-label">STDOUT</div>
+                      <pre className="terminal-output-stdout">
+                        {terminalResult.stdout || "(no stdout)"}
+                      </pre>
+                    </div>
+                    <div className="terminal-output-block">
+                      <div className="terminal-output-label">STDERR</div>
+                      <pre className="terminal-output-stderr">
+                        {terminalResult.stderr || "(no stderr)"}
+                      </pre>
+                    </div>
+                  </>
+                )}
+              </div>
 
                   <div className="terminal-history-header">
                     Recent manual commands

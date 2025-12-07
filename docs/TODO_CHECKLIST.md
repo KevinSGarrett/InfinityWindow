@@ -22,8 +22,12 @@ Legend:
 - [x] **Model routing fallbacks** for `research` and `auto` modes implemented.  
 - [x] **Autonomous task loop** upgraded (auto‑complete + dedupe + ordering).  
 - [x] **Playwright UI smoke tests** for right‑column tabs, Files, Notes, Memory.  
-- [~] **CI routine** (`make ci` in QA copy) defined and documented.  
+- [x] **CI routine** (`make ci` in QA copy) defined and documented.  
 - [ ] **Expand automated test coverage** beyond smoke (backend + frontend).  
+- [x] **Large repo ingestion batching** so embeddings requests stay under the OpenAI token cap (split files into batches, stream progress, provide UI feedback).  
+  - `embed_texts_batched` (with `MAX_EMBED_*` caps) now powers doc/repo ingestion.
+  - `IngestionJob` + `FileIngestionState` tables track job progress and skip unchanged files.
+  - Docs tab shows live status via `GET /projects/{id}/ingestion_jobs/{job_id}`.
 
 ---
 
@@ -42,10 +46,11 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
   - [x] Semantic dedupe when adding new tasks.  
   - [x] Basic ordering heuristics (open first, then by `updated_at`).  
   - [ ] Confidence scores + telemetry for auto actions (add/complete).  
-  - [ ] Suggested-change queue / confirmation flow for low-confidence additions or completions.  
+  - [~] Suggested-change queue / Approve–Dismiss flow for low-confidence additions or completions (initial version shipped; refine heuristics/UX over time).  
   - [ ] Priority & grouping heuristics (Critical / Blocked / Ready) instead of pure recency.  
   - [ ] Dependency tracking and smarter duplicate detection beyond simple similarity.  
-  - [ ] Usage/telemetry dashboard showing auto-added / auto-completed / dismissed counts and accuracy samples.  
+  - [x] Core telemetry: counters + `/debug/telemetry` endpoint + Usage tab telemetry drawer for task automation.  
+  - [ ] Full usage/telemetry dashboard UI (graphs, filters, long‑term analytics).  
   - [ ] Audit trail snippets when the maintainer closes a task (“Closed automatically on …”).  
   - [ ] Context-aware extraction prompts (feed project goals, sprint focus, blockers).  
   - [ ] Additional QA around noisy projects and long histories.  
@@ -65,6 +70,10 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
 - [x] **Usage tab UX**: better aggregation, per-project and per-conversation summaries.  
 - [x] **Notes/Decisions UX**: richer metadata, tags, cross-links, pinned notes, and diff preview.  
 - [x] **Notes/Decisions automation**: detect decision statements, draft entries automatically, and hook decisions to tasks/memory.  
+
+### UI / Frontend
+
+- [ ] Refactor UI.
 
 ---
 
@@ -87,6 +96,11 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
 - [x] `docs/RELEASE_PROCESS.md` defined.  
 - [x] `docs/CHANGELOG.md` kept current with each window.  
 
+### Ops & Onboarding
+
+- [ ] Write onboarding document for ops.
+- [ ] Write onboarding document for ops and support teams with a rollout checklist and training videos.
+
 ---
 
 ## 5. QA & CI
@@ -95,9 +109,22 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
 - [x] `docs/TEST_REPORT_TEMPLATE.md` authored.  
 - [x] `docs/TEST_REPORT_2025-12-02.md` completed and updated after fixes.  
 - [x] `qa/` package created with smoke probes.  
-- [~] `Makefile` in QA copy with `make ci` target (backend tests + frontend build).  
+- [x] `Makefile` in QA copy with `make ci` target (backend tests + frontend build).  
 - [ ] Port CI configuration back into primary repo once test suite is richer.  
 - [ ] Add coverage reporting and basic performance checks.  
+
+### QA & E2E
+
+- [ ] End-to-end chat flow for search and tasks.
+
+---
+
+## 6. Autopilot reliability (current window)
+
+- [ ] Wire `auto_update_tasks` to run automatically after `/chat` (with retry/timeout guards).
+- [ ] Improve task intent extraction to reduce extra “analysis” tasks and handle vague prompts.
+- [ ] Stabilize `auto_update_tasks` (investigate intermittent 503/“Auto-update failed; please retry.”).
+- [ ] Handle missing task backlog files gracefully (avoid AI edit warnings when target file is absent).
 
 ---
 
@@ -109,7 +136,53 @@ These are “nice to have” or larger projects captured in `PROGRESS.md`.
 - [ ] Import/export flows for projects (zip bundle including DB subset + docs).  
 - [ ] Advanced diff/preview UX (multi‑file, multi‑step).  
 - [ ] Multi‑user / roles model (if and when needed).  
+- [ ] Large-ingest phase 3 ideas (post-batching): blueprint/doc ingestion parity, resumable/partial jobs, structured job logs, globs presets, and richer telemetry dashboards.  
 
 Use this checklist in combination with `PROGRESS.md` when planning work for the next window. When an item is completed, update both this file and the relevant section in `PROGRESS.md`.
 
+---
 
+## 7. Autopilot, Blueprint & Learning [design-only]
+
+These items summarize the Autopilot plan from `AUTOPILOT_PLAN.md` / `AUTOPILOT_LEARNING.md`. None are implemented yet; they represent a multi‑phase roadmap. When you start a phase, use `AUTOPILOT_IMPLEMENTATION_CHECKLIST.md` as the authoritative step‑by‑step guide.
+
+- [ ] **Phase 1 – Blueprint & Plan graph**  
+  - [ ] Add `Blueprint`, `PlanNode`, `PlanNodeTaskLink`, `TaskDependency`, `BlueprintIngestionJob` models.  
+  - [ ] Implement `/projects/{id}/blueprints` and `/blueprints/{id}/generate_plan`.  
+  - [ ] Add Plan tree + “Generate tasks for this node” to the Tasks tab.  
+
+- [ ] **Phase 2 – Project Brain & context engine**  
+  - [ ] Add `ConversationSummary`, `ProjectSnapshot` models.  
+  - [ ] Implement context builder and alignment helper modules.  
+  - [ ] Wire chat and future workers through the context builder.  
+
+- [ ] **Phase 3 – Execution runs & workers**  
+  - [ ] Add `ExecutionRun` and `ExecutionStep` models.  
+  - [ ] Implement runs API + rollback.  
+  - [ ] Add Runs panel/tab in the UI.  
+
+- [ ] **Phase 4 – ManagerAgent & Autopilot heartbeat**  
+  - [ ] Extend `Project` with autonomy fields (`autonomy_mode`, `active_phase_node_id`, `autopilot_paused`, `max_parallel_runs`).  
+  - [ ] Implement `ManagerAgent` + `/projects/{id}/autopilot_tick` + `/projects/{id}/manager/plan` + `/projects/{id}/refine_plan`.  
+  - [ ] Add Autopilot controls to the header and wire them to the backend.  
+
+- [ ] **Phase T – Scalable ingestion & token/cost control**  
+  - [x] Implement `embed_texts_batched` and `IngestionJob`/`FileIngestionState` models (repo ingestion).  
+  - [~] Add ingestion job APIs and UI progress for **blueprints** (repo path shipped; blueprint/plan ingestion still design-only).  
+  - [ ] Wire budget knobs (`MAX_EMBED_TOKENS_PER_BATCH`, `MAX_EMBED_ITEMS_PER_BATCH`, `MAX_CONTEXT_TOKENS_PER_CALL`, `AUTOPILOT_MAX_TOKENS_PER_RUN`).  
+
+---
+
+## 8. Security & Compliance
+
+- [x] Login audit logging pipeline — completed 2025-12-05.
+
+### Observability & Billing
+
+- [ ] Set up billing event sink and Grafana dashboard for latency and error alerts.
+
+---
+
+## Completed
+
+- [x] Healthcheck dashboard — completed 2025-12-05.

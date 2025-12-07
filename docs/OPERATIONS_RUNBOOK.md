@@ -69,7 +69,26 @@ To create or refresh a QA copy:
 2. Copy the directory to create `C:\InfinityWindow_QA` (using Explorer or `robocopy`).
 3. Adjust any environment‑specific settings if needed (e.g. `.env`).
 
-### 3.2 Running CI in QA (`make ci`)
+### 3.2 Syncing QA with the main repo (daily/weekly workflow)
+
+When the primary repo changes, bring `C:\InfinityWindow_QA` back in sync before running tests:
+
+1. **Stop all QA processes** (`uvicorn`, `npm run dev`, Playwright runs).  
+   Confirm ports 8000/5174 are free (`Get-NetTCPConnection -LocalPort 8000`).
+2. **Mirror the updated directories** from the main repo (examples below assume PowerShell + `robocopy`):
+
+   ```powershell
+   robocopy "C:\InfinityWindow\backend" "C:\InfinityWindow_QA\backend" /MIR /XD ".venv" "__pycache__"
+   robocopy "C:\InfinityWindow\frontend" "C:\InfinityWindow_QA\frontend" /MIR /XD "node_modules" "dist" ".next" ".nuxt" ".turbo"
+   robocopy "C:\InfinityWindow\docs" "C:\InfinityWindow_QA\docs" /MIR
+   robocopy "C:\InfinityWindow\qa" "C:\InfinityWindow_QA\qa" /MIR
+   robocopy "C:\InfinityWindow\tools" "C:\InfinityWindow_QA\tools" /MIR
+   ```
+
+3. **Reset the QA data stores** (see section 4) so SQLite + Chroma schemas match the new code.
+4. Restart the backend/frontend in QA and proceed with `qa/run_smoke.py`, Playwright, or `make ci`.
+
+### 3.3 Running CI in QA (`make ci`)
 
 From `C:\InfinityWindow_QA`:
 
@@ -209,7 +228,30 @@ Playwright specs currently cover:
 7. **Document results**:
    - Use `docs/TEST_REPORT_TEMPLATE.md` to capture a new report.
    - Update `docs/PROGRESS.md` and `docs/TODO_CHECKLIST.md` with outcomes and follow‑ups.
+   - Mirror any ISSUE-00x entries from the report into `docs/ISSUES_LOG.md` (same ID, summary, fix, verification link) so future runs can reference the historical record quickly.
 
 This runbook should be treated as the operational backbone for keeping InfinityWindow healthy across windows and environments.
+
+---
+
+## 9. Future: Autopilot & Large‑Repo Ingestion (when implemented)
+
+The Autopilot and scalable ingestion designs introduce additional operational flows which will become relevant once implemented:
+
+- **Autopilot smoke checks** (planned):
+  - Seed a tiny sandbox project and blueprint.
+  - Enable Autonomy (`suggest`/`semi_auto`).
+  - Call `/projects/{id}/autopilot_tick` repeatedly and verify:
+    - A run is created for a small “hello world” task.
+    - Steps move from `pending` → `needs_approval`/`completed` without leaving orphaned runs.
+    - “Revert run” restores touched files cleanly.
+  - Record results under new H‑Autopilot tests in `docs/TEST_PLAN.md` and future test reports.
+
+- **Ingestion batching & progress** (planned):
+  - Use `POST /projects/{id}/ingestion_jobs` to start large repo/blueprint ingestion.
+  - Poll `GET /projects/{id}/ingestion_jobs/{job_id}` for progress (“processed_items / total_items”, status).
+  - Watch for token‑limit errors and ensure batching keeps requests below configured caps (`MAX_EMBED_TOKENS_PER_BATCH`, `MAX_EMBED_ITEMS_PER_BATCH`).  
+
+When these capabilities land, this section should be expanded with concrete commands and QA flows, mirroring the level of detail used for today’s smoke suite and Playwright runs. For now, treat it as a design note pointing at `AUTOPILOT_PLAN.md` and `Updated_Project_Plan_2_Ingestion_Plan.txt`.
 
 

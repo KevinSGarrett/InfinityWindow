@@ -1,21 +1,25 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import difflib
 import re
+import time
+from collections import deque
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Deque, Any, Literal
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 from sqlalchemy import case
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import OperationalError
 
 from app.db.base import Base
-from app.db.session import engine, get_db
+from app.db.session import engine, get_db, SessionLocal
 from app.db import models
 from app.llm import openai_client as openai_module
 from app.llm.openai_client import generate_reply_from_history
@@ -32,6 +36,7 @@ from app.vectorstore.chroma_store import (
 from app.api.search import router as search_router
 from app.api.docs import router as docs_router
 from app.api.github import router as github_router
+from app.ingestion.github_ingestor import ingest_repo_job, get_ingest_telemetry
 
 # Create tables on import (simple approach for now; later we can use migrations)
 Base.metadata.create_all(bind=engine)
@@ -42,18 +47,11 @@ app = FastAPI(
     version="0.3.0",
 )
 
-# Allow local frontend dev (Vite default ports, etc.)
+# QA: open CORS to unblock local dev ports (5175, 5173, etc.)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -128,6 +126,21 @@ class MessageRead(BaseModel):
 class TaskCreate(BaseModel):
     project_id: int
     description: str
+    priority: Optional[str] = None
+    blocked_reason: Optional[str] = None
+    auto_notes: Optional[str] = None
+
+
+class TaskCreateScoped(BaseModel):
+    """
+    Project-scoped task creation payload that omits project_id
+    (it comes from the path param).
+    """
+
+    description: str
+    priority: Optional[str] = None
+    blocked_reason: Optional[str] = None
+    auto_notes: Optional[str] = None
 
 
 class TaskRead(BaseModel):
@@ -135,6 +148,11 @@ class TaskRead(BaseModel):
     project_id: int
     description: str
     status: str
+    priority: str
+    blocked_reason: Optional[str]
+    auto_notes: Optional[str]
+    created_at: datetime
+    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -142,6 +160,22 @@ class TaskRead(BaseModel):
 class TaskUpdate(BaseModel):
     description: Optional[str] = None
     status: Optional[str] = None
+    priority: Optional[str] = None
+    blocked_reason: Optional[str] = None
+    auto_notes: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_enums(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        status = values.get("status")
+        if status is not None:
+            if status not in {"open", "done"}:
+                raise ValueError("status must be one of: open, done")
+        priority = values.get("priority")
+        if priority is not None:
+            if priority not in {"low", "normal", "high", "critical"}:
+                raise ValueError("priority must be one of: low, normal, high, critical")
+        return values
 
 
 class UsageRecordRead(BaseModel):
@@ -304,6 +338,71 @@ class ChatResponse(BaseModel):
     reply: str
 
 
+class TaskSuggestionRead(BaseModel):
+    id: int
+    project_id: int
+    conversation_id: Optional[int]
+    target_task_id: Optional[int]
+    action_type: str
+    payload: Dict[str, Any]
+    confidence: float
+    status: str
+    task_description: Optional[str] = None
+    task_status: Optional[str] = None
+    task_priority: Optional[str] = None
+    task_blocked_reason: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TaskOverviewRead(BaseModel):
+    tasks: List[TaskRead]
+    suggestions: List[TaskSuggestionRead]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TaskSuggestionSeedPayload(BaseModel):
+    project_id: int
+    conversation_id: Optional[int] = None
+    target_task_id: Optional[int] = None
+    action_type: str
+    description: Optional[str] = None
+    priority: Optional[str] = None
+    blocked_reason: Optional[str] = None
+    confidence: float = 0.5
+
+
+class IngestionJobCreate(BaseModel):
+    kind: Literal["repo"]
+    source: str
+    include_globs: Optional[List[str]] = None
+    name_prefix: Optional[str] = None
+
+
+class IngestionJobRead(BaseModel):
+    id: int
+    project_id: int
+    kind: str
+    source: str
+    status: str
+    total_items: int
+    processed_items: int
+    error_message: Optional[str] = None
+    meta: Optional[Dict[str, Any]] = None
+    total_bytes: int
+    processed_bytes: int
+    cancel_requested: bool
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class FileWritePayload(BaseModel):
     """
     Payload for writing a file in a project's local_root_path.
@@ -328,12 +427,23 @@ class FileAIEditPayload(BaseModel):
     """
     file_path: str
     instruction: str
+    # Accept legacy alias to avoid 422 when clients send "instructions"
+    instructions: Optional[str] = None
     model: Optional[str] = None
     mode: Optional[str] = "code"
     apply_changes: bool = False
     conversation_id: Optional[int] = None
     message_id: Optional[int] = None
     include_diff: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coalesce_instruction(cls, data: Dict[str, Any]) -> Dict[str, Any]:
+        if isinstance(data, dict) and "instruction" not in data:
+            alias_val = data.get("instructions")
+            if alias_val:
+                data["instruction"] = alias_val
+        return data
 
 
 class TerminalRunPayload(BaseModel):
@@ -345,10 +455,11 @@ class TerminalRunPayload(BaseModel):
     - command: the shell command to run.
     - timeout_seconds: safety timeout so commands can't hang forever.
     """
-    project_id: int
+    project_id: Optional[int] = None
     command: str
     cwd: Optional[str] = None
     timeout_seconds: Optional[int] = 120
+
 
 
 # ---------- Helpers: misc ----------
@@ -359,6 +470,46 @@ def _normalize_instruction_text(value: Optional[str]) -> Optional[str]:
         return None
     trimmed = value.strip()
     return trimmed or None
+
+
+def _commit_with_retry(db: Session, attempts: int = 6, base_delay: float = 0.3):
+    """
+    Commit the session with a retry loop to tolerate transient SQLite locks.
+    The delay increases linearly to give the lock holder time to finish.
+    """
+    last_exc: Optional[Exception] = None
+    for i in range(attempts):
+        try:
+            db.commit()
+            return
+        except OperationalError as exc:  # SQLite locked
+            db.rollback()
+            last_exc = exc
+            if "locked" not in str(exc).lower():
+                raise
+            # backoff: 0.3s, 0.6s, 0.9s, ...
+            time.sleep(base_delay * (i + 1))
+    if last_exc:
+        raise last_exc
+
+
+def _flush_with_retry(db: Session, attempts: int = 6, base_delay: float = 0.3):
+    """
+    Flush pending objects with retries to tolerate transient SQLite locks.
+    """
+    last_exc: Optional[Exception] = None
+    for i in range(attempts):
+        try:
+            db.flush()
+            return
+        except OperationalError as exc:
+            db.rollback()
+            last_exc = exc
+            if "locked" not in str(exc).lower():
+                raise
+            time.sleep(base_delay * (i + 1))
+    if last_exc:
+        raise last_exc
 
 
 def _normalize_tags(tags: Optional[List[str]]) -> Optional[str]:
@@ -571,11 +722,38 @@ _TASK_TELEMETRY: Dict[str, int] = {
     "auto_added": 0,
     "auto_completed": 0,
     "auto_deduped": 0,
+    "auto_suggested": 0,
 }
+_TASK_ACTION_HISTORY: Deque[Dict[str, Any]] = deque(maxlen=50)
+_AUTO_UPDATE_TASKS_AFTER_CHAT = (
+    os.getenv("AUTO_UPDATE_TASKS_AFTER_CHAT", "true").lower()
+    not in {"0", "false", "no", "off"}
+)
 
 
 def get_task_telemetry(reset: bool = False) -> Dict[str, int]:
-    snapshot = dict(_TASK_TELEMETRY)
+    snapshot: Dict[str, Any] = dict(_TASK_TELEMETRY)
+    actions = list(_TASK_ACTION_HISTORY)
+    snapshot["recent_actions"] = actions
+    # Confidence stats across recent actions
+    if actions:
+        confidences = [a.get("confidence") for a in actions if a.get("confidence") is not None]
+        if confidences:
+            snapshot["confidence_stats"] = {
+                "min": min(confidences),
+                "max": max(confidences),
+                "avg": round(sum(confidences) / len(confidences), 3),
+                "count": len(confidences),
+            }
+        bucket = {"lt_0_4": 0, "0_4_0_7": 0, "gte_0_7": 0}
+        for c in confidences:
+            if c < 0.4:
+                bucket["lt_0_4"] += 1
+            elif c < 0.7:
+                bucket["0_4_0_7"] += 1
+            else:
+                bucket["gte_0_7"] += 1
+        snapshot["confidence_buckets"] = bucket
     if reset:
         reset_task_telemetry()
     return snapshot
@@ -584,6 +762,31 @@ def get_task_telemetry(reset: bool = False) -> Dict[str, int]:
 def reset_task_telemetry() -> None:
     for key in _TASK_TELEMETRY:
         _TASK_TELEMETRY[key] = 0
+    _TASK_ACTION_HISTORY.clear()
+
+
+def _run_auto_update_with_retry(
+    db: Session,
+    conversation: models.Conversation,
+    attempts: int = 2,
+    base_delay: float = 0.2,
+) -> tuple[bool, Optional[Exception]]:
+    """
+    Run auto_update_tasks_from_conversation with a small retry to smooth out
+    transient model/vector-store hiccups. Returns (ok, last_exception).
+    """
+    last_exc: Optional[Exception] = None
+    for i in range(attempts):
+        try:
+            auto_update_tasks_from_conversation(db, conversation)
+            _commit_with_retry(db)
+            return True, None
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            last_exc = exc
+            if i < attempts - 1:
+                time.sleep(base_delay * (i + 1))
+    return False, last_exc
 
 
 _TASK_TEXT_NORMALIZER = re.compile(r"[^a-z0-9]+")
@@ -611,6 +814,46 @@ _TASK_INCOMPLETE_HINTS = (
     "todo",
     "to do",
 )
+_TASK_PRIORITY_CRITICAL = (
+    "production outage",
+    "sev1",
+    "sev 1",
+    "p0",
+    "critical",
+    "urgent bug",
+    "blocker",
+    "security",
+    "vulnerability",
+    "breach",
+    "data leak",
+)
+_TASK_PRIORITY_HIGH = (
+    "urgent",
+    "high priority",
+    "asap",
+    "needs immediate",
+    "high risk",
+    "p1",
+    "auth",
+    "login failure",
+    "rate limit",
+)
+_TASK_PRIORITY_LOW = (
+    "cleanup",
+    "nice to have",
+    "follow-up later",
+    "nit",
+    "optional",
+)
+_TASK_BLOCKED_PATTERNS = (
+    re.compile(r"blocked by (?P<reason>.+)", re.IGNORECASE),
+    re.compile(r"depends on (?P<reason>.+)", re.IGNORECASE),
+    re.compile(r"after we (?P<reason>.+)", re.IGNORECASE),
+    re.compile(r"waiting for (?P<reason>.+)", re.IGNORECASE),
+    re.compile(r"need .* before (?P<reason>.+)", re.IGNORECASE),
+)
+_TASK_ADD_CONFIDENCE_THRESHOLD = 0.7
+_TASK_COMPLETE_CONFIDENCE_THRESHOLD = 0.7
 
 
 def _normalize_task_text(value: str) -> str:
@@ -624,6 +867,151 @@ def _token_overlap(normalized_a: str, normalized_b: str) -> float:
     if not tokens_a or not tokens_b:
         return 0.0
     return len(tokens_a & tokens_b) / len(tokens_a)
+
+
+def _token_overlap_shortest(normalized_a: str, normalized_b: str) -> float:
+    """
+    Similar to _token_overlap but normalizes by the shorter string to better
+    handle subset/shorter completion statements (e.g., "finished implement login").
+    """
+    tokens_a = set(normalized_a.split())
+    tokens_b = set(normalized_b.split())
+    if not tokens_a or not tokens_b:
+        return 0.0
+    denom = min(len(tokens_a), len(tokens_b))
+    if denom == 0:
+        return 0.0
+    return len(tokens_a & tokens_b) / denom
+
+
+def _clamp_confidence(value: float) -> float:
+    return round(max(0.0, min(value, 1.0)), 3)
+
+
+def _estimate_completion_confidence(similarity: float, overlap: float) -> float:
+    raw = max(similarity, overlap)
+    return _clamp_confidence(raw)
+
+
+def _estimate_add_confidence(description: str, max_similarity: float) -> float:
+    word_count = len(description.split())
+    length_score = min(word_count / 12.0, 1.0)
+    novelty = 1.0 - max_similarity
+    raw = 0.35 + 0.4 * length_score + 0.25 * novelty
+    return _clamp_confidence(raw)
+
+
+def _record_task_action(
+    action_type: str,
+    *,
+    task: Optional[models.Task] = None,
+    description: Optional[str] = None,
+    confidence: float,
+    project_id: Optional[int] = None,
+    conversation_id: Optional[int] = None,
+    details: Optional[Dict[str, Any]] = None,
+) -> None:
+    entry: Dict[str, Any] = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "action": action_type,
+        "confidence": _clamp_confidence(confidence),
+        "task_id": getattr(task, "id", None),
+        "task_description": getattr(task, "description", description),
+        "project_id": project_id or getattr(task, "project_id", None),
+        "conversation_id": conversation_id,
+    }
+    if details:
+        entry["details"] = details
+    _TASK_ACTION_HISTORY.appendleft(entry)
+
+
+def _create_task_suggestion(
+    db: Session,
+    *,
+    project_id: int,
+    conversation_id: Optional[int],
+    action_type: str,
+    payload: Dict[str, Any],
+    confidence: float,
+    target_task: Optional[models.Task] = None,
+) -> models.TaskSuggestion:
+    suggestion = models.TaskSuggestion(
+        project_id=project_id,
+        conversation_id=conversation_id,
+        action_type=action_type,
+        payload=json.dumps(payload),
+        confidence=_clamp_confidence(confidence),
+        target_task_id=getattr(target_task, "id", None),
+    )
+    db.add(suggestion)
+    db.flush()
+    _TASK_TELEMETRY["auto_suggested"] += 1
+    _record_task_action(
+        f"suggested_{action_type}",
+        task=target_task,
+        description=payload.get("description"),
+        confidence=confidence,
+        conversation_id=conversation_id,
+        details={"suggestion_id": suggestion.id},
+    )
+    return suggestion
+
+
+def _infer_task_priority(description: str) -> str:
+    lowered = (description or "").lower()
+    if any(keyword in lowered for keyword in _TASK_PRIORITY_CRITICAL):
+        return "critical"
+    if any(keyword in lowered for keyword in _TASK_PRIORITY_HIGH):
+        return "high"
+    if any(keyword in lowered for keyword in _TASK_PRIORITY_LOW):
+        return "low"
+    return "normal"
+
+
+def _extract_blocked_reason(description: str) -> Optional[str]:
+    for pattern in _TASK_BLOCKED_PATTERNS:
+        match = pattern.search(description or "")
+        if match:
+            reason = (match.group("reason") or "").strip().rstrip(".")
+            if reason:
+                return reason
+    return None
+
+
+def _task_suggestion_to_schema(
+    suggestion: models.TaskSuggestion,
+) -> TaskSuggestionRead:
+    try:
+        payload = json.loads(suggestion.payload or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    task_desc = None
+    task_status = None
+    task_priority = None
+    task_blocked_reason = None
+    if suggestion.target_task is not None:
+        task_desc = suggestion.target_task.description
+        task_status = suggestion.target_task.status
+        task_priority = suggestion.target_task.priority
+        task_blocked_reason = suggestion.target_task.blocked_reason
+    elif isinstance(payload.get("description"), str):
+        task_desc = payload["description"]
+    return TaskSuggestionRead(
+        id=suggestion.id,
+        project_id=suggestion.project_id,
+        conversation_id=suggestion.conversation_id,
+        target_task_id=suggestion.target_task_id,
+        action_type=suggestion.action_type,
+        payload=payload,
+        confidence=suggestion.confidence,
+        status=suggestion.status,
+        task_description=task_desc,
+        task_status=task_status,
+        task_priority=task_priority,
+        task_blocked_reason=task_blocked_reason,
+        created_at=suggestion.created_at,
+        updated_at=suggestion.updated_at,
+    )
 
 
 def _decision_to_schema(
@@ -727,6 +1115,7 @@ def auto_update_tasks_from_conversation(
             normalized_line = _normalize_task_text(text)
             if not normalized_line:
                 continue
+            # If completion mentions a specific task id or core phrase, try to match loosely
             for info in list(open_task_map.values()):
                 task_obj: models.Task = info["task"]  # type: ignore[assignment]
                 if task_obj.status != "open":
@@ -734,22 +1123,64 @@ def auto_update_tasks_from_conversation(
                 normalized_task = info.get("normalized") or ""
                 if not normalized_task:
                     continue
+                core_phrase = " ".join(normalized_task.split()[:6])
                 ratio = difflib.SequenceMatcher(
                     None, normalized_task, normalized_line
                 ).ratio()
+                overlap_score = _token_overlap(normalized_task, normalized_line)
+                short_overlap = _token_overlap_shortest(
+                    normalized_task, normalized_line
+                )
+                # Allow short completion phrases to close if they share core phrase or overlap
                 if (
                     normalized_task in normalized_line
                     or normalized_line in normalized_task
-                    or ratio >= 0.72
-                    or _token_overlap(normalized_task, normalized_line) >= 0.6
+                    or (core_phrase and core_phrase in normalized_line)
+                    or ratio >= 0.6
+                    or overlap_score >= 0.5
+                    or short_overlap >= 0.48
                 ):
-                    task_obj.status = "done"
-                    task_obj.updated_at = datetime.utcnow()
-                    _TASK_TELEMETRY["auto_completed"] += 1
-                    print(
-                        f"[Tasks] Auto-completed '{task_obj.description}' "
-                        "based on recent chat."
+                    confidence = _estimate_completion_confidence(
+                        max(ratio, short_overlap), max(overlap_score, short_overlap)
                     )
+                    if confidence >= 0.6:  # lower threshold for short completions
+                        task_obj.status = "done"
+                        task_obj.updated_at = datetime.utcnow()
+                        completion_note = (
+                            f"Closed automatically on {datetime.utcnow().isoformat()} "
+                            f"after the user said: \"{text}\""
+                        )
+                        if task_obj.auto_notes:
+                            task_obj.auto_notes = (
+                                task_obj.auto_notes + "\n" + completion_note
+                            )
+                        else:
+                            task_obj.auto_notes = completion_note
+                        _TASK_TELEMETRY["auto_completed"] += 1
+                        print(
+                            f"[Tasks] Auto-completed '{task_obj.description}' "
+                            "based on recent chat."
+                        )
+                        _record_task_action(
+                            "auto_completed",
+                            task=task_obj,
+                            confidence=confidence,
+                            conversation_id=conversation.id,
+                            details={"matched_text": text},
+                        )
+                    else:
+                        _create_task_suggestion(
+                            db,
+                            project_id=conversation.project_id,
+                            conversation_id=conversation.id,
+                            action_type="complete",
+                            payload={
+                                "task_id": task_obj.id,
+                                "matched_text": text,
+                            },
+                            confidence=confidence,
+                            target_task=task_obj,
+                        )
                     info["normalized"] = ""
         # Remove tasks marked done from duplicate checks
         open_task_map = {
@@ -759,8 +1190,55 @@ def auto_update_tasks_from_conversation(
             and info["task"].status == "open"  # type: ignore[index]
         }
 
+    top_open_tasks = (
+        db.query(models.Task)
+        .filter(models.Task.project_id == conversation.project_id)
+        .filter(models.Task.status == "open")
+        .order_by(models.Task.priority.asc(), models.Task.updated_at.desc())
+        .limit(5)
+        .all()
+    )
+    priority_context = ""
+    if top_open_tasks:
+        summaries = []
+        for task in top_open_tasks:
+            label = f"{task.priority.upper()} - {task.description}"
+            if task.blocked_reason:
+                label += f" (blocked by {task.blocked_reason})"
+            summaries.append(label)
+        priority_context = (
+            "Current top open tasks (for context):\n"
+            + "\n".join(f"- {summary}" for summary in summaries)
+            + "\n\n"
+        )
+
+    project = conversation.project
+    instruction_context = ""
+    if project and project.instruction_text:
+        instruction_context = (
+            "Project instructions:\n"
+            f"{project.instruction_text.strip()}\n\n"
+        )
+    pinned_note_context = ""
+    if project and project.pinned_note_text:
+        pinned_note_context = (
+            "Pinned note:\n"
+            f"{project.pinned_note_text.strip()}\n\n"
+        )
+    goal_context = ""
+    if project and project.description:
+        goal_context = (
+            "Project goal/description:\n"
+            f"{project.description.strip()}\n\n"
+        )
+
     system_instructions = (
         "You help maintain a TODO list for a long-running software project.\n"
+        "Use the current context to decide what new tasks should exist.\n\n"
+        f"{goal_context}"
+        f"{instruction_context}"
+        f"{pinned_note_context}"
+        f"{priority_context}"
         "From the recent conversation messages below, extract any NEW, "
         "actionable tasks that should be added to the project TODO list.\n\n"
         "Rules:\n"
@@ -829,10 +1307,19 @@ def auto_update_tasks_from_conversation(
                 .first()
             )
             if existing:
+                _record_task_action(
+                    "auto_dismissed",
+                    task=existing,
+                    confidence=1.0,
+                    conversation_id=conversation.id,
+                    details={"reason": "already_open", "candidate": desc},
+                )
                 continue
 
             normalized_desc = _normalize_task_text(desc)
             is_duplicate = False
+            max_similarity = 0.0
+            best_match: Optional[models.Task] = None
             for info in open_task_map.values():
                 normalized_task = info.get("normalized") or ""
                 if not normalized_task:
@@ -840,26 +1327,72 @@ def auto_update_tasks_from_conversation(
                 ratio = difflib.SequenceMatcher(
                     None, normalized_task, normalized_desc
                 ).ratio()
+                overlap_score = _token_overlap(normalized_task, normalized_desc)
+                similarity = max(ratio, overlap_score)
+                if similarity > max_similarity:
+                    max_similarity = similarity
+                    candidate_task = info.get("task")
+                    if isinstance(candidate_task, models.Task):
+                        best_match = candidate_task
                 if (
                     normalized_task in normalized_desc
                     or normalized_desc in normalized_task
                     or ratio >= 0.78
-                    or _token_overlap(normalized_task, normalized_desc) >= 0.75
+                    or overlap_score >= 0.75
                 ):
                     is_duplicate = True
                     break
             if is_duplicate:
                 _TASK_TELEMETRY["auto_deduped"] += 1
+                _record_task_action(
+                    "auto_dismissed",
+                    task=best_match,
+                    description=desc,
+                    confidence=_clamp_confidence(max_similarity),
+                    conversation_id=conversation.id,
+                    details={"reason": "duplicate_candidate"},
+                )
+                continue
+
+            add_confidence = _estimate_add_confidence(desc, max_similarity)
+            priority = _infer_task_priority(desc)
+            blocked_reason = _extract_blocked_reason(desc)
+            if add_confidence < _TASK_ADD_CONFIDENCE_THRESHOLD:
+                _create_task_suggestion(
+                    db,
+                    project_id=conversation.project_id,
+                    conversation_id=conversation.id,
+                    action_type="add",
+                    payload={
+                        "description": desc,
+                        "priority": priority,
+                        "blocked_reason": blocked_reason,
+                    },
+                    confidence=add_confidence,
+                )
                 continue
 
             new_task = models.Task(
                 project_id=conversation.project_id,
                 description=desc,
                 status="open",
+                priority=priority,
+                blocked_reason=blocked_reason,
+                auto_notes=(
+                    f"Added automatically on {datetime.utcnow().isoformat()} "
+                    f"based on recent chat."
+                ),
             )
             db.add(new_task)
             db.flush()
             _TASK_TELEMETRY["auto_added"] += 1
+            _record_task_action(
+                "auto_added",
+                task=new_task,
+                confidence=add_confidence,
+                conversation_id=conversation.id,
+                details={"source": "auto_update"},
+            )
             open_task_map[new_task.id] = {
                 "task": new_task,
                 "normalized": normalized_desc,
@@ -1056,6 +1589,12 @@ def create_project(
 
     For now, 'name' must be unique.
     """
+    if not payload.local_root_path or not payload.local_root_path.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="local_root_path is required for ingestion projects.",
+        )
+
     existing = (
         db.query(models.Project)
         .filter(models.Project.name == payload.name)
@@ -1063,7 +1602,7 @@ def create_project(
     )
     if existing:
         raise HTTPException(
-            status_code=400,
+            status_code=409,
             detail="Project with that name already exists.",
         )
 
@@ -1076,7 +1615,7 @@ def create_project(
         instruction_updated_at=datetime.utcnow() if instructions else None,
     )
     db.add(project)
-    db.commit()
+    _commit_with_retry(db)
     db.refresh(project)
     return project
 
@@ -1088,6 +1627,17 @@ def list_projects(db: Session = Depends(get_db)):
     """
     projects = db.query(models.Project).order_by(models.Project.id).all()
     return projects
+
+
+@app.get("/projects/{project_id}", response_model=ProjectRead)
+def get_project(project_id: int, db: Session = Depends(get_db)):
+    """
+    Fetch a single project by id.
+    """
+    project = db.get(models.Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    return project
 
 
 @app.patch("/projects/{project_id}", response_model=ProjectRead)
@@ -1114,7 +1664,7 @@ def update_project(
         project.instruction_text = instructions
         project.instruction_updated_at = datetime.utcnow()
 
-    db.commit()
+    _commit_with_retry(db)
     db.refresh(project)
     return project
 
@@ -1292,6 +1842,19 @@ def update_project_decision(
     db.commit()
     db.refresh(decision)
     return _decision_to_schema(decision)
+
+
+@app.delete("/decisions/{decision_id}")
+def delete_project_decision(
+    decision_id: int,
+    db: Session = Depends(get_db),
+):
+    decision = db.get(models.ProjectDecision, decision_id)
+    if decision is None:
+        raise HTTPException(status_code=404, detail="Decision not found.")
+    db.delete(decision)
+    db.commit()
+    return {"status": "deleted", "decision_id": decision_id}
 
 
 # ---------- Conversation folders ----------
@@ -1551,7 +2114,7 @@ def create_memory_item(
         source_message_id=payload.source_message_id,
     )
     db.add(memory_item)
-    db.flush()
+    _flush_with_retry(db)
 
     if payload.supersedes_memory_id is not None:
         superseded = _ensure_memory_item(
@@ -1559,15 +2122,23 @@ def create_memory_item(
         )
         superseded.superseded_by_id = memory_item.id
 
-    embedding = get_embedding(memory_item.content)
-    add_memory_embedding(
-        memory_id=memory_item.id,
-        project_id=project.id,
-        content=memory_item.content,
-        embedding=embedding,
-    )
+    try:
+        embedding = get_embedding(memory_item.content)
+        add_memory_embedding(
+            memory_id=memory_item.id,
+            project_id=project.id,
+            content=memory_item.content,
+            embedding=embedding,
+            title=memory_item.title,
+        )
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail="Vector store unavailable while saving memory item; please retry.",
+        ) from exc
 
-    db.commit()
+    _commit_with_retry(db)
     db.refresh(memory_item)
     return _memory_item_to_read_model(memory_item)
 
@@ -1641,15 +2212,23 @@ def update_memory_item(
 
     if content_changed:
         delete_memory_embedding(memory_item.id)
-        embedding = get_embedding(memory_item.content)
-        add_memory_embedding(
-            memory_id=memory_item.id,
-            project_id=memory_item.project_id,
-            content=memory_item.content,
-            embedding=embedding,
-        )
+        try:
+            embedding = get_embedding(memory_item.content)
+            add_memory_embedding(
+                memory_id=memory_item.id,
+                project_id=memory_item.project_id,
+                content=memory_item.content,
+                embedding=embedding,
+                title=memory_item.title,
+            )
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            raise HTTPException(
+                status_code=503,
+                detail="Vector store unavailable while updating memory item; please retry.",
+            ) from exc
 
-    db.commit()
+    _commit_with_retry(db)
     db.refresh(memory_item)
     return _memory_item_to_read_model(memory_item)
 
@@ -1659,7 +2238,7 @@ def delete_memory_item(memory_id: int, db: Session = Depends(get_db)):
     memory_item = _ensure_memory_item(db, memory_id)
     delete_memory_embedding(memory_item.id)
     db.delete(memory_item)
-    db.commit()
+    _commit_with_retry(db)
     return {"status": "deleted", "memory_id": memory_id}
 
 
@@ -1807,13 +2386,46 @@ def list_project_tasks(
         (models.Task.status == "open", 0),
         else_=1,
     )
+    priority_order = case(
+        (models.Task.priority == "critical", 0),
+        (models.Task.priority == "high", 1),
+        (models.Task.priority == "normal", 2),
+        else_=3,
+    )
     tasks = (
         db.query(models.Task)
         .filter(models.Task.project_id == project_id)
-        .order_by(status_order, models.Task.updated_at.desc(), models.Task.id.asc())
+        .order_by(
+            status_order,
+            priority_order,
+            models.Task.updated_at.desc(),
+            models.Task.id.asc(),
+        )
         .all()
     )
+    _cleanup_stale_suggestions(db, project_id)
     return tasks
+
+
+@app.post("/projects/{project_id}/tasks", response_model=TaskRead)
+def create_task_for_project(
+    project_id: int,
+    payload: TaskCreateScoped,
+    db: Session = Depends(get_db),
+):
+    """
+    Project-scoped task creation convenience wrapper.
+    Delegates to the global create_task handler after
+    injecting the path project_id into the payload.
+    """
+    scoped_payload = TaskCreate(
+        project_id=project_id,
+        description=payload.description,
+        priority=payload.priority,
+        blocked_reason=payload.blocked_reason,
+        auto_notes=payload.auto_notes,
+    )
+    return create_task(payload=scoped_payload, db=db)
 
 
 @app.post("/tasks", response_model=TaskRead)
@@ -1828,13 +2440,20 @@ def create_task(
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found.")
 
+    priority = payload.priority or _infer_task_priority(payload.description)
+    blocked_reason = payload.blocked_reason or _extract_blocked_reason(
+        payload.description
+    )
     task = models.Task(
         project_id=payload.project_id,
         description=payload.description,
         status="open",
+        priority=priority,
+        blocked_reason=blocked_reason,
+        auto_notes=payload.auto_notes,
     )
     db.add(task)
-    db.commit()
+    _commit_with_retry(db)
     db.refresh(task)
     return task
 
@@ -1856,10 +2475,272 @@ def update_task(
         task.description = payload.description
     if payload.status is not None:
         task.status = payload.status
+    if payload.priority is not None:
+        task.priority = payload.priority
+    if payload.blocked_reason is not None:
+        task.blocked_reason = payload.blocked_reason
+    if payload.auto_notes is not None:
+        task.auto_notes = payload.auto_notes
 
-    db.commit()
+    _commit_with_retry(db)
     db.refresh(task)
     return task
+
+
+@app.delete("/tasks/{task_id}", response_model=dict)
+def delete_task(task_id: int, db: Session = Depends(get_db)):
+    """
+    Delete a task by id.
+    """
+    task = db.get(models.Task, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found.")
+    db.delete(task)
+    _commit_with_retry(db)
+    return {"status": "deleted", "task_id": task_id}
+
+
+@app.post("/projects/{project_id}/auto_update_tasks")
+def trigger_auto_update_tasks(
+    project_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Trigger automatic TODO extraction from the most recent conversation
+    in a project. If no conversation exists, return a 400.
+    """
+    project = db.get(models.Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    conversation = (
+        db.query(models.Conversation)
+        .filter(models.Conversation.project_id == project_id)
+        .order_by(models.Conversation.id.desc())
+        .first()
+    )
+    if conversation is None:
+        raise HTTPException(
+            status_code=400,
+            detail="No conversations found for project; nothing to auto-update.",
+        )
+
+    ok, err = _run_auto_update_with_retry(db, conversation, attempts=3)
+    if not ok:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Auto-update failed after retries; please retry."
+                f" ({err or 'unknown error'})"
+            ),
+        ) from err
+
+    return {
+        "status": "ok",
+        "project_id": project_id,
+        "conversation_id": conversation.id,
+    }
+
+
+@app.get(
+    "/projects/{project_id}/task_suggestions",
+    response_model=list[TaskSuggestionRead],
+)
+def list_task_suggestions(
+    project_id: int,
+    status: Optional[str] = "pending",
+    limit: int = 50,
+    db: Session = Depends(get_db),
+):
+    _ensure_project(db, project_id)
+    query = (
+        db.query(models.TaskSuggestion)
+        .filter(models.TaskSuggestion.project_id == project_id)
+        .order_by(models.TaskSuggestion.created_at.desc())
+    )
+    if status:
+        query = query.filter(models.TaskSuggestion.status == status)
+    suggestions = query.limit(max(5, min(limit, 200))).all()
+    return [_task_suggestion_to_schema(s) for s in suggestions]
+
+
+@app.get(
+    "/projects/{project_id}/tasks/overview",
+    response_model=TaskOverviewRead,
+)
+def list_tasks_with_suggestions(
+    project_id: int,
+    suggestion_status: Optional[str] = "pending",
+    suggestion_limit: int = 50,
+    db: Session = Depends(get_db),
+):
+    """
+    Convenience endpoint to fetch tasks plus recent task suggestions
+    (low-confidence add/complete) for a project in one call.
+    """
+    _ensure_project(db, project_id)
+    tasks = list_project_tasks(project_id=project_id, db=db)
+    _cleanup_stale_suggestions(db, project_id)
+    suggestions = list_task_suggestions(
+        project_id=project_id,
+        status=suggestion_status,
+        limit=suggestion_limit,
+        db=db,
+    )
+    return TaskOverviewRead(tasks=tasks, suggestions=suggestions)
+
+
+def _ensure_task_suggestion(
+    db: Session,
+    suggestion_id: int,
+    *,
+    project_id: Optional[int] = None,
+) -> models.TaskSuggestion:
+    suggestion = db.get(models.TaskSuggestion, suggestion_id)
+    if suggestion is None:
+        raise HTTPException(status_code=404, detail="Task suggestion not found.")
+    if project_id is not None and suggestion.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Task suggestion not found.")
+    return suggestion
+
+
+@app.post(
+    "/task_suggestions/{suggestion_id}/approve",
+    response_model=TaskSuggestionRead,
+)
+def approve_task_suggestion(
+    suggestion_id: int,
+    db: Session = Depends(get_db),
+):
+    suggestion = _ensure_task_suggestion(db, suggestion_id)
+    if suggestion.status != "pending":
+        raise HTTPException(
+            status_code=400, detail="Suggestion is not pending approval."
+        )
+    payload = {}
+    try:
+        payload = json.loads(suggestion.payload or "{}")
+    except json.JSONDecodeError:
+        pass
+
+    if suggestion.action_type == "add":
+        description = (payload.get("description") or "").strip()
+        if not description:
+            raise HTTPException(
+                status_code=400, detail="Suggestion payload missing description."
+            )
+        priority = payload.get("priority") or _infer_task_priority(description)
+        blocked_reason = payload.get("blocked_reason") or _extract_blocked_reason(
+            description
+        )
+        new_task = models.Task(
+            project_id=suggestion.project_id,
+            description=description,
+            status="open",
+            priority=priority,
+            blocked_reason=blocked_reason,
+        )
+        db.add(new_task)
+        db.flush()
+        suggestion.target_task_id = new_task.id
+        suggestion.status = "approved"
+        suggestion.updated_at = datetime.utcnow()
+        _record_task_action(
+            "suggestion_approved_add",
+            task=new_task,
+            confidence=suggestion.confidence,
+            conversation_id=suggestion.conversation_id,
+            details={"suggestion_id": suggestion.id},
+        )
+    elif suggestion.action_type == "complete":
+        if suggestion.target_task is None:
+            raise HTTPException(
+                status_code=400, detail="Suggestion missing target task."
+            )
+        suggestion.target_task.status = "done"
+        suggestion.target_task.updated_at = datetime.utcnow()
+        completion_note = (
+            f"Closed via suggestion {suggestion.id} on "
+            f"{datetime.utcnow().isoformat()} after the user approved an automation hint."
+        )
+        if suggestion.target_task.auto_notes:
+            suggestion.target_task.auto_notes = (
+                suggestion.target_task.auto_notes + "\n" + completion_note
+            )
+        else:
+            suggestion.target_task.auto_notes = completion_note
+        suggestion.status = "approved"
+        suggestion.updated_at = datetime.utcnow()
+        _record_task_action(
+            "suggestion_approved_complete",
+            task=suggestion.target_task,
+            confidence=suggestion.confidence,
+            conversation_id=suggestion.conversation_id,
+            details={"suggestion_id": suggestion.id},
+        )
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported suggestion action: {suggestion.action_type}",
+        )
+
+    _commit_with_retry(db)
+    db.refresh(suggestion)
+    return _task_suggestion_to_schema(suggestion)
+
+
+@app.post(
+    "/task_suggestions/{suggestion_id}/dismiss",
+    response_model=TaskSuggestionRead,
+)
+def dismiss_task_suggestion(
+    suggestion_id: int,
+    db: Session = Depends(get_db),
+):
+    suggestion = _ensure_task_suggestion(db, suggestion_id)
+    if suggestion.status != "pending":
+        raise HTTPException(
+            status_code=400, detail="Suggestion is not pending dismissal."
+        )
+    suggestion.status = "dismissed"
+    suggestion.updated_at = datetime.utcnow()
+    _commit_with_retry(db)
+    db.refresh(suggestion)
+    try:
+        payload = json.loads(suggestion.payload or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    _record_task_action(
+        "suggestion_dismissed",
+        task=suggestion.target_task,
+        description=payload.get("description"),
+        confidence=suggestion.confidence,
+        conversation_id=suggestion.conversation_id,
+        details={"suggestion_id": suggestion.id},
+    )
+    return _task_suggestion_to_schema(suggestion)
+
+
+def _cleanup_stale_suggestions(db: Session, project_id: int) -> None:
+    """
+    Dismiss completion suggestions whose target tasks are already done.
+    """
+    stale = (
+        db.query(models.TaskSuggestion)
+        .filter(
+            models.TaskSuggestion.project_id == project_id,
+            models.TaskSuggestion.action_type == "complete",
+            models.TaskSuggestion.status == "pending",
+        )
+        .all()
+    )
+    for s in stale:
+        if s.target_task_id:
+            task = db.get(models.Task, s.target_task_id)
+            if task and task.status == "done":
+                s.status = "dismissed"
+                s.updated_at = datetime.utcnow()
+    db.commit()
 
 
 # ---------- Usage (per-conversation) ----------
@@ -1932,10 +2813,106 @@ def read_telemetry(reset: bool = False) -> Dict[str, Any]:
     """
     llm_snapshot = openai_module.get_llm_telemetry(reset=reset)
     task_snapshot = get_task_telemetry(reset=reset)
+    # Expose pending task suggestions to aid QA of low-confidence flows
+    try:
+        suggestions = (
+            SessionLocal()
+            .query(models.TaskSuggestion)
+            .order_by(models.TaskSuggestion.created_at.desc())
+            .limit(20)
+            .all()
+        )
+        task_snapshot["suggestions"] = [
+            {
+                "id": s.id,
+                "project_id": s.project_id,
+                "conversation_id": s.conversation_id,
+                "action_type": s.action_type,
+                "confidence": s.confidence,
+                "payload": s.payload,
+                "created_at": s.created_at.isoformat(),
+            }
+            for s in suggestions
+        ]
+    except Exception as e:  # noqa: BLE001
+        task_snapshot["suggestions_error"] = str(e)
+
+    ingestion_snapshot = get_ingest_telemetry(reset=reset)
     return {
         "llm": llm_snapshot,
         "tasks": task_snapshot,
+        "ingestion": ingestion_snapshot,
     }
+
+
+@app.post(
+    "/debug/task_suggestions/seed",
+    response_model=TaskSuggestionRead,
+)
+def seed_task_suggestion(
+    payload: TaskSuggestionSeedPayload,
+    db: Session = Depends(get_db),
+):
+    _ensure_project(db, payload.project_id)
+    conversation_id = None
+    if payload.conversation_id is not None:
+        convo = _ensure_conversation(
+            db, payload.conversation_id, project_id=payload.project_id
+        )
+        conversation_id = convo.id
+
+    target_task = None
+    if payload.target_task_id is not None:
+        target_task = db.get(models.Task, payload.target_task_id)
+        if target_task is None or target_task.project_id != payload.project_id:
+            raise HTTPException(
+                status_code=404,
+                detail="Target task not found for this project.",
+            )
+
+    action = (payload.action_type or "").lower()
+    if action not in {"add", "complete"}:
+        raise HTTPException(
+            status_code=400,
+            detail="action_type must be 'add' or 'complete'.",
+        )
+
+    suggestion_payload: Dict[str, Any]
+    if action == "add":
+        description = (payload.description or "").strip()
+        if not description:
+            raise HTTPException(
+                status_code=400,
+                detail="description is required for add suggestions.",
+            )
+        suggestion_payload = {
+            "description": description,
+            "priority": payload.priority,
+            "blocked_reason": payload.blocked_reason,
+        }
+    else:
+        if target_task is None:
+            raise HTTPException(
+                status_code=400,
+                detail="target_task_id is required for complete suggestions.",
+            )
+        suggestion_payload = {
+            "task_id": target_task.id,
+            "matched_text": payload.description or "Seeded completion",
+        }
+
+    suggestion = _create_task_suggestion(
+        db,
+        project_id=payload.project_id,
+        conversation_id=conversation_id,
+        action_type=action,
+        payload=suggestion_payload,
+        confidence=payload.confidence,
+        target_task=target_task,
+    )
+    db.commit()
+    db.refresh(suggestion)
+    return _task_suggestion_to_schema(suggestion)
 
 
 # ---------- Filesystem browsing / editing ----------
@@ -1993,7 +2970,8 @@ def list_project_files(
 @app.get("/projects/{project_id}/fs/read")
 def read_project_file(
     project_id: int,
-    file_path: str,
+    file_path: Optional[str] = None,
+    subpath: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """
@@ -2001,7 +2979,14 @@ def read_project_file(
     """
     project = _ensure_project(db, project_id)
     root = _get_project_root(project)
-    target = _safe_join(root, file_path)
+    effective_path = file_path or subpath
+    if not effective_path:
+        raise HTTPException(
+            status_code=422,
+            detail="file_path (or subpath) is required.",
+        )
+
+    target = _safe_join(root, effective_path)
 
     if not target.exists():
         raise HTTPException(status_code=404, detail="File not found.")
@@ -2224,6 +3209,201 @@ def ai_edit_project_file(
     }
 
 
+# ---------- Ingestion jobs ----------
+
+
+def _run_ingestion_job(
+    job_id: int,
+    include_globs: Optional[List[str]],
+    name_prefix: Optional[str],
+) -> None:
+    session = SessionLocal()
+    try:
+        job = session.get(models.IngestionJob, job_id)
+        if job is None:
+            return
+        try:
+            ingest_repo_job(
+                db=session,
+                job=job,
+                include_globs=include_globs,
+                name_prefix=name_prefix,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"[INGEST] Job {job_id} failed: {exc!r}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[INGEST] Unable to run job {job_id}: {exc!r}")
+    finally:
+        session.close()
+
+
+def _schedule_ingestion_job(
+    background_tasks: BackgroundTasks,
+    job: models.IngestionJob,
+    include_globs: Optional[List[str]],
+    name_prefix: Optional[str],
+) -> None:
+    background_tasks.add_task(
+        _run_ingestion_job,
+        job.id,
+        include_globs,
+        name_prefix,
+    )
+
+
+@app.post(
+    "/projects/{project_id}/ingestion_jobs",
+    response_model=IngestionJobRead,
+)
+def create_ingestion_job_endpoint(
+    project_id: int,
+    payload: IngestionJobCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    project = _ensure_project(db, project_id)
+    # Guard: require local_root_path for repo ingestions
+    if not project.local_root_path:
+        raise HTTPException(
+            status_code=400,
+            detail="Project local_root_path is not configured.",
+        )
+    project_root = Path(project.local_root_path).expanduser()
+    if not project_root.is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Project local_root_path does not exist: {project.local_root_path}",
+        )
+
+    job = models.IngestionJob(
+        project_id=project_id,
+        kind=payload.kind,
+        source=payload.source,
+        status="pending",
+        total_items=0,
+        processed_items=0,
+        meta={
+            "include_globs": payload.include_globs,
+            "name_prefix": payload.name_prefix,
+        },
+    )
+    db.add(job)
+    _commit_with_retry(db)
+    db.refresh(job)
+
+    if payload.kind != "repo":
+        job.status = "failed"
+        job.error_message = f"Unsupported ingestion kind: {payload.kind}"
+        job.finished_at = datetime.utcnow()
+        _commit_with_retry(db)
+        db.refresh(job)
+        return job
+
+    source_path = Path(payload.source).expanduser()
+    if not source_path.is_dir():
+        job.status = "failed"
+        job.error_message = f"Root path is not a directory: {payload.source}"
+        job.finished_at = datetime.utcnow()
+        _commit_with_retry(db)
+        db.refresh(job)
+        return job
+
+    job.source = str(source_path)
+    _commit_with_retry(db)
+    _schedule_ingestion_job(
+        background_tasks,
+        job,
+        payload.include_globs,
+        payload.name_prefix,
+    )
+    return job
+
+
+@app.get(
+    "/projects/{project_id}/ingestion_jobs/{job_id}",
+    response_model=IngestionJobRead,
+)
+def read_ingestion_job_endpoint(
+    project_id: int,
+    job_id: int,
+    db: Session = Depends(get_db),
+):
+    job = db.get(models.IngestionJob, job_id)
+    if job is None or job.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Ingestion job not found.")
+    return job
+
+
+@app.get(
+    "/projects/{project_id}/ingestion_jobs",
+    response_model=List[IngestionJobRead],
+)
+def list_ingestion_jobs_endpoint(
+    project_id: int,
+    limit: int = 20,
+    db: Session = Depends(get_db),
+):
+    _ensure_project(db, project_id)
+    limit = max(1, min(limit, 100))
+    jobs = (
+        db.query(models.IngestionJob)
+        .filter(models.IngestionJob.project_id == project_id)
+        .order_by(models.IngestionJob.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return jobs
+
+
+@app.post(
+    "/projects/{project_id}/ingestion_jobs/{job_id}/cancel",
+    response_model=IngestionJobRead,
+)
+def cancel_ingestion_job_endpoint(
+    project_id: int,
+    job_id: int,
+    db: Session = Depends(get_db),
+):
+    job = db.get(models.IngestionJob, job_id)
+    if job is None or job.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Ingestion job not found.")
+    if job.status not in {"pending", "running"}:
+        raise HTTPException(status_code=400, detail="Job already finished.")
+    job.cancel_requested = True
+    _commit_with_retry(db)
+    db.refresh(job)
+    return job
+
+
+# Legacy ingest endpoint: create a repo ingestion job for backwards compatibility
+@app.post("/ingest")
+def legacy_ingest(payload: dict, db: Session = Depends(get_db)):
+    project_id = payload.get("project_id")
+    root_path = payload.get("root_path")
+    if project_id is None or root_path is None:
+        raise HTTPException(status_code=400, detail="project_id and root_path are required.")
+    include = payload.get("include")
+    name_prefix = payload.get("name_prefix", None)
+
+    project = _ensure_project(db, project_id)
+    if not project.local_root_path:
+        raise HTTPException(status_code=400, detail="Project local_root_path is not configured.")
+
+    job = models.IngestionJob(
+        project_id=project_id,
+        kind="repo",
+        source=root_path,
+        status="pending",
+        total_items=0,
+        processed_items=0,
+        meta={"include_globs": include, "name_prefix": name_prefix},
+    )
+    db.add(job)
+    _commit_with_retry(db)
+    db.refresh(job)
+    return job
+
+
 # ---------- Terminal ----------
 
 
@@ -2244,6 +3424,9 @@ def run_terminal_command(
       "timeout_seconds": 60
     }
     """
+    if payload.project_id is None:
+        raise HTTPException(status_code=422, detail="project_id is required (path or body).")
+
     project = _ensure_project(db, payload.project_id)
     root = _get_project_root(project)
 
@@ -2298,6 +3481,30 @@ def run_terminal_command(
         "stdout": stdout,
         "stderr": stderr,
     }
+
+
+@app.post("/projects/{project_id}/terminal/run")
+def run_terminal_command_scoped(
+    project_id: int,
+    payload: TerminalRunPayload,
+    db: Session = Depends(get_db),
+):
+    """
+    Scoped variant for terminal.run matching API reference.
+    """
+    payload.project_id = project_id
+    return run_terminal_command(payload=payload, db=db)
+
+
+@app.get("/projects/{project_id}/terminal/history")
+def list_terminal_history(project_id: int, db: Session = Depends(get_db)):
+    """
+    Placeholder history endpoint. Currently returns an empty list after
+    verifying the project exists. Extend later to persist and return
+    recent terminal runs.
+    """
+    _ensure_project(db, project_id)
+    return []
 
 
 # ---------- Chat ----------
@@ -2434,13 +3641,31 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
         doc_docs = doc_docs_nested[0] if doc_docs_nested else []
         doc_metas = doc_metas_nested[0] if doc_metas_nested else []
 
+        # Resolve document titles for the retrieved chunks so responses can
+        # surface doc names (not just ids).
         doc_snippets: List[str] = []
+        doc_id_set = {
+            int(meta.get("document_id"))
+            for meta in doc_metas
+            if meta.get("document_id") is not None
+        }
+        doc_title_map: Dict[int, str] = {}
+        if doc_id_set:
+            docs = (
+                db.query(models.Document)
+                .filter(models.Document.id.in_(doc_id_set))
+                .all()
+            )
+            doc_title_map = {d.id: (d.name or f"Document {d.id}") for d in docs}
+
         for doc_text, meta in zip(doc_docs, doc_metas):
             document_id = meta.get("document_id")
             chunk_index = meta.get("chunk_index")
-            doc_snippets.append(
-                f"[Document {document_id}, chunk {chunk_index}] {doc_text}"
+            title = doc_title_map.get(int(document_id)) if document_id is not None else None
+            label = (
+                f"Document {document_id}" if title is None else f"Document {document_id} ({title})"
             )
+            doc_snippets.append(f"[{label}, chunk {chunk_index}] {doc_text}")
 
         context_parts: List[str] = []
         if msg_snippets:
@@ -2702,12 +3927,28 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
     db.flush()  # ensure assistant_message.id exists
 
     # 7b) If the model requested AI file edits, run them now (best-effort)
+    project_root = None
+    try:
+        if conversation.project:
+            project_root = _get_project_root(conversation.project)
+    except Exception as e:  # noqa: BLE001
+        print(f"[WARN] Could not resolve project root for AI edit: {e!r}")
+
     if file_edit_requests:
         for req in file_edit_requests:
             file_path = (req.get("file_path") or "").strip()
             instruction = (req.get("instruction") or "").strip()
             if not file_path or not instruction:
                 continue
+
+            if project_root:
+                target = _safe_join(project_root, file_path)
+                if not target.exists():
+                    print(
+                        f"[WARN] Skipping AI file edit for missing file {file_path!r} "
+                        f"in conversation {conversation.id}"
+                    )
+                    continue
 
             try:
                 payload_for_edit = FileAIEditPayload(
@@ -2813,10 +4054,20 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
         print(f"[WARN] auto_title_conversation outer failed: {e!r}")
 
     # 11) AI‑assist the project TODO list (best‑effort, doesn't block)
-    try:
-        auto_update_tasks_from_conversation(db, conversation)
-    except Exception as e:  # noqa: BLE001
-        print(f"[WARN] auto_update_tasks_from_conversation outer failed: {e!r}")
+    if _AUTO_UPDATE_TASKS_AFTER_CHAT:
+        ok, err = _run_auto_update_with_retry(
+            db, conversation, attempts=2, base_delay=0.2
+        )
+        if not ok:
+            print(
+                "[WARN] auto_update_tasks_from_conversation failed after retry: "
+                f"{err!r}"
+            )
+    else:
+        print(
+            "[Tasks] Skipping auto-update after chat "
+            "(AUTO_UPDATE_TASKS_AFTER_CHAT disabled)."
+        )
     try:
         auto_capture_decisions_from_conversation(db, conversation)
     except Exception as e:  # noqa: BLE001

@@ -1,0 +1,64 @@
+{
+  "timestamp": "2025-12-04T14:11:36.981624",
+  "project_id": 35,
+  "repo_path": "C:\\InfinityWindow",
+  "summary": {
+    "total": 7,
+    "passed": 6,
+    "failed": 1
+  },
+  "results": [
+    {
+      "test_name": "B-Docs-01: Basic Ingestion",
+      "passed": true,
+      "details": "Processed 91/91 files in 265.9s",
+      "timestamp": "2025-12-04T14:11:14.768657",
+      "duration_seconds": 265.9078278541565
+    },
+    {
+      "test_name": "B-Docs-02: Hash-Based Skipping",
+      "passed": false,
+      "details": "Failed: No files to process (total_items=0). Check that repo has matching files (*.py, *.ts, *.md).",
+      "timestamp": "2025-12-04T14:11:19.810230",
+      "duration_seconds": 5.039948463439941,
+      "errors": [
+        "No files matched the glob patterns"
+      ]
+    },
+    {
+      "test_name": "B-Docs-03: Progress Metrics",
+      "passed": true,
+      "details": "Progress metrics updated correctly: 0 -> 0 -> 0",
+      "timestamp": "2025-12-04T14:11:29.863687",
+      "duration_seconds": 10.051878213882446
+    },
+    {
+      "test_name": "B-Docs-04: Job Cancellation",
+      "passed": true,
+      "details": "Cancel endpoint works (job completed after cancel requested - race condition)",
+      "timestamp": "2025-12-04T14:11:31.941619",
+      "duration_seconds": 2.0779318809509277
+    },
+    {
+      "test_name": "B-Docs-05: Job History",
+      "passed": true,
+      "details": "Found 4 jobs in history",
+      "timestamp": "2025-12-04T14:11:31.946227",
+      "duration_seconds": 0.0030863285064697266
+    },
+    {
+      "test_name": "B-Docs-06: Error Handling",
+      "passed": true,
+      "details": "Error handled correctly: Root path is not a directory: C:\\NonExistentDirectory12345",
+      "timestamp": "2025-12-04T14:11:31.958523",
+      "duration_seconds": 0.012295722961425781
+    },
+    {
+      "test_name": "B-Docs-07: Telemetry",
+      "passed": true,
+      "details": "Telemetry tracking works: jobs_started 4 -> 5, files_processed: 94",
+      "timestamp": "2025-12-04T14:11:36.981624",
+      "duration_seconds": 5.023101091384888
+    }
+  ]
+}

@@ -54,5 +54,33 @@ A simple pattern for entries:
 - **Rationale**: With AI and humans both working in the repo, a consistent, well-structured docs set is critical for reliable behavior and future evolution.
 - **Implications**: Any substantial behavior or feature change should be mirrored in the docs library; leaving docs stale is considered a regression.
 
-Add new decisions below this line as the system evolves.***
+### 2025-12-03 – Adopt Autopilot manager/worker architecture as design direction
 
+- **Context**: The project needs a path from “chat + tasks + files + terminal” to a full project execution engine that can handle large blueprints and long-running work safely.
+- **Decision**: Standardize on the Autopilot design captured in `Updated_Project_Plans/Updated_Project_Plan_2*.txt` and surfaced in `docs/AUTOPILOT_PLAN.md`, `AUTOPILOT_LEARNING.md`, `AUTOPILOT_LIMITATIONS.md`, `AUTOPILOT_EXAMPLES.md`, and `MODEL_MATRIX.md`. This design defines Blueprint/Plan graphs, ExecutionRuns/Steps, ManagerAgent, workers, and scalable ingestion as the future architecture.
+- **Rationale**: Having a single, explicit Autopilot plan avoids ad‑hoc automation experiments and gives both humans and AI a clear target for future work (including safety constraints and model routing).
+- **Implications**: Until implemented, these docs remain design‑only; when Autopilot features are added, they must conform to this plan (or the plan must be revised here) and be reflected in `SYSTEM_OVERVIEW.md`, `SYSTEM_MATRIX.md`, `API_REFERENCE.md`, `CONFIG_ENV.md`, and QA docs.
+
+### 2025-12-04 – Standardize core API and UI shapes for v2
+
+- **Context**: Early docs and plans referenced multiple variants of project root fields, filesystem routes, usage endpoints, and right-column layouts, making it easy for future work to drift or reintroduce inconsistencies.
+- **Decision**:
+  - Use `local_root_path` as the canonical project root field in models, APIs, and docs.
+  - Treat `/projects/{project_id}/fs/list|read|write|ai_edit` as the filesystem API surface.
+  - Treat `GET /conversations/{conversation_id}/usage` as the canonical usage endpoint for the Usage tab.
+  - Treat `/projects/{project_id}/memory` + `/memory_items/{memory_id}` as the memory API.
+  - Treat the eight-tab right column (Tasks, Docs, Files, Search, Terminal, Usage, Notes, Memory) as the stable layout.
+- **Rationale**: A single, consistent API and UI contract reduces friction for contributors and AI agents, and it makes PROGRESS/TODO/QA docs much easier to keep in sync with the code.
+- **Implications**: Future changes to these surfaces must update `SYSTEM_OVERVIEW.md`, `SYSTEM_MATRIX.md`, `API_REFERENCE.md`, `USER_MANUAL.md`, and `PROGRESS.md` together; introducing alternate spellings or duplicate endpoints is considered a regression unless explicitly justified here.
+
+### 2025-12-04 – Batch repo ingestion via jobs + hashed state
+
+- **Context**: `POST /github/ingest_local_repo` tried to embed every file in one massive call, regularly exceeding OpenAI’s token caps and offering no progress/error visibility in the UI.
+- **Decision**:
+  - Move ingestion to `POST /projects/{project_id}/ingestion_jobs` + `GET /projects/{project_id}/ingestion_jobs/{job_id}`.
+  - Implement `embed_texts_batched` with configurable `MAX_EMBED_TOKENS_PER_BATCH` and `MAX_EMBED_ITEMS_PER_BATCH`.
+  - Persist `IngestionJob` + `FileIngestionState` so we can show progress, capture errors, and skip unchanged files via SHA-256 digests.
+- **Rationale**: Batched embeddings keep us under provider limits, and job records make the UX predictable (start → see progress → view errors). Hash-based skipping avoids re-ingesting thousands of files when only a handful changed.
+- **Implications**: All future ingestion flows (docs, repos, blueprints) must route through the job API and batching helper; `MAX_EMBED_*` defaults must stay documented in `CONFIG_ENV.md`. Blueprint/Autopilot ingestion (Phase T) will build on the same tables and endpoints rather than inventing a parallel system.
+
+Add new decisions below this line as the system evolves.

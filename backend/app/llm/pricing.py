@@ -11,12 +11,24 @@ class ModelPricing:
     output_per_million: float
 
 
-# Approximate prices – tweak as needed
+# Approximate prices – tweak as needed. Values are USD per 1M tokens.
+# Add/adjust to match your billing; unknown models return 0.0.
 PRICING: Dict[str, ModelPricing] = {
-    # Adjust these to whatever you're actually paying
     "gpt-5.1": ModelPricing(
         input_per_million=1.25,
         output_per_million=10.00,
+    ),
+    "gpt-5-pro": ModelPricing(
+        input_per_million=2.50,
+        output_per_million=18.00,
+    ),
+    "gpt-5-nano": ModelPricing(
+        input_per_million=0.05,
+        output_per_million=0.20,
+    ),
+    "gpt-5.1-codex": ModelPricing(
+        input_per_million=1.50,
+        output_per_million=12.00,
     ),
     "gpt-4.1": ModelPricing(
         input_per_million=5.00,
@@ -26,7 +38,6 @@ PRICING: Dict[str, ModelPricing] = {
         input_per_million=0.15,
         output_per_million=0.60,
     ),
-    # You can add more entries here later (gpt-5-nano, etc.)
 }
 
 

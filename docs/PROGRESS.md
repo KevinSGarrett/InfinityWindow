@@ -5,16 +5,24 @@ _Updated from `Hydration_File_002.txt`, `To_Do_List_001.txt`, and `Cursor_Chat_L
 ## High‑level status
 
 - **Core backend & chat**: complete per `To_Do_List_001` (health, projects, conversations, /chat with retrieval, usage logging).
-- **Docs & local repo ingestion + search**: complete (text docs, repo ingest, /search endpoints, UI panel).
+- **Docs & local repo ingestion + search**: complete (text docs, repo ingest, /search endpoints, UI panel) plus **batched ingestion jobs + progress UI (2025‑12‑04)**. Recent fixes: Chroma metadata TypeError resolved; backend expected on `http://127.0.0.1:8000`; Job History UI occasionally slow/flake under load (allow up to 60s).
 - **Tasks / TODO system**: complete (DB, API, sidebar UI, auto‑extraction from conversations).
 - **Usage / cost tracking**: complete (UsageRecord logging and per‑conversation usage panel).
-- **Filesystem integration**: complete (local_root_path, /fs/list, /fs/read, /fs/write, editor with “Show original”).  
+- **Filesystem integration**: complete (local_root_path, `/projects/{id}/fs/list`, `/projects/{id}/fs/read`, `/projects/{id}/fs/write`, editor with “Show original”).  
 - **AI file edits**: complete + **diff/preview UX added** in this window.
 - **Terminal integration**: complete (AI proposals, run, feedback loop) + **manual terminal UI** added in this window.
 - **Project instructions + decision log**: **implemented in this window** (DB columns/models, APIs, prompt injection, Notes UI).
 - **Conversation folders**: **implemented in this window** (models, APIs, search integration, basic UI).
 - **Memory items (“Remember this”)**: **implemented in this window** (DB + vector store + retrieval + Memory tab + per‑message button).
+- **Stability focus (2025‑12‑05)**: Chat, tasks/backlog, instructions/memory save paths under active verification; large ingestion suite runs are long, so we’re prioritizing non‑ingestion issues first. Added Chroma retry/reset for compaction errors (`/docs/text`, memory embeddings), added SQLite flush retry on memory creation, and landed extended UI smokes (Files, Terminal, Folders, Decision log, Notes reload). Recommend migrating QA to Postgres to remove SQLite lock risk entirely.
 - **Right‑column UI 2.0**: partially implemented; layout is currently under active iteration based on UX feedback.
+- **CI attempt (2025‑12‑05)**: `make ci` currently fails with “No rule to make target 'ci'.” – add/restore a CI target or document the correct command.
+
+## Non‑ingestion coverage plan (2025‑12‑05)
+
+- Automated Playwright smokes to run: `ui-smoke.spec.ts`, `ui-chat-smoke.spec.ts`, `ui-extended.spec.ts` (covers notes reload, decision log, folders, files, terminal, search, suggestions).
+- API smokes: error-handling (bad path/missing root/invalid request), usage, docs/text ingest, memory create.
+- Remaining stretch (LLM-dependent): chat → auto task extraction, chat → decision log auto-capture, chat → memory recall/search; treat as manual/observational until we have deterministic model hooks.
 
 ## Items from `To_Do_List_001.txt` completed in this chat
 
@@ -97,7 +105,7 @@ _Updated from `Hydration_File_002.txt`, `To_Do_List_001.txt`, and `Cursor_Chat_L
   - `ai_edit_project_file` now returns a **unified diff** (`diff` field) between the original and edited content (via `difflib.unified_diff`), in addition to `original_content` and `edited_content`.
 - **Frontend (`frontend/src/App.tsx` / `.css`)**:
   - AI file‑edit panel now has:
-    - A **“Preview edit”** button that calls `/fs/ai_edit` with `apply_changes: false, include_diff: true`.
+  - A **“Preview edit”** button that calls `/projects/{id}/fs/ai_edit` with `apply_changes: false, include_diff: true`.
     - A diff preview area (`diff-view`) and an optional full proposed file view in a collapsible block.
     - Status and error messages surfaced inline, plus toast notifications for success/failure.
   - “Apply AI edit” still performs the actual write, but now you can see the diff first.
@@ -108,19 +116,18 @@ _Updated from `Hydration_File_002.txt`, `To_Do_List_001.txt`, and `Cursor_Chat_L
 
 - Goal: Move from a single tall stack of panels to a more **organized, tabbed workbench** while staying faithful to v2 plans.
 - Current state after this window:
-  - Right column is split into logical tabs (Work, Files, Tools, Usage, Memory) with **per‑column scrolling** and a sticky tab bar.
-  - Within tabs, content has been refactored into **card‑like sections** (`tab-section`) with headers/toolbars and compact list modes.
+  - Right column is split into **eight single‑purpose tabs** – Tasks, Docs, Files, Search, Terminal, Usage, Notes, Memory – with per‑column scrolling and a sticky tab bar (see `RIGHT_COLUMN_UI_PLAN.md`).
+  - Within each tab, content is refactored into **card‑like sections** (`tab-section`) with headers/toolbars and compact list modes.
   - Manual terminal command history, command palette (Ctrl+K), and toasts are wired up.
 - Open issues (as discussed in this chat):
-  - Work tab still feels dense when all sections are visible together.
-  - Files tab side‑by‑side layout may be too cramped; we may need to revert to a vertical editor layout or add a toggle.
-  - Tools tab stacks Search + Terminal + History; this needs additional spacing and/or sub‑tabs for clarity.
+  - Some tabs can still feel dense when many sections are visible together.
+  - Files tab layout and height caps occasionally feel cramped; further spacing and panel tuning may be needed.
   - Left column collapse behavior and header layout are being adjusted to avoid visual overlap with the “+ New chat” button.
 
 These UI concerns are **known and actively being addressed**; the next pass will focus on:
 
-- Restoring/expanding the number of right‑column tabs (Tasks, Docs, Files, Search, Terminal, Usage, Notes, Memory) to reduce stacking.
-- Making the Files editor full‑width again (vertical layout) or user‑toggable between split and stacked modes.
+- Polishing the existing eight‑tab layout rather than introducing new super‑tabs.
+- Making the Files editor comfortable in its vertical layout and, if needed, adding a future toggle for alternate layouts.
 - Loosening height constraints on panels like “Recent assistant calls” so content doesn’t feel crushed.
 
 ## Next phases (v3 / v4 / v5…)
@@ -189,6 +196,36 @@ Based on `Hydration_File_002.txt`, `To_Do_List_001.txt`, and current code, here�
   - Sprint/calendar sync so high-priority items surface in external planners.
   - Cross-project duplicate detection when multiple initiatives describe the same work.
 
+### Autopilot & Blueprint & Learning [design-only roadmap]
+
+**The Autopilot items below are an agreed design direction only; no Autopilot code has landed yet.**  
+For the concrete implementation steps per phase, see `AUTOPILOT_IMPLEMENTATION_CHECKLIST.md`.
+
+In parallel with the v3–v6 themes above, Autopilot introduces a multi‑phase architecture for long‑running, blueprint‑driven projects (see `AUTOPILOT_PLAN.md`):
+
+- **Phase 1 – Blueprint & Plan graph**
+  - Models: `Blueprint`, `PlanNode`, `PlanNodeTaskLink`, `TaskDependency`, `BlueprintIngestionJob`.
+  - Endpoints: create/list blueprints; generate PlanNode trees; generate tasks for PlanNodes.
+  - UI: Blueprint selector and Plan tree in the Tasks tab; “Generate tasks for this node” actions.
+- **Phase 2 – Project Brain & context engine**
+  - Models: `ConversationSummary`, `ProjectSnapshot`.
+  - Modules: `conversation_summaries.py`, `snapshot.py`, `context_builder.py`, `alignment.py`.
+  - Behavior: deterministic context bundles for chat/workers; alignment checks for risky edits/commands.
+- **Phase 3 – Execution runs & workers**
+  - Models: `ExecutionRun`, `ExecutionStep`.
+  - Modules: `runs.py`, `workers.py`.
+  - Behavior: tool‑calling code/test/doc workers, step logging, diff/rollback, Runs panel in UI.
+- **Phase 4 – ManagerAgent & Autopilot heartbeat**
+  - Project fields: `autonomy_mode`, `active_phase_node_id`, `autopilot_paused`, `max_parallel_runs`.
+  - Modules: `manager.py`, `intent_classifier.py`.
+  - Endpoints: `/projects/{id}/autopilot_tick`, `/projects/{id}/manager/plan`, `/projects/{id}/refine_plan`.
+- **Phase T – Scalable ingestion & token/cost control**
+  - Models: `IngestionJob`, `FileIngestionState`, `BlueprintSectionSummary`.
+  - Helpers: `embed_texts_batched`, `get_embedding_model`, ingestion job APIs.
+  - Env knobs: `OPENAI_EMBEDDING_MODEL`, `MAX_EMBED_TOKENS_PER_BATCH`, `MAX_EMBED_ITEMS_PER_BATCH`, `MAX_CONTEXT_TOKENS_PER_CALL`, `AUTOPILOT_MAX_TOKENS_PER_RUN`.
+
+These are still **design‑level** items; no Autopilot models/endpoints/UI are live yet. As phases are implemented, this section should be updated with concrete “implemented in window X” bullets and cross‑links into `SYSTEM_MATRIX.md`, `API_REFERENCE.md`, and the Autopilot docs.
+
 These phases are intentionally high‑level. When we decide to start on one, we should:
 
 - Update this file with concrete sub‑tasks for that phase.
@@ -200,10 +237,21 @@ These phases are intentionally high‑level. When we decide to start on one, we 
 - Result: **Failed** – `make` is not installed on this Windows host (`'make' is not recognized as an internal or external command`). No checks were executed.
 - **QA rerun** (`C:\InfinityWindow_QA`): `make ci` now succeeds (pytest still reports “no tests” but is ignored; `npm run build`/Vite bundle completes without TypeScript errors).
 
+## CI / QA spot check (2025-12-03)
+
+- Commands:
+  - `robocopy` sync (backend/frontend/docs/qa/tools) from `C:\InfinityWindow` → `C:\InfinityWindow_QA`.
+  - `python tools/reset_qa_env.py --confirm`.
+  - Backend: `uvicorn app.api.main:app --host 127.0.0.1 --port 8000`.
+  - Frontend: `npm run dev -- --host 127.0.0.1 --port 5174`.
+  - Playwright: `npx playwright test tests/tasks-suggestions.spec.ts`.
+- Result: **PASS** – Tasks tab renders priority chips/blocked reasons and the suggestion drawer approve/dismiss flow works end-to-end after the QA sync + duplicate-handler cleanup.
+
 ## Notes
 
 - Whenever DB schema changes were made (e.g., adding instructions, decisions, folders, memory_items), we relied on the existing pattern: **delete** `backend/infinitywindow.db` and restart the backend to let SQLAlchemy recreate tables. A proper migration system (Alembic) remains a future improvement.
 - Likewise, when resetting the DB, we **cleared `backend/chroma_data`** to keep vector store contents in sync.
+- Issue IDs referenced in dated test reports are now tracked centrally in `docs/ISSUES_LOG.md` so fixes stay auditable.
 
 ## QA fixes implemented on 2025-12-02
 
@@ -225,5 +273,56 @@ These phases are intentionally high‑level. When we decide to start on one, we 
 - **Telemetry hooks**: Backend exposes `/debug/telemetry`, reporting auto-mode routing stats and autonomous TODO maintenance counters (auto-added/completed/deduped). QA can now verify routing behavior without digging through logs and optionally reset the counters between runs.
 - **Search & Usage UX**: Search tab gained conversation/folder/document filters, grouped results, and “open in chat/docs” actions, while the Usage tab now offers a conversation selector, aggregate metrics, per-model breakdown, enriched recent-call list, and the shared routing/tasks telemetry drawer.
 - **Notes & Decisions**: Notes tab now includes pinned notes, an instructions diff preview, richer decision cards (status/tag filters, inline edits, follow-up task/memory hooks, clipboard), and an automation pass that detects “Decision…” statements in chat and captures them as drafts. Projects must recreate the SQLite DB (or run a migration) to pick up the new columns (`pinned_note_text`, decision status/tags/follow-up metadata).
+
+## QA fixes implemented on 2025-12-03
+
+- **Tasks tab regression**: Removed duplicate `handleApproveTaskSuggestion`/`handleDismissTaskSuggestion` definitions in `frontend/src/App.tsx` that caused Vite overlays and blocked Playwright.
+- **QA sync workflow**: Documented the `robocopy` + `tools/reset_qa_env.py --confirm` flow so QA can be refreshed safely before each run.
+- **Playwright coverage**: `tests/tasks-suggestions.spec.ts` is now part of the standard QA spot-check list, ensuring autonomous task UI stays healthy.
+
+## Enhancements implemented on 2025-12-04
+
+- **Large repo ingestion batching**:
+  - Added `embed_texts_batched` with env-configurable caps (`MAX_EMBED_TOKENS_PER_BATCH`, `MAX_EMBED_ITEMS_PER_BATCH`) so docs/repo ingestion stays under OpenAI request limits.
+  - Created `IngestionJob` + `FileIngestionState` models to track job progress and skip unchanged files via SHA-256 digests.
+  - Added `/projects/{id}/ingestion_jobs` (POST + GET) and wired the Docs tab to poll status with live progress + error reporting.
+  - Added cancel endpoint + job history list + UI button so long ingests can be stopped/audited, plus extra telemetry (files/bytes/duration).
+  - Added `qa/ingestion_probe.py` so the smoke suite exercises both the happy path and a forced failure.
+- **QA evidence (2025-12-04)**:
+  - Expanded `docs/TEST_PLAN.md` / `TEST_REPORT_TEMPLATE.md` with a dedicated B-Docs matrix (progress bytes, cancel, history, telemetry, failure path).
+  - Fixed `discover_repo_files` so all matching files are collected (bug previously limited ingestion to one file per directory).
+  - Ran the scripted harness (`temp_ingest_plan.py`) in `C:\InfinityWindow_QA` to execute B-Docs-01 → B-Docs-07 end-to-end; captured results in `docs/TEST_REPORT_2025-12-04.md` and screenshots/logs for each scenario.
+
+## CI / QA spot check (2025-12-04)
+
+- Commands:
+  - `backend\.venv\Scripts\python.exe -m qa.run_smoke`
+  - `npm run build`
+  - `make ci` in `C:\InfinityWindow_QA` (attempted)
+- Results:
+  - `qa.run_smoke` **passed** (covers message search, autonomous tasks, repo ingestion happy-path + forced failure, and mode routing).
+  - `npm run build` **passed** (TypeScript + Vite production bundle).
+  - `make ci` still fails in `C:\InfinityWindow_QA` (“No rule to make target 'ci'.”); that repo needs its Makefile updated before this command can succeed.
+
+## QA fixes implemented on 2025-12-06
+
+- **Tasks & automation**
+  - Added scoped task create (`POST /projects/{id}/tasks`), task delete (`DELETE /tasks/{task_id}`), and tasks overview (`GET /projects/{id}/tasks/overview` combining tasks and suggestions).
+  - Auto-update runs after `/chat` with retry (config `AUTO_UPDATE_TASKS_AFTER_CHAT`); manual `POST /projects/{id}/auto_update_tasks` kept for retries.
+  - Status/priority validation added; stale suggestions cleaned; test artifacts removed via delete endpoint.
+- **Search & memory**
+  - Memory search now stores and returns `title`; duplicate handler removed to prevent 500/422 errors.
+- **Filesystem & terminal**
+  - `/fs/read` accepts `file_path` or `subpath`; `/fs/ai_edit` accepts `instruction` or `instructions`.
+  - Scoped terminal run no longer requires `project_id` in body; path param is injected server-side.
+- **Docs & pricing**
+  - `API_REFERENCE.md` and `API_REFERENCE_UPDATED.md` synced with live endpoints/aliases; pricing table now includes `gpt-5-nano`, `gpt-5-pro`, and `gpt-5.1-codex`, fixing zero-cost usage totals.
+
+## Follow-on work – large repo / blueprint ingestion
+
+- Repo ingestion now batches embeddings and surfaces progress; blueprint-specific ingestion (Phase T) still needs:
+  - Blueprint-sized batching/resume support (multi-GB specs, multi-phase checkpoints).
+  - Streaming progress + resume for blueprint ingestion jobs (similar to repo flow but with section summaries).
+  - Blueprint-specific telemetry entries (Batch N/M, section anchors, token budgets) surfaced in UI + `/ingestion_jobs`.
 
 

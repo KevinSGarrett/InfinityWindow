@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import traceback
 
-from . import message_search_probe, mode_routing_probe, tasks_autoloop_probe
+from . import (
+    ingestion_probe,
+    message_search_probe,
+    mode_routing_probe,
+    tasks_autoloop_probe,
+)
 
 
 PROBES = [
     ("Message search", message_search_probe.run),
     ("Autonomous tasks", tasks_autoloop_probe.run),
+    ("Repo ingestion", ingestion_probe.run),
     ("Mode routing", mode_routing_probe.run),
 ]
 

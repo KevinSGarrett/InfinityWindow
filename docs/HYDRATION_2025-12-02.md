@@ -45,6 +45,7 @@ The “OS for long‑running projects” metaphor: InfinityWindow tries to keep 
   - Core SQLAlchemy models:
     - `Project`, `Conversation`, `Message`
     - `Task`, `Document`, `MemoryItem`, `Decision`
+    - `IngestionJob` + `FileIngestionState` (repo ingestion progress + per-file SHA cache)
     - Usage/auxiliary models as needed.
   - Backed by SQLite DB at `backend/infinitywindow.db` in dev/QA.
 
@@ -52,6 +53,19 @@ The “OS for long‑running projects” metaphor: InfinityWindow tries to keep 
   - Manages Chroma collections for messages, docs, memory.
   - Provides `add_*_embedding` and query helpers.
   - Important fix: only includes `folder_id` metadata when non‑`None` to avoid Chroma errors.
+- Tasks/search fixes (2025-12-06):
+  - Task upkeep now runs automatically after `/chat` (configurable via `AUTO_UPDATE_TASKS_AFTER_CHAT`); manual `POST /projects/{id}/auto_update_tasks` remains.
+  - Added task delete (`DELETE /tasks/{task_id}`) and tasks overview (`GET /projects/{id}/tasks/overview` for tasks + suggestions).
+  - Memory search stores/returns `title`; duplicate handler removed.
+  - Filesystem read accepts `file_path` or `subpath`; AI edit accepts `instruction` or `instructions`.
+  - Terminal scoped run no longer needs `project_id` in body; path param is injected.
+- Pricing/usage:
+  - Pricing table includes `gpt-5-nano`, `gpt-5-pro`, `gpt-5.1-codex`; usage cost reflects these.
+- Repo/document ingestion:
+  - `app/llm/embeddings.py` exposes `embed_texts_batched`, honoring `MAX_EMBED_TOKENS_PER_BATCH` / `MAX_EMBED_ITEMS_PER_BATCH`.
+  - `app/ingestion/docs_ingestor.py` + `app/ingestion/github_ingestor.py` handle text and repo ingestion via `IngestionJob` records.
+  - `POST /projects/{id}/ingestion_jobs` queues work; `GET /projects/{id}/ingestion_jobs/{job_id}` reports progress/errors; `GET /projects/{id}/ingestion_jobs` lists history; `POST /projects/{id}/ingestion_jobs/{job_id}/cancel` requests cancellation.
+  - Telemetry counters (jobs started/completed/failed/cancelled, bytes processed) feed into `/debug/telemetry`.
 
 - LLM integration: `backend/app/llm/openai_client.py`
   - Wraps the OpenAI (or compatible) client.
@@ -143,6 +157,14 @@ Additional docs being built out:
 - `docs/DEV_GUIDE.md`, `docs/AGENT_GUIDE.md`, `docs/OPERATIONS_RUNBOOK.md`.
 - `docs/API_REFERENCE.md`, `docs/CONFIG_ENV.md`, `docs/SECURITY_PRIVACY.md`.
 - `docs/CHANGELOG.md`, `docs/DECISIONS_LOG.md`, `docs/RELEASE_PROCESS.md`.
+
+Autopilot & blueprint design docs (roadmap only, not implemented yet):
+
+- `docs/AUTOPILOT_PLAN.md` – high‑level Autopilot architecture and phases.
+- `docs/AUTOPILOT_LEARNING.md` – Project Learning Layer design.
+- `docs/AUTOPILOT_LIMITATIONS.md` – Autopilot scope and guardrails.
+- `docs/AUTOPILOT_EXAMPLES.md` – usage scenarios once Autopilot is available.
+- `docs/MODEL_MATRIX.md` – model/env routing for chat modes and Autopilot roles.
 
 This hydration file is meant to point you to those documents rather than duplicate them.
 

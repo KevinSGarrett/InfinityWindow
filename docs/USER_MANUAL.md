@@ -93,6 +93,7 @@ OPENAI_MODEL_BUDGET=gpt-4.1-nano
 OPENAI_MODEL_RESEARCH=o3-deep-research
 OPENAI_MODEL_CODE=gpt-5.1-codex
 ```
+These values are just an example of overriding the defaults; if you omit these env vars, the built‑in mode→model defaults are the ones documented in `SYSTEM_OVERVIEW.md` and `CONFIG_ENV.md`.
 
 > Note: If `o3-deep-research` is not available to your account, set `OPENAI_MODEL_RESEARCH` to another supported model to avoid 500 errors on `mode="research"`.
 
@@ -118,9 +119,7 @@ From `C:\InfinityWindow\backend` with venv active:
 uvicorn app.api.main:app --reload
 ```
 
-Backend will listen on:
-
-- `http://127.0.0.1:8000`
+Backend will listen on `http://127.0.0.1:8000` (use a different port only if 8000 is occupied; adjust UI/API calls accordingly).
 
 You can verify with:
 
@@ -463,19 +462,27 @@ After ingestion:
 
 Still in the **Docs** tab:
 
-- **Ingest local repo**:
-  - Root path: typically `C:\InfinityWindow`.
-  - Name prefix: e.g., `InfinityWindow/`.
-  - Click “Ingest local repo”.
+1. Expand **Ingest local repo**.
+2. Fill in:
+   - **Root path** – usually the same directory you pointed the project at (`C:\InfinityWindow` in most setups).
+   - **Name prefix** – optional label prepended to every ingested file (e.g., `InfinityWindow/` so search results mention the repo path).
+3. Click **Ingest repo**.
+4. A status card appears directly under the button:
+   - Status: `pending`, `running`, `completed`, `failed`, or `cancelled`.
+   - Live counters: processed/total files, processed/total bytes, and duration.
+   - A **Cancel job** link is available while status = `running`.
+   - Errors (bad path, permission issues, OpenAI error) surface inline.
+5. Below the form, the **Recent ingestion jobs** table lists the last ~20 jobs with status, files/bytes, duration, finish time, and any error messages. Use the “Refresh” link to reload it on demand.
 
-Backend:
+Backend flow:
 
-- `POST /github/ingest_local_repo`:
-  - Walks the repo.
-  - Filters files.
-  - Chunks and embeds.
+- `POST /projects/{project_id}/ingestion_jobs` creates a job (`kind="repo"`) and immediately starts hashing + ingesting files.
+- `GET /projects/{project_id}/ingestion_jobs/{job_id}` reports status, counts, and error (if any). The UI polls this every ~2 seconds until the job finishes.
+- `embed_texts_batched` enforces `MAX_EMBED_TOKENS_PER_BATCH` (default `50000`) and `MAX_EMBED_ITEMS_PER_BATCH` (default `256`) so embeddings requests never exceed provider limits.
+- `FileIngestionState` stores a SHA-256 per project/path, so re-running the ingest only processes files whose content actually changed.
+- `ingestion_jobs` keeps timestamps, processed counts, bytes, and cancellation flags so jobs can be audited or stopped mid-run.
 
-This lets you ask code questions such as:
+When the job completes, the Docs list refreshes automatically and you can immediately search the newly ingested files. This enables questions such as:
 
 - “Where is `auto_update_tasks_from_conversation` implemented?”
 - “How does `/terminal/run` work?”
@@ -816,27 +823,61 @@ npx playwright test
 
 ---
 
-## 14. Known Issues & Limitations (as of 2025‑12‑02)
+## 14. Known Issues & Limitations
 
-Summarized from `docs/TEST_REPORT_2025-12-02.md`:
+> Status as of 2025‑12‑03. For the latest state, see `docs/PROGRESS.md` and the dated `docs/TEST_REPORT_*.md` files.
 
-- **Message search**:
-  - `/search/messages` returns no hits (even after inserting unique tokens).
-- **Research mode**:
-  - `mode="research"` fails if `OPENAI_MODEL_RESEARCH` points to unavailable `o3-deep-research`.
-- **Auto mode**:
-  - Does not adapt models based on task type; always uses a single configured model.
-- **Tasks auto‑maintenance**:
-  - Auto‑adds tasks but never marks them as done or reorders them when progress is reported.
+Earlier internal QA runs (e.g., `TEST_REPORT_2025-12-02.md`) identified several regressions that have since been fixed in the 2025‑12‑02/03 windows:
 
-All of these are tracked as issues and future enhancements in:
+- **Message search** – `/search/messages` previously returned no hits after chatting; this was fixed as part of the “Message search reliability” work logged in `PROGRESS.md` and `TEST_REPORT_2025-12-02.md`.
+- **Research mode** – `mode="research"` previously failed when `OPENAI_MODEL_RESEARCH` pointed at an unavailable model; the routing now falls back gracefully as described in the chat‑modes section and `PROGRESS.md`.
+- **Auto mode routing** – `mode="auto"` previously used a single fixed model; it now routes between code/research/fast/deep tiers using heuristics, covered by `B-Mode-02` in `TEST_PLAN.md`.
+- **Autonomous TODO maintenance** – the task maintainer previously only added tasks; it now also marks tasks done when completions are detected, dedupes similar items, and orders open tasks by `updated_at`, as reflected in `PROGRESS.md` and `B-Tasks-02`.
 
-- `docs/TEST_REPORT_2025-12-02.md`
-- `docs/PROGRESS.md`
+As of this manual, there are no additional global “known issues” beyond what is tracked per window in `docs/PROGRESS.md` and the dated `docs/TEST_REPORT_*.md` files. Consult those documents for the most up‑to‑date list of open bugs or limitations.
 
 ---
 
-## 15. Mental Model & Usage Tips
+## 15. Future: Blueprints & Autopilot (Design Preview)
+
+> The features in this section are **planned** and described in more detail in `AUTOPILOT_PLAN.md`, `AUTOPILOT_LEARNING.md`, and related docs.  
+> They are **not available in the current InfinityWindow build**.  
+> Everything in this section describes planned capabilities only; the InfinityWindow build you are running today does not include Autopilot, ExecutionRuns, or Blueprint/Plan features.
+
+### 15.1 Blueprints & Plan tree
+
+In future versions, InfinityWindow will be able to:
+
+- Ingest a very large spec (e.g., 500k‑word blueprint) as a first‑class `Blueprint`.
+- Derive a hierarchical **Plan tree** of `PlanNode`s (phases → epics → features → stories → task specs).
+- Generate structured tasks for each feature/story node and keep them linked to the plan.
+- Drive the Tasks tab from this Plan tree so you can see “where each task lives” in the blueprint.
+
+These behaviors are purely design today; see `AUTOPILOT_PLAN.md` for details.
+
+### 15.2 Autopilot, Execution Runs & “CEO Mode”
+
+Autopilot will add:
+
+- **ExecutionRuns / ExecutionSteps** to log multi‑step work (file reads/writes, tests, docs edits) with diff/rollback.
+- A **ManagerAgent** that:
+  - Picks the next tasks to work on.
+  - Starts and advances runs via `/projects/{id}/autopilot_tick`.
+  - Respects a project’s autonomy mode (`off` / `suggest` / `semi_auto` / `full_auto`).
+- **Worker agents** (code/test/docs) that use Files/Terminal/Search tools under strict guardrails.
+
+User‑facing flows will include:
+
+- A **Runs** panel/tab that shows what Autopilot is doing, step by step.
+- Autopilot controls in the header (mode selector, Pause/Resume, status pill).
+- “CEO mode” workflows where a non‑technical user steers the project with high‑level chat instructions while Autopilot executes runs inside those limits.
+
+Again, these are future capabilities; refer to `AUTOPILOT_EXAMPLES.md` for concrete scenarios and treat them as design sketches until the corresponding code and UI land.
+
+---
+
+## 16. Mental Model & Usage Tips
+
 
 1. **Think in projects**:
    - Create one project per repo or major initiative.

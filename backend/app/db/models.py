@@ -11,6 +11,8 @@ from sqlalchemy import (
     String,
     Text,
     Float,
+    JSON,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -67,6 +69,16 @@ class Project(Base):
     )
     memory_items: Mapped[List["MemoryItem"]] = relationship(
         "MemoryItem",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
+    ingestion_jobs: Mapped[List["IngestionJob"]] = relationship(
+        "IngestionJob",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
+    file_ingestion_states: Mapped[List["FileIngestionState"]] = relationship(
+        "FileIngestionState",
         back_populates="project",
         cascade="all, delete-orphan",
     )
@@ -216,6 +228,9 @@ class Task(Base):
     )
     description: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="open")
+    priority: Mapped[str] = mapped_column(String(20), default="normal")
+    blocked_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    auto_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow
     )
@@ -226,6 +241,35 @@ class Task(Base):
     project: Mapped["Project"] = relationship(
         "Project", back_populates="tasks"
     )
+
+
+class TaskSuggestion(Base):
+    __tablename__ = "task_suggestions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("projects.id"), index=True
+    )
+    conversation_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("conversations.id"), nullable=True, index=True
+    )
+    target_task_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("tasks.id"), nullable=True, index=True
+    )
+    action_type: Mapped[str] = mapped_column(String(32))
+    payload: Mapped[str] = mapped_column(Text)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, index=True
+    )
+
+    project: Mapped["Project"] = relationship("Project")
+    conversation: Mapped[Optional["Conversation"]] = relationship("Conversation")
+    target_task: Mapped[Optional["Task"]] = relationship("Task")
 
 
 class UsageRecord(Base):
@@ -372,4 +416,58 @@ class MemoryItem(Base):
     )
     superseded_by: Mapped[Optional["MemoryItem"]] = relationship(
         "MemoryItem", remote_side=[id]
+    )
+
+
+class IngestionJob(Base):
+    __tablename__ = "ingestion_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("projects.id"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(32))
+    source: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    total_items: Mapped[int] = mapped_column(Integer, default=0)
+    processed_items: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    meta: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    total_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    processed_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    project: Mapped["Project"] = relationship("Project", back_populates="ingestion_jobs")
+
+
+class FileIngestionState(Base):
+    __tablename__ = "file_ingestion_state"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "relative_path",
+            name="uq_file_ingestion_state_project_path",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("projects.id"), index=True
+    )
+    relative_path: Mapped[str] = mapped_column(String(512))
+    sha256: Mapped[str] = mapped_column(String(64))
+    last_ingested_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    project: Mapped["Project"] = relationship(
+        "Project", back_populates="file_ingestion_states"
     )

@@ -4,15 +4,23 @@ from typing import Any, Dict, List, Optional
 
 import chromadb
 from chromadb.api.models.Collection import Collection
+from chromadb import errors as chroma_errors
+import logging
+import shutil
+from pathlib import Path
 
 # We'll store Chroma data in ./chroma_data relative to the backend folder.
 # This will create a "chroma_data" directory next to infinitywindow.db.
 _CHROMA_CLIENT: chromadb.PersistentClient | None = None
+_CHROMA_PATH = Path("chroma_data")
 
 # Collection names
 _MESSAGES_COLLECTION_NAME = "messages"
 _DOCS_COLLECTION_NAME = "docs"
 _MEMORY_COLLECTION_NAME = "memory_items"
+_CHROMA_MAX_BATCH = 5000
+
+logger = logging.getLogger(__name__)
 
 
 def get_client() -> chromadb.PersistentClient:
@@ -21,8 +29,54 @@ def get_client() -> chromadb.PersistentClient:
     """
     global _CHROMA_CLIENT
     if _CHROMA_CLIENT is None:
-        _CHROMA_CLIENT = chromadb.PersistentClient(path="chroma_data")
+        _CHROMA_PATH.mkdir(parents=True, exist_ok=True)
+        _CHROMA_CLIENT = chromadb.PersistentClient(path=str(_CHROMA_PATH))
     return _CHROMA_CLIENT
+
+
+def _reset_chroma_persistence(clear_data: bool = False) -> None:
+    """
+    Reset the global Chroma client (and optionally clear on-disk data) to recover from
+    compaction/database errors.
+    """
+    global _CHROMA_CLIENT
+    _CHROMA_CLIENT = None
+    if clear_data:
+        try:
+            shutil.rmtree(_CHROMA_PATH, ignore_errors=True)
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to remove chroma_data during reset")
+
+
+def _with_chroma_retry(action: str, func, attempts: int = 2):
+    """
+    Run a Chroma operation with a limited retry/reset strategy.
+
+    If we hit a compaction/internal error, we reset the client (and clear the on-disk
+    store for the compaction case) and try again. This keeps the API responsive even if
+    Chroma's metadata segment becomes inconsistent.
+    """
+    last_exc: Exception | None = None
+    for i in range(attempts):
+        try:
+            return func()
+        except chroma_errors.InternalError as exc:
+            last_exc = exc
+            msg = str(exc)
+            clear = "Failed to apply logs to the metadata segment" in msg
+            logger.warning(
+                "Chroma error during %s (attempt %s/%s): %s",
+                action,
+                i + 1,
+                attempts,
+                msg,
+            )
+            _reset_chroma_persistence(clear_data=clear)
+        except Exception:
+            # Do not mask non-Chroma errors
+            raise
+    if last_exc:
+        raise last_exc
 
 
 # --------------------------------------------------------------------
@@ -66,12 +120,16 @@ def add_message_embedding(
     if folder_id is not None:
         metadata["folder_id"] = folder_id
 
-    collection.add(
-        ids=[str(message_id)],
-        embeddings=[embedding],
-        documents=[content],
-        metadatas=[metadata],
-    )
+    def _add():
+        collection = get_messages_collection()
+        collection.add(
+            ids=[str(message_id)],
+            embeddings=[embedding],
+            documents=[content],
+            metadatas=[metadata],
+        )
+
+    _with_chroma_retry("add message embedding", _add)
 
 
 def query_similar_messages(
@@ -157,22 +215,36 @@ def add_document_chunks(
             "chunk_ids, chunk_indexes, contents, and embeddings must have the same length."
         )
 
-    collection = get_docs_collection()
+    total_chunks = len(chunk_ids)
+    for start in range(0, total_chunks, _CHROMA_MAX_BATCH):
+        end = min(start + _CHROMA_MAX_BATCH, total_chunks)
+        slice_ids = chunk_ids[start:end]
+        slice_indexes = chunk_indexes[start:end]
+        slice_contents = contents[start:end]
+        slice_embeddings = embeddings[start:end]
 
-    collection.add(
-        ids=[str(cid) for cid in chunk_ids],
-        embeddings=embeddings,
-        documents=contents,
-        metadatas=[
-            {
-                "document_id": document_id,
-                "project_id": project_id,
-                "chunk_id": cid,
-                "chunk_index": idx,
-            }
-            for cid, idx in zip(chunk_ids, chunk_indexes)
-        ],
-    )
+        # Coerce all metadata fields to concrete types (no None allowed by Chroma)
+        metadatas = []
+        for cid, idx in zip(slice_ids, slice_indexes):
+            metadatas.append(
+                {
+                    "document_id": int(document_id),
+                    "project_id": int(project_id),
+                    "chunk_id": int(cid),
+                    "chunk_index": int(idx),
+                }
+            )
+
+        def _add_slice():
+            collection = get_docs_collection()
+            collection.add(
+                ids=[str(cid) for cid in slice_ids],
+                embeddings=slice_embeddings,
+                documents=slice_contents,
+                metadatas=metadatas,
+            )
+
+        _with_chroma_retry("add document chunks", _add_slice)
 
 
 def query_similar_document_chunks(
@@ -232,19 +304,24 @@ def add_memory_embedding(
     project_id: int,
     content: str,
     embedding: List[float],
+    title: str | None = None,
 ) -> None:
-    collection = get_memory_collection()
-    collection.add(
-        ids=[str(memory_id)],
-        embeddings=[embedding],
-        documents=[content],
-        metadatas=[
-            {
-                "memory_id": memory_id,
-                "project_id": project_id,
-            }
-        ],
-    )
+    def _add():
+        collection = get_memory_collection()
+        collection.add(
+            ids=[str(memory_id)],
+            embeddings=[embedding],
+            documents=[content],
+            metadatas=[
+                {
+                    "memory_id": memory_id,
+                    "project_id": project_id,
+                    "title": title,
+                }
+            ],
+        )
+
+    _with_chroma_retry("add memory embedding", _add)
 
 
 def delete_memory_embedding(memory_id: int) -> None:

@@ -81,6 +81,22 @@ When adding a new feature, try to:
 - Reuse or extend models in `app/db/models.py`.
 - Add any new vector‑store behavior in `chroma_store.py`.
 
+### 2.1 Planned Autopilot modules (design)
+
+The Autopilot design introduces several new backend modules that **do not exist yet** but are referenced in `AUTOPILOT_PLAN.md`:
+
+- `backend/app/services/blueprints.py` – Blueprint & PlanNode ingestion/generation helpers.
+- `backend/app/services/conversation_summaries.py` – rolling conversation summaries.
+- `backend/app/services/snapshot.py` – ProjectSnapshot generation.
+- `backend/app/llm/context_builder.py` – builds structured context bundles for chat and workers.
+- `backend/app/services/alignment.py` – alignment checks for risky edits/commands.
+- `backend/app/services/runs.py` – ExecutionRun/ExecutionStep orchestration and rollback helpers.
+- `backend/app/services/workers.py` – code/test/doc worker wrappers over Files/Terminal/Search tools.
+- `backend/app/llm/intent_classifier.py` – classifies chat messages into START_BUILD / PAUSE_AUTOPILOT / etc.
+- `backend/app/services/manager.py` – ManagerAgent implementation (Autopilot brain).
+
+When you start implementing these, keep them small and focused, mirroring the existing patterns for API modules and services. Update `SYSTEM_MATRIX.md`, `API_REFERENCE.md`, and `CONFIG_ENV.md` as new endpoints, models, and env vars go live.
+
 ---
 
 ## 3. Code structure (frontend)
@@ -112,6 +128,9 @@ Playwright tests live under `frontend/tests/`.
 - **API layer**:
   - Keep request/response models well‑typed in Python (Pydantic) and in TypeScript (interfaces/types) where applicable.
   - Prefer explicit endpoints over “do everything” generics for clarity.
+
+- **Docs alignment**:
+  - When APIs change, update `docs/API_REFERENCE_UPDATED.md` (primary), keep `docs/API_REFERENCE.md` pointers intact, and log fixes in `docs/ISSUES_LOG.md`.
 
 - **Telemetry**:
   - For new automated behaviors (e.g., routing, task automation), consider adding simple counters.

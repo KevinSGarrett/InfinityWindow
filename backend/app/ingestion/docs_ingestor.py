@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import time
 from typing import Optional, List, Tuple
 
 from sqlalchemy.orm import Session
 
 from app.db import models
-from app.llm.embeddings import get_embeddings
+from app.llm.embeddings import embed_texts_batched
 from app.vectorstore.chroma_store import add_document_chunks
 
 
@@ -38,6 +39,45 @@ def _chunk_text(
         start = max(0, end - overlap)
 
     return chunks
+
+
+def _flush_with_retry(db: Session, attempts: int = 6, base_delay: float = 0.3) -> None:
+    """
+    Flush pending objects with retries to tolerate SQLite locks.
+    """
+    last_exc: Exception | None = None
+    for i in range(attempts):
+        try:
+            db.flush()
+            return
+        except Exception as exc:  # noqa: BLE001
+            # SQLite lock errors surface as OperationalError -> generic here
+            db.rollback()
+            last_exc = exc
+            if "locked" not in str(exc).lower():
+                raise
+            time.sleep(base_delay * (i + 1))
+    if last_exc:
+        raise last_exc
+
+
+def _commit_with_retry(db: Session, attempts: int = 6, base_delay: float = 0.3) -> None:
+    """
+    Commit with retries to ride out transient SQLite locks.
+    """
+    last_exc: Exception | None = None
+    for i in range(attempts):
+        try:
+            db.commit()
+            return
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            last_exc = exc
+            if "locked" not in str(exc).lower():
+                raise
+            time.sleep(base_delay * (i + 1))
+    if last_exc:
+        raise last_exc
 
 
 def ingest_text_document(
@@ -75,7 +115,7 @@ def ingest_text_document(
         description=description,
     )
     db.add(document)
-    db.flush()  # document.id is now available
+    _flush_with_retry(db)  # document.id is now available
 
     # 3) Create a single section for the whole document
     section = models.DocumentSection(
@@ -85,18 +125,18 @@ def ingest_text_document(
         path=name,
     )
     db.add(section)
-    db.flush()  # section.id is now available
+    _flush_with_retry(db)  # section.id is now available
 
     # 4) Chunk the text
     chunks: List[str] = _chunk_text(text, max_chars=max_chars, overlap=overlap)
     if not chunks:
         # No content; just commit the empty document + section
-        db.commit()
+        _commit_with_retry(db)
         db.refresh(document)
         return document, 0
 
-    # 5) Embed all chunks in one call
-    embeddings: List[List[float]] = get_embeddings(chunks)
+    # 5) Embed chunks in batches to respect token limits
+    embeddings: List[List[float]] = embed_texts_batched(chunks)
 
     # 6) Create DocumentChunk rows and collect IDs
     chunk_ids: List[int] = []
@@ -110,7 +150,7 @@ def ingest_text_document(
             content=chunk_text,
         )
         db.add(chunk)
-        db.flush()  # chunk.id is now available
+        _flush_with_retry(db)  # chunk.id is now available
         chunk_ids.append(chunk.id)
 
     # Index in Chroma using the batch helper
@@ -124,7 +164,7 @@ def ingest_text_document(
     )
 
     # Final commit
-    db.commit()
+    _commit_with_retry(db)
     db.refresh(document)
 
     return document, len(chunks)

@@ -26,6 +26,21 @@ Use this index as the starting point whether you are a **user**, **developer**, 
   - Features ↔ backend modules ↔ frontend components ↔ key endpoints ↔ test IDs.
   - Data models ↔ DB tables ↔ API routes ↔ UI surfaces.
 
+- **`AUTOPILOT_PLAN.md`**  
+  High‑level design for the future Autopilot system: Blueprint/Plan graph, Project Brain/context builder, ExecutionRuns/Steps, ManagerAgent, workers, and scalable ingestion.
+
+- **`AUTOPILOT_LEARNING.md`**  
+  Design for the Project Learning Layer (how future versions will use run/task signals to refine plan ordering, priorities, and risks over time).
+
+- **`AUTOPILOT_LIMITATIONS.md`**  
+  Scope and safety contract for Autopilot (what it will and will not be allowed to do, filesystem/terminal guardrails, autonomy modes).
+
+- **`AUTOPILOT_EXAMPLES.md`**  
+  End‑to‑end example workflows for Autopilot once implemented (blueprint‑driven bootstrapping, feature implementation, “CEO mode”, safe failure/rollback).
+
+- **`MODEL_MATRIX.md`**  
+  Design matrix mapping chat modes and Autopilot roles (manager, workers, summaries, intent, alignment, research) to specific model IDs and env vars.
+
 - **`RIGHT_COLUMN_UI_PLAN.md`**  
   Design notes and iteration plans for the right‑hand workbench (Tasks, Docs, Files, Search, Terminal, Usage, Notes, Memory).
 
@@ -57,6 +72,9 @@ Use this index as the starting point whether you are a **user**, **developer**, 
 - **`TEST_REPORT_2025-12-02.md`**  
   Example completed QA report from a full run against the QA environment, including identified issues and resolutions.
 
+- **`TEST_REPORT_2025-12-03.md`**  
+  Focused QA note capturing the tasks-intelligence Playwright regression (Tasks tab + suggestion drawer) and the fixes that unblocked it after syncing QA.
+
 - **`OPERATIONS_RUNBOOK.md`**  
   Practical operations guide:
   - Starting/stopping backend & frontend.
@@ -67,6 +85,9 @@ Use this index as the starting point whether you are a **user**, **developer**, 
 
 - **`TODO_CHECKLIST.md`**  
   Actionable checklist of open work items grouped by phase (v2/v3/v4), distilled from `PROGRESS.md` and QA reports.
+
+- **`ISSUES_LOG.md`**  
+  Running ledger of every issue/bug encountered during development + QA, how it was fixed, and where the fix was verified (kept in sync with the dated test reports).
 
 ---
 
@@ -102,12 +123,15 @@ Use this index as the starting point whether you are a **user**, **developer**, 
   - Ports and paths.
   - Any feature flags.
 
-- **`API_REFERENCE.md`**  
+- **`API_REFERENCE.md`** (legacy quick reference; see `API_REFERENCE_UPDATED.md` for the current, complete guide)  
   Concise reference for the most important REST endpoints:
   - Projects, conversations, chat.
   - Tasks, docs, memory, decisions, folders.
   - Filesystem & terminal.
   - Telemetry (`/debug/telemetry`).
+
+- **`API_REFERENCE_UPDATED.md`**  
+  Primary, up-to-date API reference with full request/response shapes and recent fixes.
 
 - **`SECURITY_PRIVACY.md`**  
   Current understanding of:
@@ -134,7 +158,7 @@ Older text files at the repo root (e.g., `Hydration_File_001.txt`, `Hydration_Fi
 - **New users**: start with `USER_MANUAL.md`, then skim `SYSTEM_OVERVIEW.md`.
 - **Developers**: read `SYSTEM_OVERVIEW.md`, `SYSTEM_MATRIX.md`, and `DEV_GUIDE.md` (when available), then consult `API_REFERENCE.md` and `CONFIG_ENV.md` as needed.
 - **Operators / QA**: use `TEST_PLAN.md`, `TEST_REPORT_TEMPLATE.md`, and `OPERATIONS_RUNBOOK.md`.
-- **AI agents**: load `HYDRATION_*.md`, `SYSTEM_OVERVIEW.md`, `SYSTEM_MATRIX.md`, and `AGENT_GUIDE.md` first, then follow instructions there.
+- **AI agents**: load `HYDRATION_*.md`, `SYSTEM_OVERVIEW.md`, `SYSTEM_MATRIX.md`, `AUTOPILOT_PLAN.md`, and `AGENT_GUIDE.md` first, then follow instructions there.
 
 As the documentation overhaul continues, this index will be kept up to date so all important knowledge about InfinityWindow is discoverable from one place.
 

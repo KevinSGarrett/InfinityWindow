@@ -21,13 +21,13 @@ This test plan covers:
   - Message/document embeddings.
   - Memory item embeddings.
 
-Assumptions:
-
 - Environment matches `Hydration_File_002.txt`:
   - Windows, root at `C:\InfinityWindow`.
-  - Backend at `http://127.0.0.1:8000` via `uvicorn app.api.main:app --reload` from `backend` venv.
+  - Backend expected on **http://127.0.0.1:8000** (`uvicorn app.api.main:app --host 127.0.0.1 --port 8000` from `backend` venv). If port 8000 is occupied, use a temporary port (e.g., 8001) and adjust calls accordingly.
   - Frontend at `http://127.0.0.1:5173` via `npm run dev` from `frontend`.
-- DB (`backend/infinitywindow.db`) and Chroma data (`backend/chroma_data`) can be **reset** between phases when explicitly noted.
+- **LLM key required**: Chat, embeddings, memory, search, and usage rely on a configured OpenAI/LLM key; fail fast if unset or invalid.
+- DB (`backend/infinitywindow.db`) and Chroma data (`backend/chroma_data`) can be **reset** between phases when explicitly noted. Recommend migrating QA to Postgres to remove SQLite lock risk; until then heavier retry/backoff is enabled.
+- Large repo ingestion batching E2E is very long-running; “Job History” UI check is flaky under load. We are temporarily deprioritizing that one test while focusing on chat/tasks/memory/instructions fixes.
 
 Out of scope for this plan (future phases / v3+):
 
@@ -76,7 +76,7 @@ Results and issues for each test should be recorded in a separate test report (s
 ### A-Env-01 – Backend health check
 
 - **Preconditions**:
-  - From `C:\InfinityWindow\backend`: venv activated, `uvicorn app.api.main:app --reload` running.
+  - From `C:\InfinityWindow\backend`: venv activated, `uvicorn app.api.main:app --host 127.0.0.1 --port 8000` running.
 - **Steps**:
   1. `Invoke-RestMethod http://127.0.0.1:8000/health` (PowerShell) or use browser.
   2. Confirm CORS config by hitting `/health` from `http://127.0.0.1:5173` UI (refresh app header).
@@ -173,15 +173,127 @@ Record any problems under `A-Env-*` in test reports.
   - When progress/completion is mentioned, the assistant updates task status (done vs open) without being explicitly instructed to edit the list.
   - Tasks appear in a sensible order (highest-priority/newest items surfaced appropriately) or are reordered when dependencies are clarified.
 
-### B-Docs-01 – Docs CRUD + ingestion
+### B-Tasks-03 – Suggested-change queue & telemetry
+
+- **Purpose**: Verify that low-confidence adds/completions are stored as suggestions, can be reviewed via the API, and are reflected in telemetry.
+- **Steps**:
+  1. In a chat conversation, provide intentionally vague TODO statements (e.g., “Maybe we could consider cleaning some CSS later”) so the maintainer generates low-confidence suggestions instead of immediate tasks.
+  2. Call `GET /projects/{id}/task_suggestions` and confirm pending entries exist with `action_type` = `add` or `complete`, confidence values, and payload metadata (priority, blocked reason).
+  3. Call `POST /task_suggestions/{id}/approve` for one suggestion and confirm:
+     - A real task is added/updated.
+     - The suggestion’s status changes to `approved`, and `GET /projects/{id}/tasks` shows the item with the inferred priority / blocked reason.
+  4. Call `POST /task_suggestions/{id}/dismiss` for another suggestion and confirm it is removed from the pending list.
+  5. Hit `/debug/telemetry` before and after the actions; confirm `auto_suggested`, `auto_added`, `auto_completed`, and `recent_actions[]` reflect the operations (look for suggestion IDs and confidence entries).
+- *(Tip: For deterministic QA, you can use `POST /debug/task_suggestions/seed` to insert add/complete suggestions without waiting for a chat conversation.)*
+- **Expected**:
+  - Low-confidence requests generate suggestions instead of immediate changes.
+  - Approve/dismiss endpoints work and mutate the task list accordingly.
+  - Telemetry counters and `recent_actions` capture each action with timestamps/confidence.
+
+#### Large repo ingestion test harness (B-Docs-01 → B-Docs-07) — long-running
+
+- **Reset & project**: Run `tools/reset_qa_env.py --confirm` (or delete `backend\infinitywindow.db` + `backend\chroma_data`) and create `POST /projects { "name": "Ingestion QA", "local_root_path": "C:\\InfinityWindow" }`.
+- **Backend**: Use `http://127.0.0.1:8000` (switch temporarily only if 8000 is occupied).
+- **Repository fixture**: Use the real `C:\InfinityWindow` tree or a curated subset (`docs`, `backend\app`, `frontend\src`) so we can exercise tiny, medium, and large jobs.
+- **Pre-checks**: Confirm the selected project has `local_root_path` set and that `/projects/{id}/fs/list` returns 200 for the root. Fail fast if the UI shows “local_root_path not configured” or if the status card does not appear within 10 seconds after clicking “Ingest repo”.
+- **Current known issue**: The “Job History” UI check may time out under heavy load; if the rest pass, you may defer that single check and log it in the report.
+- **Instrumentation**:
+  - Capture every `job_id` returned from `POST /projects/{id}/ingestion_jobs`.
+  - Poll `GET /projects/{id}/ingestion_jobs/{job_id}` every ~2s while a job is running; paste at least the final payload into the test report.
+  - Before and after each scenario, call `/debug/telemetry` and log the `ingestion` dict (`jobs_started/completed/cancelled/failed`, `files_processed`, `files_skipped`, `bytes_processed`, `total_duration_seconds`).
+  - Take UI screenshots (status card + job history table) for at least one run per scenario.
+- **Automation**: 
+  - `qa/ingestion_probe.py` covers the happy path, skip run, and forced failure (smoke tests).
+  - `qa/ingestion_e2e_test.py` provides comprehensive E2E API testing covering all B-Docs scenarios (see `AUTOMATED_INGESTION_TESTS.md`).
+  - `frontend/tests/ingestion-e2e.spec.ts` provides comprehensive E2E UI testing via Playwright (see `AUTOMATED_INGESTION_TESTS.md`).
+  - Manual checks still verify the frontend and telemetry, but automated tests can run all scenarios consistently.
+
+### B-Docs-01 – Docs CRUD + ingestion job happy path
 
 - **Steps**:
-  1. In Docs tab: ingest a small text document (name, description, content).
-  2. Ingest a local repo (`C:\InfinityWindow`, prefix `InfinityWindow/`).
-  3. `GET /projects/{id}/docs` to confirm documents exist.
+  1. In Docs tab: ingest a small text document (name, description, content) via **Ingest text document**.
+  2. Expand **Ingest local repo**, set root to `C:\InfinityWindow`, prefix `InfinityWindow/`, and click **Ingest repo**.
+  3. Observe the status card transitions `pending → running → completed` and shows non-zero `processed/total` counts while the job runs (screenshot + timestamp).
+  4. Poll `GET /projects/{id}/ingestion_jobs/{job_id}` until completion and confirm the JSON (status, `total_items`, `processed_items`, `total_bytes`, timestamps, `error_message=null`) matches the UI; paste the final payload into the test report.
+  5. Call `GET /projects/{id}/docs` to confirm repo documents were added (look for names prefixed with `InfinityWindow/`) and record the total doc count delta.
 - **Expected**:
   - Text doc and repo docs appear in list with correct IDs/names.
-  - No errors in backend logs.
+  - Ingestion job status/counts match between API and UI, with no backend errors.
+  - Newly ingested files become searchable via `/search/docs` if doc search is enabled.
+
+### B-Docs-02 – Ingestion job reuse & hash skipping
+
+- **Steps**:
+  1. Immediately re-run **Ingest repo** with the same root/prefix (new `job_id`).
+  2. Confirm the status card and `GET /projects/{id}/ingestion_jobs/{new_job_id}` show `processed_items = 0` (or very small) because nothing changed; log elapsed time (<5s expected).
+  3. Modify a single repo file (e.g., add a comment), run ingestion again, and observe that `processed_items` equals the number of changed files (typically 1).
+  4. Verify the modified file’s document entry shows an updated timestamp/content via `GET /projects/{id}/docs` and note the doc ID in the report.
+- **Expected**:
+  - Unchanged repos finish almost instantly with `processed_items = 0`.
+  - After editing one file, only that file is reprocessed and reported by both the API and UI.
+  - Automated coverage: `qa/ingestion_probe.py` runs the same scenario (initial ingest + skip pass) inside FastAPI’s TestClient.
+
+### B-Docs-03 – Progress metrics (files, bytes, duration)
+
+- **Purpose**: Validate the batching UI and API report accurate counts/timings while a job is running.
+- **Steps**:
+  1. Start ingesting a medium-sized repo subset (hundreds of files; e.g., include `backend\app` + `frontend\src` globs).
+  2. While status = `running`, capture the Docs tab status card twice (T+0s and T+10s) noting status text, processed vs total files, processed vs total bytes, elapsed time.
+  3. In parallel, poll `GET /projects/{id}/ingestion_jobs/{job_id}` every ~2s, logging each payload (attach JSON snippets to the report).
+  4. After completion, compare UI vs API snapshots to confirm counters/bytes/duration align (allowing for polling delay).
+  5. Ensure `/projects/{id}/docs` refresh occurs automatically when the job finishes; note the timestamp of the refresh event.
+- **Expected**:
+  - UI counters mirror API data; no negative or decreasing values.
+  - Duration chip roughly matches `finished_at - started_at`.
+  - Docs list shows newly ingested files immediately.
+
+### B-Docs-04 – Cancel endpoint & graceful shutdown
+
+- **Steps**:
+  1. Start a large ingest (entire repo with default globs).
+  2. Once processed_items > 0, click **Cancel job** (or `POST /projects/{id}/ingestion_jobs/{job_id}/cancel`).
+  3. Confirm status switches to `cancelled`, processed counters freeze, and the UI shows a success toast (record elapsed time between clicking Cancel and seeing the new status).
+  4. Immediately start another ingest; verify it resumes from the beginning (hash skipping still applies to already processed files) and log `/debug/telemetry` deltas for `jobs_cancelled`, `files_processed`, and `files_skipped`.
+- **Expected**:
+  - Cancel endpoint returns 200; job row shows `cancelled` and reason “Cancelled by user”.
+  - No partial documents remain; re-run completes normally.
+
+### B-Docs-05 – Job history list
+
+- **Steps**:
+  1. Execute three jobs: success, cancelled (from B-Docs-04), and forced failure (see B-Docs-06). Ensure each job ID is unique and captured in the report.
+  2. Open **Recent ingestion jobs** and click **Refresh**.
+  3. Compare table rows to `GET /projects/{id}/ingestion_jobs?limit=20` output (IDs, statuses, files/bytes, durations, finished timestamps, error messages).
+  4. Confirm loading and empty states behave (spinner while fetching, placeholder text when no jobs exist); include screenshots for both states.
+- **Expected**:
+  - Rows are newest-first; metrics match API payload.
+  - Error column shows readable text for failed jobs.
+
+### B-Docs-06 – Failure surfacing & telemetry
+
+- **Steps**:
+  1. Force a deterministic failure (e.g., temporarily patch `embed_texts_batched`, point to an unreadable root path, or use the failure helper from `qa/ingestion_probe.py`). If earlier runs already hashed every `*.txt` file, create a one-off file with a unique extension (e.g., `force_failure.fail`) and pass `include_globs=["*.fail"]` so at least one item is processed before the failure triggers.
+  2. Run ingestion and wait for it to fail.
+  3. Validate:
+     - UI status card shows `failed` plus the error message (screenshot).
+     - API payload contains the same `error_message`, non-zero processed counts, and `finished_at`.
+     - `/debug/telemetry` shows `jobs_failed` incremented alongside files/bytes counters (log before/after values).
+     - Job history row displays the failure text (attach snippet).
+- **Expected**:
+  - Failure messaging is clear (no stack traces).
+  - Telemetry reflects the failure.
+  - Automated coverage: `qa/ingestion_probe.py` forces a RuntimeError to verify this path.
+
+### B-Docs-07 – Ingestion telemetry snapshot/reset
+
+- **Steps**:
+  1. Call `/debug/telemetry` before running any jobs; note the full `ingestion` dict.
+  2. Execute the scenarios above (success, skip, cancel, failure) in sequence, capturing telemetry snapshots after each to show incremental growth.
+  3. After the final scenario, verify `jobs_started`, `jobs_completed`, `jobs_cancelled`, `jobs_failed`, `files_processed`, `files_skipped`, `bytes_processed`, `total_duration_seconds` all increased appropriately (table these deltas in the report).
+  4. Call `/debug/telemetry?reset=true` and ensure the ingestion counters reset to zero without affecting LLM/tasks telemetry; record the post-reset payload.
+- **Expected**:
+  - Counters monotonically increase per job type.
+  - Reset query zeroes the ingestion stats so QA can run clean comparisons.
 
 ### B-Mode-01 – Mode/model routing sanity
 
@@ -254,7 +366,7 @@ Record any problems under `A-Env-*` in test reports.
   2. Confirm:
      - File list shows correct folders/files.
      - Editor loads file content.
-  3. Use `GET /projects/{id}/fs/list` and `GET /projects/{id}/fs/read` for the same path and cross‑check.
+  3. Use `GET /projects/{id}/fs/list` and `GET /projects/{id}/fs/read` for the same `subpath` and cross‑check.
 - **Expected**:
   - Paths and contents match disk.
 
@@ -417,6 +529,17 @@ Record any problems under `A-Env-*` in test reports.
   - Draft decisions appear automatically; confirm/dismiss updates backend state.
   - Banner disappears once drafts are resolved.
 
+### G-Tasks-02 – Suggestions drawer & priority UI
+
+- **Steps**:
+  1. Seed several tasks with different priorities and blocked reasons; ensure the Tasks tab shows the new chips (critical/high/low + “Blocked by …”) and audit notes under each item.
+  2. Trigger at least two pending suggestions (one add, one complete) so the Tasks tab displays the “Suggested changes” drawer with a non-zero badge.
+  3. Open the drawer, verify the telemetry counters (auto-added/completed/suggested) and the list of pending suggestions with confidence, priority, and blocked text.
+  4. Approve one suggestion and dismiss another via the UI buttons; confirm toast notifications appear, list refreshes, and the main task list reflects the change (new task added or task marked done with audit note).
+- **Expected**:
+  - Priority and blocked chips render for existing tasks; audit notes are visible under tasks touched by automation.
+  - Suggestions drawer shows correct counts, telemetry, and pending entries; approving/dismissing updates both the drawer and the task list.
+
 ### G-Fold-01 – Conversation folders CRUD + usage
 
 (Same as previous section.)
@@ -472,10 +595,68 @@ Basic, manual stress tests:
   - Result: Pass / Fail / Blocked.
   - Any logs, screenshots, or error messages.
   - Follow‑up items (bug reports, doc updates, future test ideas).
+- For every new issue discovered, add a corresponding entry to `docs/ISSUES_LOG.md` (matching the ISSUE-00x ID used in the test report) with a short summary, fix, and verification reference.
 
 The goal is that, after running this plan once end‑to‑end, we have:
 
 - A clear list of **actual failures** to fix.
 - High confidence that the v0/v1/v2 stack matches the behavior described in `Hydration_File_002.txt` and `docs/PROGRESS.md`.
+
+---
+
+## 13. Phase J – Autopilot & Blueprint [design-only]
+
+> The Autopilot/Blueprint features referenced here are **designs only** (see `AUTOPILOT_PLAN.md`, `AUTOPILOT_LEARNING.md`).  
+> These tests become active once the corresponding models/endpoints/UI are implemented.
+
+### J-Blueprint-01 – Large blueprint ingestion & Plan tree
+
+- **Preconditions**:
+  - Blueprint/Plan ingestion pipeline implemented.
+  - A large blueprint document available (e.g., test spec with unique tokens per section).
+- **Steps**:
+  1. Ingest the blueprint as a `Document` and create a `Blueprint` for a project.
+  2. Call `POST /blueprints/{id}/generate_plan` and wait for completion.
+  3. `GET /blueprints/{id}` and verify:
+     - A nested PlanNode tree exists (phases/epics/features/stories).
+     - Offsets/anchors are present for nodes with underlying text.
+  4. Use UI Plan tree (Tasks tab) to inspect nodes and generate tasks for at least one feature.
+- **Expected**:
+  - Plan tree is stable and deterministic for the same blueprint input.
+  - Generated tasks are linked back to PlanNodes and appear in the Tasks tab.
+
+### J-Autopilot-01 – Semi‑auto run lifecycle
+
+- **Preconditions**:
+  - ExecutionRun/ExecutionStep models and endpoints implemented.
+  - ManagerAgent can start runs for simple “hello world” tasks.
+- **Steps**:
+  1. Create a sandbox project and a tiny feature (“Write hello file”). Generate a corresponding task.
+  2. Set `autonomy_mode="semi_auto"` and `max_parallel_runs=1` on the project.
+  3. In chat, ask: “Start work on the ‘Write hello file’ task in semi_auto mode.”
+  4. Call `/projects/{id}/autopilot_tick` until a run is created and reaches `awaiting_approval` for a `write_file` step.
+  5. Approve the step via `/runs/{run_id}/advance` or the UI and verify:
+     - File contents match expectation.
+     - Run transitions to `completed`.
+     - Linked task is marked `done`.
+- **Expected**:
+  - Autopilot never runs unsafe commands automatically.
+  - All file edits are logged as ExecutionSteps with rollback data.
+
+### J-Autopilot-02 – Full‑auto with rollback safety
+
+- **Preconditions**:
+  - Same as J-Autopilot-01, with `autonomy_mode="full_auto"` allowed in a safe sandbox project.
+- **Steps**:
+  1. Seed a feature that intentionally triggers a small refactor (multiple file edits).
+  2. Enable `full_auto` and trigger Autopilot via `/autopilot_tick` or UI controls.
+  3. Let a run advance far enough to make several file changes.
+  4. Manually inspect diffs in the Runs panel and Files tab.
+  5. Call `/runs/{run_id}/rollback` (or click “Revert run” in the UI) and verify that:
+     - All files touched by that run are restored to their original content.
+     - Run status becomes `aborted` with an appropriate message.
+- **Expected**:
+  - No edits remain after rollback; git diff is clean.
+  - Autopilot respects command allowlists and alignment gating throughout.
 
 

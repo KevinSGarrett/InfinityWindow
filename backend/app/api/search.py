@@ -12,6 +12,7 @@ from app.llm.embeddings import get_embedding
 from app.vectorstore.chroma_store import (
     query_similar_messages,
     query_similar_document_chunks,
+    query_similar_memory_items,
 )
 
 router = APIRouter(
@@ -266,3 +267,93 @@ def search_docs(
         )
 
     return DocSearchResponse(hits=hits)
+
+
+# ---------------------------------------------------------------------------
+# Memory search
+# ---------------------------------------------------------------------------
+
+
+class MemorySearchRequest(BaseModel):
+    project_id: int
+    query: str
+    limit: int = 5
+
+
+class MemorySearchRequest(BaseModel):
+    project_id: int
+    query: str
+    limit: int = 5
+
+
+class MemorySearchHit(BaseModel):
+    memory_id: int
+    project_id: int
+    content: str
+    distance: float
+
+
+class MemorySearchResponse(BaseModel):
+    hits: List[MemorySearchHit]
+
+
+class MemorySearchRequest(BaseModel):
+    project_id: int
+    query: str
+    limit: int = 5
+
+
+class MemorySearchHit(BaseModel):
+    memory_id: int
+    project_id: int
+    title: str
+    content: str
+    distance: float
+
+
+class MemorySearchResponse(BaseModel):
+    hits: List[MemorySearchHit]
+
+
+@router.post("/memory", response_model=MemorySearchResponse)
+def search_memory(
+    payload: MemorySearchRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Semantic search over memory items.
+    """
+    project = db.get(models.Project, payload.project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    query_emb = get_embedding(payload.query)
+    results = query_similar_memory_items(
+        project_id=payload.project_id,
+        query_embedding=query_emb,
+        n_results=payload.limit,
+    )
+
+    ids_nested = results.get("ids", [[]])
+    docs_nested = results.get("documents", [[]])
+    metas_nested = results.get("metadatas", [[]])
+    dists_nested = results.get("distances", [[]])
+
+    ids = ids_nested[0] if ids_nested else []
+    docs = docs_nested[0] if docs_nested else []
+    metas = metas_nested[0] if metas_nested else []
+    dists = dists_nested[0] if dists_nested else []
+
+    hits: List[MemorySearchHit] = []
+    for mem_id, doc, meta, dist in zip(ids, docs, metas, dists):
+        hits.append(
+            MemorySearchHit(
+                memory_id=int(meta["memory_id"]),
+                project_id=int(meta["project_id"]),
+                title=meta.get("title") or "",
+                content=doc,
+                distance=float(dist),
+            )
+        )
+
+    return MemorySearchResponse(hits=hits)

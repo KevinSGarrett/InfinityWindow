@@ -25,6 +25,7 @@ Stored primarily in:
 - **Filesystem operations**
   - Files under the project root (as configured per project).
   - AI edits are applied to real files on disk when accepted.
+  - Filesystem endpoints guard against path escapes; `fs/read` accepts `file_path` or `subpath`, and `fs/ai_edit` accepts `instruction` or `instructions`.
 
 ### 1.2 External data (LLM provider)
 
@@ -80,9 +81,7 @@ Implications:
 ### 4.1 Filesystem
 
 - File operations are scoped to a **project root path** configured per project.
-- Endpoints under `/projects/{project_id}/files` should:
-  - Resolve relative paths safely.
-  - Reject attempts to traverse outside the project root (e.g., `..` segments).
+- Endpoints under `/projects/{project_id}/fs/*` resolve relative paths safely and reject attempts to traverse outside the project root (e.g., `..` segments). `fs/read` accepts `file_path` or `subpath`; `fs/ai_edit` accepts `instruction` or `instructions`.
 
 Recommendations:
 
@@ -91,7 +90,7 @@ Recommendations:
 
 ### 4.2 Terminal
 
-- Terminal commands are executed via backend endpoints (see `docs/API_REFERENCE.md`).
+- Terminal commands are executed via backend endpoints (see `docs/API_REFERENCE_UPDATED.md`).
 - InfinityWindow does **not** prevent destructive commands by itself.
 
 Recommendations:
@@ -99,6 +98,8 @@ Recommendations:
 - Treat the Terminal tab as you would a normal shell:
   - Be cautious with `rm`, `del`, `format`, or recursive deletes.
   - Prefer running tests and harmless diagnostics.
+
+Future Autopilot features (see `AUTOPILOT_LIMITATIONS.md`) will add an explicit terminal allowlist and alignment layer for **autonomous** commands, but those safeguards do not remove the need for human review when running manual commands.
 
 ---
 

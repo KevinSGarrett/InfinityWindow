@@ -8,9 +8,9 @@ _Purpose: keep the right-column design and constraints explicit so future work d
 The right column should feel like a **workbench** with clear, single-purpose tabs. The long-term “grouped” idea (Work / Files / Tools / Usage / Memory) turned out to be confusing in practice, so we’re standardizing on **one main concern per tab**:
 
 - `Tasks` – project tasks / TODOs.
-- `Docs` – project documents + ingestion (text + repo).
+- `Docs` – project documents + ingestion (text + repo) with live status/history/cancel.
 - `Files` – project file browser + file editor + AI file edits / diff.
-- `Search` – semantic search across messages and ingested docs.
+- `Search` – semantic search across messages and ingested docs/memory.
 - `Terminal` – terminal proposals and manual terminal usage (including history).
 - `Usage` – usage/cost for the active conversation.
 - `Notes` – project instructions + decision log (human notes, not vector memory).
@@ -59,7 +59,8 @@ No docs, no instructions, no decisions here.
   - Scrollable list of docs (name, description, doc id).
   - Two collapsible sections:
     - **Ingest text document** – name, description, text, ingest button.
-    - **Ingest local repo** – root path, name prefix, ingest button.
+    - **Ingest local repo** – root path, name prefix, ingest button, **status card** showing job status, processed/total counts, bytes, duration, and a cancel link while status = running.
+    - **Recent ingestion jobs** – table of the last ~20 jobs (status, files/bytes, duration, finished timestamp, errors) plus a Refresh button.
 
 ### 3.3 Files tab
 
@@ -270,5 +271,30 @@ Status legend: ✅ done · ⚠️ partial / changed · ⏳ not done
 - **Tour / onboarding hints**
   - ⏳ Not implemented yet.
 
+---
 
+## 10. Planned Autopilot UI surfaces [design-only]
 
+> These UI elements are part of the Autopilot plan in `AUTOPILOT_PLAN.md` and do **not** exist in the current implementation.
+
+- **Runs tab / panel**
+  - New right‑hand tab (“Runs”) or a dedicated panel in Terminal:
+    - Lists `ExecutionRun`s with status/type/linked task.
+    - Shows ordered `ExecutionStep`s for a selected run.
+    - Provides “Approve / Skip / Abort / Revert run” controls.
+    - Renders diffs for `write_file` steps and alignment badges for risky actions.
+
+- **Autopilot header controls**
+  - In the app header, near the project selector:
+    - Autonomy mode dropdown: Off / Suggest / Semi‑auto / Full auto.
+    - `Pause/Resume Autopilot` toggle bound to `Project.autopilot_paused`.
+    - Status pill (Idle / Running / Waiting for approval / Error).
+
+- **Plan & snapshot surfaces**
+  - Plan tree (Blueprint/PlanNodes) in Tasks tab drives “next tasks” and the Autopilot’s notion of active phase.
+  - Snapshot card (from the future ProjectSnapshot model) in Notes or Usage tab includes:
+    - Active blueprint/phase.
+    - Key metrics.
+    - Recent Autopilot runs and learning summary.
+
+When these surfaces are implemented, this file should be updated to move them from “planned” to “current” and to cross‑link any new keyboard shortcuts or layout constraints back to the rest of the right‑column design.

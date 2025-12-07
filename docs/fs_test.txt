@@ -1,0 +1,6 @@
+fs write test
+ai_edit works
+write override
+filesystem final check
+write again
+final ai_edit check

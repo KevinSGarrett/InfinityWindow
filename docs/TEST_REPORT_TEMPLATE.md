@@ -8,7 +8,7 @@ _Use this file as a template for recording results from `docs/TEST_PLAN.md`. Mak
 
 - **Date**: `YYYY‑MM‑DD`
 - **Tester**: `Your name`
-- **Backend version**: `vX.Y.Z` (from `/health`)
+- **Backend version**: `vX.Y.Z` (from `/health`; expected host `http://127.0.0.1:8000`)
 - **Frontend SHA / branch**: `...` (optional)
 - **OS / environment**: `Windows 11, C:\InfinityWindow`
 - **DB state**:
@@ -47,9 +47,23 @@ _Use this file as a template for recording results from `docs/TEST_PLAN.md`. Mak
 | B-Chat-01 | Chat pipeline basics                |                |                |
 | B-Tasks-01| Tasks CRUD + auto‑extraction        |                |                |
 | B-Tasks-02| Autonomous TODO maintenance loop    |                |                |
-| B-Docs-01 | Docs CRUD + ingestion               |                |                |
+| B-Tasks-03| Suggested-change queue & telemetry  |                |                |
+| B-Docs-01 | Docs CRUD + ingestion happy path    |                |                |
+| B-Docs-02 | Ingestion reuse & hash skipping     |                |                |
+| B-Docs-03 | Progress metrics (files/bytes/time) |                |                |
+| B-Docs-04 | Cancel endpoint & graceful stop     |                |                |
+| B-Docs-05 | Job history table parity            |                |                |
+| B-Docs-06 | Failure surfacing & error text      |                |                |
+| B-Docs-07 | Ingestion telemetry snapshot/reset  |                |                |
 
-*(Extend table as needed for additional B‑phase tests you run.)*
+#### Large repo ingestion evidence log
+
+| Scenario (B-Docs-0X) | Job ID | Status | Files processed / total | Bytes processed / total | Duration (UI vs API) | UI evidence (screenshot/file) | Telemetry before → after | Notes / errors |
+|----------------------|--------|--------|-------------------------|-------------------------|----------------------|-------------------------------|--------------------------|----------------|
+|                      |        |        |                         |                         |                      |                               |                          |                |
+
+- Attach (or link) the raw `GET /projects/{id}/ingestion_jobs/{job_id}` payload and `/debug/telemetry` snapshots for each scenario.
+- Record cancel latency (B-Docs-04) and history table screenshots (B-Docs-05) in the Notes column if not captured elsewhere.
 
 #### Chat modes & model routing
 
@@ -116,6 +130,7 @@ For each tab, record at least one “visual sanity” test and any discovered is
 | G-Search-01| Search  | Messages/docs search                 |                |                |
 | G-Term-01 | Terminal | Manual + AI, last run, history       |                |                |
 | G-Usage-01| Usage    | Totals + recent records              |                |                |
+| G-Tasks-02| Tasks    | Suggestions drawer & priority UI     |                |                |
 | G-Notes-01| Notes    | Instructions + decisions             |                |                |
 | G-Mem-01  | Memory   | List, create, pin/unpin, delete      |                |                |
 
@@ -127,6 +142,16 @@ For each tab, record at least one “visual sanity” test and any discovered is
 | H-Term-01 | Terminal timeout / invalid command |                |                |
 | H-Chat-01 | Invalid conversation_id / project_id |              |                |
 | H-Debug-01| Telemetry endpoint sanity          |                |                |
+
+### Phase J (Autopilot & Blueprint – future)
+
+> These rows become active once Autopilot & Blueprint features are implemented (`AUTOPILOT_PLAN.md`). Leave blank for current runs.
+
+| Test ID       | Description                                   | Result (P/F/B) | Notes / Errors |
+|--------------|-----------------------------------------------|----------------|----------------|
+| J-Blueprint-01 | Large blueprint ingestion & Plan tree       |                |                |
+| J-Autopilot-01 | Semi‑auto run lifecycle                     |                |                |
+| J-Autopilot-02 | Full‑auto with rollback safety              |                |                |
 
 ### Phase I – Performance & durability spot checks
 
@@ -148,5 +173,6 @@ For each failure or concern, file a short entry here (or link to an issue tracke
 | ISSUE-002   | G-Files-01        | Files tab editor scrolls weird on small screens…       | Low                      | Adjust CSS `max-height` and padding…       |
 
 Use this section to drive future work on v3/v4/v5 as outlined in `docs/PROGRESS.md` (Next phases).
+- Remember to mirror each ISSUE-00x entry in `docs/ISSUES_LOG.md` (same ID, summary, fix, and verification reference) so future runs can quickly reference historical problems.
 
 

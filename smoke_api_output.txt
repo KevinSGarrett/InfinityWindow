@@ -1,0 +1,199 @@
+﻿Project: 158 QA Smoke 896383217
+-- Instructions PUT
+{
+    "project_id":  158,
+    "instruction_text":  "QA instructions test",
+    "instruction_updated_at":  "2025-12-05T05:52:52.689221",
+    "pinned_note_text":  "Pinned QA note"
+}
+-- Instructions GET
+{
+    "project_id":  158,
+    "instruction_text":  "QA instructions test",
+    "instruction_updated_at":  "2025-12-05T05:52:52.689221",
+    "pinned_note_text":  "Pinned QA note"
+}
+-- Memory create
+{
+    "id":  6,
+    "project_id":  158,
+    "title":  "Mem1",
+    "content":  "MemContent",
+    "tags":  [
+                 "t1"
+             ],
+    "pinned":  true,
+    "expires_at":  null,
+    "source_conversation_id":  null,
+    "source_message_id":  null,
+    "superseded_by_id":  null,
+    "created_at":  "2025-12-05T05:52:52.699992",
+    "updated_at":  "2025-12-05T05:52:52.699992"
+}
+-- Memory patch
+{
+    "id":  6,
+    "project_id":  158,
+    "title":  "Mem1",
+    "content":  "MemContent updated",
+    "tags":  [
+                 "t1"
+             ],
+    "pinned":  false,
+    "expires_at":  null,
+    "source_conversation_id":  null,
+    "source_message_id":  null,
+    "superseded_by_id":  null,
+    "created_at":  "2025-12-05T05:52:52.699992",
+    "updated_at":  "2025-12-05T05:52:53.360382"
+}
+-- Memory delete
+{
+    "status":  "deleted",
+    "memory_id":  6
+}
+-- Task create
+{
+    "id":  8,
+    "project_id":  158,
+    "description":  "Task1",
+    "status":  "open",
+    "priority":  "high",
+    "blocked_reason":  "none",
+    "auto_notes":  null,
+    "created_at":  "2025-12-05T05:52:53.424199",
+    "updated_at":  "2025-12-05T05:52:53.424199"
+}
+-- Task patch
+{
+    "id":  8,
+    "project_id":  158,
+    "description":  "Task1 updated",
+    "status":  "done",
+    "priority":  "high",
+    "blocked_reason":  "none",
+    "auto_notes":  null,
+    "created_at":  "2025-12-05T05:52:53.424199",
+    "updated_at":  "2025-12-05T05:52:53.429971"
+}
+-- Tasks list
+{
+    "id":  8,
+    "project_id":  158,
+    "description":  "Task1 updated",
+    "status":  "done",
+    "priority":  "high",
+    "blocked_reason":  "none",
+    "auto_notes":  null,
+    "created_at":  "2025-12-05T05:52:53.424199",
+    "updated_at":  "2025-12-05T05:52:53.429971"
+}
+-- Suggestions seed
+{
+    "id":  7,
+    "project_id":  158,
+    "conversation_id":  null,
+    "target_task_id":  null,
+    "action_type":  "add",
+    "payload":  {
+                    "description":  "Seeded task A",
+                    "priority":  "medium",
+                    "blocked_reason":  null
+                },
+    "confidence":  0.5,
+    "status":  "pending",
+    "task_description":  "Seeded task A",
+    "task_status":  null,
+    "task_priority":  null,
+    "task_blocked_reason":  null,
+    "created_at":  "2025-12-05T05:52:53.439257",
+    "updated_at":  "2025-12-05T05:52:53.439257"
+}
+{
+    "id":  8,
+    "project_id":  158,
+    "conversation_id":  null,
+    "target_task_id":  null,
+    "action_type":  "add",
+    "payload":  {
+                    "description":  "Seeded task B",
+                    "priority":  "low",
+                    "blocked_reason":  null
+                },
+    "confidence":  0.5,
+    "status":  "pending",
+    "task_description":  "Seeded task B",
+    "task_status":  null,
+    "task_priority":  null,
+    "task_blocked_reason":  null,
+    "created_at":  "2025-12-05T05:52:53.445414",
+    "updated_at":  "2025-12-05T05:52:53.445414"
+}
+-- Suggestion approve
+{
+    "id":  7,
+    "project_id":  158,
+    "conversation_id":  null,
+    "target_task_id":  9,
+    "action_type":  "add",
+    "payload":  {
+                    "description":  "Seeded task A",
+                    "priority":  "medium",
+                    "blocked_reason":  null
+                },
+    "confidence":  0.5,
+    "status":  "approved",
+    "task_description":  "Seeded task A",
+    "task_status":  "open",
+    "task_priority":  "medium",
+    "task_blocked_reason":  null,
+    "created_at":  "2025-12-05T05:52:53.439257",
+    "updated_at":  "2025-12-05T05:52:53.451506"
+}
+-- Suggestion dismiss
+{
+    "id":  8,
+    "project_id":  158,
+    "conversation_id":  null,
+    "target_task_id":  null,
+    "action_type":  "add",
+    "payload":  {
+                    "description":  "Seeded task B",
+                    "priority":  "low",
+                    "blocked_reason":  null
+                },
+    "confidence":  0.5,
+    "status":  "dismissed",
+    "task_description":  "Seeded task B",
+    "task_status":  null,
+    "task_priority":  null,
+    "task_blocked_reason":  null,
+    "created_at":  "2025-12-05T05:52:53.445414",
+    "updated_at":  "2025-12-05T05:52:53.457605"
+}
+-- Tasks after suggestions
+[
+    {
+        "id":  9,
+        "project_id":  158,
+        "description":  "Seeded task A",
+        "status":  "open",
+        "priority":  "medium",
+        "blocked_reason":  null,
+        "auto_notes":  null,
+        "created_at":  "2025-12-05T05:52:53.451506",
+        "updated_at":  "2025-12-05T05:52:53.451506"
+    },
+    {
+        "id":  8,
+        "project_id":  158,
+        "description":  "Task1 updated",
+        "status":  "done",
+        "priority":  "high",
+        "blocked_reason":  "none",
+        "auto_notes":  null,
+        "created_at":  "2025-12-05T05:52:53.424199",
+        "updated_at":  "2025-12-05T05:52:53.429971"
+    }
+]
+-- Suggestions after actions

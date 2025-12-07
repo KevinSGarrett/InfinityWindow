@@ -1,0 +1,448 @@
+ARCHIVED: Pre‑Autopilot‑v2 design doc. Kept for historical context; see `docs/SYSTEM_OVERVIEW.md`, `docs/SYSTEM_MATRIX.md`, `docs/AUTOPILOT_PLAN.md`, `docs/TODO_CHECKLIST.md`, and `docs/PROGRESS.md` for the current state of the system.
+
+_Project Learning & Self‑Optimization Layer_
+
+This document defines the **Project Learning Layer** for InfinityWindow Autopilot.
+
+It sits on top of:
+
+- `Updated_Project_Plan_2.txt` (high‑level blueprint/plan graph / runs / manager design)
+- `Updated_Project_Plan_2_Ingestion_Plan.txt` (chunking + embeddings + large repo/blueprint ingestion)
+- `Updated_Project_Plan_2_Model_Matrix.txt` (which models to use for which tasks)
+- `Updated_Project_Plan_2_Phase3_4.txt` (ExecutionRun / ExecutionStep + Manager + Autopilot tick)
+- `Updated_Project_Plan_2_Worker_Manager_Playbook.txt` (behavior rules for manager + workers)
+
+**Goal:**  
+Give the Manager agent the ability to **learn this specific project over time** and use that learning to:
+
+- Understand the blueprint deeply (even if it’s imperfect).  
+- Adjust the **build order** and dependencies based on reality.  
+- Propose pivots and refinements to the plan as the project evolves.  
+- Make future runs more efficient and less error‑prone.
+
+We do **not** fine‑tune models. We **do**:
+
+- Collect structured signals from ExecutionRuns, Tasks, PlanNodes, and blueprints.  
+- Store those signals in the DB.  
+- Let the Manager call LLMs to interpret those signals and adjust plan/task state.
+
+---
+
+## 0. Conceptual Overview
+
+“Learning the project” in this design means:
+
+1. **Observing execution**
+   - For each task/run, we track how hard it was, how many failures, where specs were unclear, which files were fragile.
+
+2. **Recording structured learning**
+   - We encode that into:
+     - `Task.difficulty_score`, `rework_count`, `actual_*_timestamps`
+     - `PlanNode.learned_priority`, `learned_risk_level`
+     - `ExecutionRun.outcome`, `learning_notes`
+     - Project‑level learning metrics and snapshot sections.
+
+3. **Adapting the plan**
+   - Manager uses the learned fields to:
+     - Re‑order tasks within phases.
+     - Bump some features earlier/later.
+     - Split or merge tasks.
+     - Add “spike/prototype” tasks where the blueprint is fuzzy.
+     - Suggest blueprint pivots when new versions are uploaded.
+
+4. **Respecting the blueprint, but not worshipping it**
+   - Blueprints are **versioned inputs**.
+   - Manager treats them as the initial roadmap, then improves the build strategy as it actually *builds* and *tests* the project.
+
+---
+
+## 1. Data Model Extensions
+
+> All changes go in `backend/app/db/models.py`. Keep them small and explicit.
+
+### 1.1 Task learning fields
+
+Extend `Task` with:
+
+```python
+class Task(Base):
+    __tablename__ = "tasks"
+    # existing fields ...
+
+    # Learning-related fields
+    difficulty_score = Column(Integer, nullable=True)      # 1..5, derived from runs
+    rework_count = Column(Integer, default=0)              # times reopened or follow-up created
+
+    planned_phase_node_id = Column(Integer, ForeignKey("plan_nodes.id"), nullable=True)
+    actual_phase_node_id = Column(Integer, ForeignKey("plan_nodes.id"), nullable=True)
+
+    actual_started_at = Column(DateTime, nullable=True)
+    actual_completed_at = Column(DateTime, nullable=True)
+Semantics:
+difficulty_score
+1 = trivial, 5 = extremely hard.
+Derived from run stats (steps, failures, rollbacks).
+rework_count
+Increment when:
+A done task is moved back to open.
+A follow‑up task is created explicitly flagged as “rework” of this one.
+planned_phase_node_id
+The PlanNode originally associated to this task (from blueprint plan/decomposition).
+actual_phase_node_id
+The PlanNode under which the work actually happened.
+Initially equal to planned_phase_node_id, but may change when plan is refined.
+actual_started_at / actual_completed_at
+Timestamps when the first/last run touching this task is executed.
+1.2 PlanNode learning fields
+Extend PlanNode:
+python
+Copy code
+class PlanNode(Base):
+    __tablename__ = "plan_nodes"
+    # existing fields ...
+
+    learned_priority = Column(String, default="normal")  # "low", "normal", "high"
+    learned_risk_level = Column(String, default="normal")  # "low", "normal", "high"
+
+    inferred_dependency_json = Column(JSON, nullable=True)  # e.g. ["Auth", "Core DB"]
+Semantics:
+learned_priority / learned_risk_level
+AI‑updated fields reflecting experience:
+high‑risk: lots of failures/rework; fragile.
+high‑priority: touches many downstream tasks, critical path, or repeatedly requested.
+inferred_dependency_json
+High‑level dependencies between PlanNodes (by title or id), inferred by the Manager based on how tasks actually played out.
+1.3 ExecutionRun learning fields
+Extend ExecutionRun:
+python
+Copy code
+class ExecutionRun(Base):
+    __tablename__ = "execution_runs"
+    # existing fields ...
+
+    outcome = Column(String, default="unknown")  # "success", "failed_tests", "code_error", "blocked", "cancelled"
+    learning_notes = Column(Text, nullable=True) # short "what we learned" string
+Semantics:
+outcome
+Set after a run finishes:
+success: tests passed, task goals met.
+failed_tests: tests failed, but code changes applied.
+code_error: exceptions, syntax errors, etc.
+blocked: spec unclear, missing dependency, missing env, etc.
+cancelled: user aborted.
+learning_notes
+A 1–5 sentence summary written by the Manager or a worker:
+“Spec for payments incomplete; created task ‘Design v2 payment flow’.”
+“DB migrations needed; added infra tasks.”
+2. Blueprint Learning & Understanding
+The Manager must be able to “understand” a large blueprint (e.g., 500k words) and figure out a good build order, even if the blueprint itself isn’t a perfect implementation plan. We reuse your Phase 1 blueprint ingestion and PlanNode tree, then add a “Blueprint Understanding Pipeline”.
+2.1 Blueprint Understanding Pipeline
+New helper module:
+backend/app/services/blueprint_understanding.py
+Responsibilities:
+Build hierarchical understanding
+Input:
+The PlanNode tree (phases/epics/features/stories).
+High‑level metadata (kind, summaries, doc anchors).
+Output:
+A set of “Blueprint Understanding Docs”:
+Architecture Overview
+Foundational Requirements
+Feature Map (which features depend on which foundations)
+Non‑functional Requirements (performance, security, compliance)
+Assumed Build Order (from blueprint’s perspective)
+Implementation:
+Serialize PlanNode tree into a JSON structure (with ids, kinds, titles, summaries).
+Feed it to an LLM (DEEP / RESEARCH model from Updated_Project_Plan_2_Model_Matrix.txt) in chunks:
+“Given this plan tree, produce an architecture overview…”
+“Given this plan tree, list the critical foundations that other features depend on…”
+“Given this plan tree, propose a build sequence that respects dependencies and delivers an MVP quickly.”
+Store outputs as Document rows:
+kind="blueprint_architecture"
+kind="blueprint_foundations"
+kind="blueprint_build_sequence"
+etc.
+Annotate PlanNodes
+For each PlanNode, using the understanding docs + PlanNode’s own summary:
+Suggest:
+learned_priority (initially).
+learned_risk_level (based on non‑functional requirements, complexity).
+inferred_dependency_json (high‑level dependencies).
+Persist these onto each PlanNode.
+Create “Blueprint Learning Snapshot”
+A Document called “Blueprint Learning Snapshot v1”:
+Explains:
+Key architectural decisions.
+MVP feature set.
+Proposed high‑level build phases.
+Known uncertainties in the blueprint (missing details, ambiguous areas).
+Cursor target:
+Implement build_blueprint_understanding(blueprint_id: int) function:
+python
+Copy code
+def build_blueprint_understanding(blueprint_id: int) -> None:
+    """
+    1. Load PlanNode tree for blueprint.
+    2. Call LLM to produce architecture / foundations / sequence docs.
+    3. Save those docs.
+    4. Annotate PlanNodes with learned_priority / learned_risk_level / inferred_dependency_json.
+    5. Create a "Blueprint Learning Snapshot" document.
+    """
+2.2 Manager’s blueprint‑aware behavior
+ManagerAgent (from Updated_Project_Plan_2_Phase3_4.txt / Worker_Manager_Playbook) should:
+On project setup / when a blueprint is marked active:
+Call build_blueprint_understanding.
+Use the produced docs when planning tasks and selecting next tasks.
+When user uploads a new blueprint version:
+Re‑run understanding for the new version.
+Diff old vs new (see §4 below).
+Update PlanNodes and tasks accordingly.
+3. Run‑Time Learning from Execution
+3.1 Recording run outcomes
+Add a ManagerAgent method:
+python
+Copy code
+class ManagerAgent:
+    # existing methods ...
+
+    def record_run_outcome(self, run: ExecutionRun) -> None:
+        """
+        Update Tasks, PlanNodes, and ExecutionRun with learning signals
+        based on how this run went.
+        """
+Implementation outline:
+Compute run stats:
+Number of steps.
+Number of failed steps.
+Whether rollback happened.
+Time between first and last step.
+Derive difficulty_score:
+Simple heuristic + LLM refinement:
+Start from:
+Few steps, no failures → 1–2.
+Many steps, some failures → 3–4.
+Many steps, frequent failures, rollback → 5.
+Optionally refine by calling a cheap model with run metadata and a small prompt:
+“Given these stats and notes, rate difficulty 1–5.”
+Update the linked Task:
+Set/adjust difficulty_score.
+If this run ended with outcome not success:
+And we reopened task or created follow‑ups → increment rework_count.
+Set actual_started_at / actual_completed_at if not set.
+Update PlanNode:
+For the node(s) linked to this task:
+If difficulty_score >= 4 or run.outcome is blocked or failed_tests:
+Bump learned_risk_level toward high.
+If many downstream tasks depend on this node and those tasks repeatedly hit issues:
+Bump learned_priority to high.
+Write learning_notes:
+Compose a short summary via cheap LLM call:
+Input:
+Task description.
+PlanNode summary.
+Run stats.
+Example errors.
+Output:
+1–5 sentence explanation of what we learned.
+3.2 Periodic retrospectives
+Add a ManagerAgent method:
+python
+Copy code
+class ManagerAgent:
+    def periodic_retrospective(self) -> dict:
+        """
+        Look at recent runs & tasks, identify patterns, and propose:
+          - priority/risk updates
+          - dependency tweaks
+          - new spike/prototype tasks
+        Returns a dict summary for logging/UI.
+        """
+Trigger:
+Automatically:
+After every N runs (e.g., 10) or at least once per day (optional cron/heartbeat).
+Manually:
+Via POST /projects/{project_id}/refine_plan (see below).
+Implementation steps:
+Gather recent data:
+ExecutionRuns in last X days.
+Tasks with high rework_count.
+PlanNodes with many failed runs.
+Any blueprint version changes.
+Build a summary payload.
+Call DEEP model with a prompt like:
+“You are the project manager for InfinityWindow. Given this plan, the blueprint understanding docs, and these recent runs/tasks, propose improvements to the build order and plan.”
+From the LLM output, extract structured proposals:
+PlanNode priority changes.
+New or split tasks (with clear descriptions).
+Suggested dependency tweaks.
+Suggested blueprint clarifications (e.g., “Auth spec is unclear; add a design task”).
+Apply only safe, local changes automatically:
+Bump learned_priority / learned_risk_level.
+Create clearly scoped “spike” tasks for research.
+Never auto‑delete tasks/PlanNodes; mark them as obsolete or needs_review if necessary.
+Record a Decision and update ProjectSnapshot:
+Decision: “Autopilot retrospective #N – what changed.”
+Snapshot: add “Plan Changes & Rationale” section.
+Return:
+A dict summarizing what was changed, for API/UI.
+4. Plan Refinement & Pivots (Blueprint vN → vN+1)
+4.1 API: refine_plan
+Add endpoint to backend/app/api/main.py:
+python
+Copy code
+@app.post("/projects/{project_id}/refine_plan")
+def refine_plan(project_id: int, mode: str = Body("normal")):
+    """
+    Ask the manager to analyze what we've learned and refine plan/ordering.
+    mode: "normal" (conservative) or "aggressive" (permitted to reorder more).
+    """
+    manager = ManagerAgent(project_id)
+    result = manager.refine_plan(mode=mode)
+    return result
+Manager implementation:
+python
+Copy code
+class ManagerAgent:
+    def refine_plan(self, mode: str = "normal") -> dict:
+        """
+        1. Run periodic_retrospective().
+        2. If mode == "aggressive", allow larger phase reordering and
+           cross-phase task reshuffling, but still never delete nodes.
+        3. Update PlanNode/Task fields as approved.
+        4. Update ProjectSnapshot + Decision log.
+        5. Return summary (counts of changes, brief explanation).
+        """
+4.2 Blueprint version pivot
+You already designed blueprint versioning in the ingestion plan (Updated_Project_Plan_2_Ingestion_Plan.txt). Here we define how the manager uses it. Add helper:
+backend/app/services/blueprint_diff.py
+python
+Copy code
+@dataclass
+class BlueprintDiff:
+    unchanged_nodes: List[int]
+    modified_nodes: List[int]
+    added_nodes: List[int]
+    removed_nodes: List[int]
+diff_blueprints(old_id: int, new_id: int) -> BlueprintDiff:
+Compare PlanNodes by normalized title + kind + anchor:
+classify as unchanged, modified, added, removed.
+Manager pivot flow:
+User uploads new blueprint vN+1 and sets it as active.
+Manager:
+Calls diff_blueprints(old_id, new_id).
+For modified/added nodes:
+(Re)generate tasks if needed.
+Mark PlanNodes status="changed".
+For removed nodes:
+Mark related tasks as status="needs_review" (don’t auto‑delete).
+Manager writes Decision: “Pivot to Blueprint vN+1”.
+Manager calls refine_plan(mode="normal") to rebalance ordering under new blueprint.
+5. Learning Metrics & UI Surfaces
+5.1 Backend metrics endpoint
+Add to backend/app/api/main.py:
+python
+Copy code
+@app.get("/projects/{project_id}/learning_metrics")
+def get_learning_metrics(project_id: int):
+    """
+    Aggregate project learning metrics for UI & debugging.
+    """
+    # Compute/tighten as needed:
+    avg_cycle_time = ...
+    avg_difficulty = ...
+    top_fragile_areas = [...]  # PlanNodes or folders with high rework_count
+    plan_deviation_rate = ...  # % tasks executed outside planned phase
+    blocked_tasks = ...
+
+    return {
+        "avg_task_cycle_time": avg_cycle_time,
+        "avg_difficulty_score": avg_difficulty,
+        "top_fragile_areas": top_fragile_areas,
+        "plan_deviation_rate": plan_deviation_rate,
+        "blocked_tasks_count": blocked_tasks,
+    }
+5.2 Snapshot integration
+Update your ProjectSnapshot generation (already planned in Updated_Project_Plan_2) to include:
+Section: “Learning & Plan Health”
+Average difficulty.
+Top fragile components (names + links to PlanNodes).
+Plan deviation rate.
+Summary of last retrospective / refine_plan.
+Snapshot doc is created/updated in backend/app/services/snapshot.py (as already planned).
+5.3 Frontend surfaces
+You don’t have to implement all at once, but good v1 targets:
+Learning card in Usage or Notes tab:
+Pulls /projects/{id}/learning_metrics.
+Shows:
+avg_difficulty_score
+plan_deviation_rate
+Badges for top fragile areas (click → filter Tasks by those PlanNodes).
+“Improve plan based on learning” button in Plan tab:
+Calls /projects/{id}/refine_plan with mode="normal".
+Shows a summary modal of what changed.
+6. Model Choices (hook into Model Matrix)
+All of this plugs into your Updated_Project_Plan_2_Model_Matrix.txt. Suggested defaults (adapt as needed):
+Run‑level learning_notes & difficulty estimation:
+Use FAST model (cheap, small calls, frequent).
+Blueprint Understanding Pipeline:
+Use DEEP model for:
+Architecture overview.
+Foundations/execution sequence.
+Use RESEARCH model if blueprint is extremely large and you need multi‑call reasoning.
+Plan refinements & retrospectives:
+Use DEEP model for:
+periodic_retrospective.
+refine_plan.
+Metrics & scoring:
+Mostly deterministic Python code; no model needed except when building learning_notes.
+Ensure your model matrix file explicitly lists:
+MANAGER_LEARNING_FAST_MODEL (e.g. gpt‑4.1‑mini).
+MANAGER_LEARNING_DEEP_MODEL (e.g. gpt‑5.1).
+Optionally MANAGER_LEARNING_RESEARCH_MODEL if distinct.
+7. How This Integrates With Existing Plans
+Phase 1–2:
+Blueprint ingestion + PlanNodes + Plan→Tasks + Snapshot + context builder.
+Learning layer reuses those structures; doesn’t replace them.
+Phase 3–4 (Runs + Manager/Autopilot):
+Learning hangs off ExecutionRuns:
+After each run, call record_run_outcome.
+Periodically call periodic_retrospective.
+Expose /refine_plan + /learning_metrics.
+Worker/Manager Playbook:
+Workers already know how to implement/test/docs.
+Add guidance in Updated_Project_Plan_2_Worker_Manager_Playbook.txt:
+After a run, workers provide a short summary to help learning_notes.
+Manager uses learning to adjust future task selection.
+Docs & QA:
+Add AUTOPILOT_LEARNING.md to the docs index.
+Update SYSTEM_MATRIX.md with:
+New fields on Task/PlanNode/ExecutionRun.
+New endpoints (/refine_plan, /learning_metrics).
+Add QA probes:
+Seed synthetic tasks/runs, run refine_plan, assert learned fields change as expected.
+8. Cursor Implementation Checklist
+When you give this to Cursor, you can ask:
+“Implement the Project Learning Layer as defined in AUTOPILOT_LEARNING.md, wiring it into the existing Autopilot (Updated_Project_Plan_2_*.txt). Start with the data model and backend endpoints, then hook ManagerAgent up to record_run_outcome and refine_plan. Don’t touch the frontend yet.”
+Rough implementation steps for Cursor:
+Backend models
+Add new fields to Task, PlanNode, ExecutionRun in backend/app/db/models.py.
+Run migrations (or reset DB in QA env) if needed.
+Blueprint Understanding
+Create backend/app/services/blueprint_understanding.py.
+Implement build_blueprint_understanding(blueprint_id).
+Manager learning methods
+Extend ManagerAgent with:
+record_run_outcome
+periodic_retrospective
+refine_plan
+New endpoints
+/projects/{id}/refine_plan
+/projects/{id}/learning_metrics
+Run lifecycle integration
+After each ExecutionRun completes, call ManagerAgent.record_run_outcome.
+Optionally call periodic_retrospective after N runs.
+Snapshot + Decision integration
+Update snapshot generator to include Learning section.
+Write Decisions when large plan refinements/pivots occur.
+Minimal UI
+Later: add a small “Learning metrics” card + “Improve plan” button.

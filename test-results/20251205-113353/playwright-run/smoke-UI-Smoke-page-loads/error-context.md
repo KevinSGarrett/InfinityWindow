@@ -1,0 +1,68 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - heading "InfinityWindow" [level=1] [ref=e6]
+      - generic [ref=e7]: Personal AI workbench with long-term memory
+    - generic [ref=e8]:
+      - link "Skip to chat" [ref=e9] [cursor=pointer]:
+        - /url: "#chat-pane"
+      - generic [ref=e10]: "Backend: InfinityWindow v0.3.0"
+  - main [ref=e11]:
+    - generic [ref=e12]:
+      - generic [ref=e13]:
+        - generic [ref=e14]: Conversations
+        - button "+ New chat" [ref=e15] [cursor=pointer]
+      - generic [ref=e16]:
+        - generic [ref=e17]: Project
+        - combobox [ref=e18]:
+          - option "(No projects found)" [selected]
+      - generic [ref=e20]: No conversations yet. Start a new chat.
+    - generic [ref=e21]:
+      - generic [ref=e22]: Start a conversation with your InfinityWindow assistant.
+      - generic [ref=e24]: No messages yet. Ask something in the box below.
+      - generic [ref=e25]:
+        - textbox "Ask InfinityWindow something..." [ref=e26]
+        - generic [ref=e27]:
+          - generic [ref=e28]:
+            - generic [ref=e29]: Mode
+            - combobox [ref=e30]:
+              - option "Auto" [selected]
+              - option "Fast"
+              - option "Deep"
+              - option "Budget"
+              - option "Research"
+              - option "Code"
+          - generic [ref=e31]:
+            - generic [ref=e32]: Model override
+            - textbox "Model override" [ref=e33]:
+              - /placeholder: Optional model id
+            - generic [ref=e34]: Leave blank to let mode choose the model automatically.
+          - button "Send" [disabled] [ref=e35]
+    - generic [ref=e36]:
+      - tablist [ref=e37]:
+        - button "Tasks" [ref=e38] [cursor=pointer]
+        - button "Files" [ref=e39] [cursor=pointer]
+        - button "Docs" [ref=e40] [cursor=pointer]
+        - button "Search" [ref=e41] [cursor=pointer]
+        - button "Terminal" [ref=e42] [cursor=pointer]
+        - button "Usage" [ref=e43] [cursor=pointer]
+        - button "Notes" [ref=e44] [cursor=pointer]
+        - button "Memory" [ref=e45] [cursor=pointer]
+      - button "Refresh all" [ref=e47] [cursor=pointer]
+      - generic [ref=e49]:
+        - generic [ref=e50]:
+          - generic [ref=e51]:
+            - text: Project tasks
+            - generic [ref=e52]: "0"
+          - button "Suggested changes 0" [ref=e54] [cursor=pointer]:
+            - text: Suggested changes
+            - generic [ref=e55]: "0"
+        - generic [ref=e56]:
+          - generic [ref=e57]:
+            - textbox "Add a task..." [ref=e58]
+            - button "Add" [disabled] [ref=e59] [cursor=pointer]
+          - generic [ref=e61]: No project selected.
+```
