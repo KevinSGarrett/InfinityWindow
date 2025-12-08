@@ -139,7 +139,7 @@ export async function waitForBackend(maxWaitMs: number = 240_000): Promise<void>
       if (response.ok) {
         return;
       }
-    } catch (error) {
+    } catch {
       // Backend not ready yet
     }
     const backoff = Math.min(5000, 500 + attempt * 200);

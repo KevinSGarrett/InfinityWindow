@@ -41,9 +41,9 @@ test.describe("Tasks tab confidence chip", () => {
     const tasksResp = await request.get(
       `http://127.0.0.1:8000/projects/${project.id}/tasks`
     );
-    const tasksJson = await tasksResp.json();
+    const tasksJson: { description?: string | null }[] = await tasksResp.json();
     const seededExists = tasksJson.some(
-      (t: any) => (t.description || "").toLowerCase() === "pw seeded task"
+      (t) => (t.description || "").toLowerCase() === "pw seeded task"
     );
     if (!seededExists) {
       test.skip("Seeded task not found via API");
@@ -139,7 +139,7 @@ test.describe("Tasks tab confidence chip", () => {
         .locator(".usage-telemetry-list")
         .filter({ hasText: "0.4–0.7" });
       await bucketList.waitFor({ state: "visible", timeout: 15000 });
-    } catch (e) {
+    } catch {
       // Usage telemetry may be absent when no usage records exist; that's acceptable for this check.
       return;
     }

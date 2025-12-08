@@ -24,7 +24,7 @@ test.describe("Phase3 - UI accessibility & empty states", () => {
     await projectSelect.waitFor({ timeout: 15000 });
     try {
       await projectSelect.selectOption(project.id.toString());
-    } catch (e) {
+    } catch {
       // Retry once after a short wait
       await page.waitForTimeout(500);
       await projectSelect.selectOption({ value: project.id.toString() });

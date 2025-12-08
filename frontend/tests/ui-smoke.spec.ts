@@ -2,7 +2,6 @@ import { test, expect } from '@playwright/test';
 import { createTestProject, waitForBackend } from './helpers/api';
 
 const TEST_REPO_PATH = process.env.TEST_REPO_PATH || 'C:\\InfinityWindow';
-const API_BASE = process.env.PLAYWRIGHT_API_BASE ?? 'http://127.0.0.1:8000';
 const UI_BASE = process.env.PLAYWRIGHT_UI_BASE ?? 'http://localhost:5173';
 
 test.describe('UI Smoke - Instructions / Memory / Tasks', () => {
@@ -69,7 +68,7 @@ test.describe('UI Smoke - Instructions / Memory / Tasks', () => {
     // Some UIs lazy-load list after save; allow a quick refresh if not present
     try {
       await expect(memoryEntry).toBeVisible({ timeout: 10_000 });
-    } catch (e) {
+    } catch {
       const refresh = page.locator('.tab-section-header button', { hasText: /Refresh/i });
       if (await refresh.count()) {
         await refresh.click();

@@ -5,7 +5,7 @@ import React, {
   useCallback,
   useRef,
 } from "react";
-import type { KeyboardEvent } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import "./App.css";
 
 // ---------- Types ----------
@@ -93,13 +93,25 @@ type Task = {
   updated_at: string;
 };
 
+type TaskSuggestionPayload = {
+  description?: string | null;
+  priority?: string | null;
+  blocked_reason?: string | null;
+  [key: string]: unknown;
+};
+
+type TaskTelemetryDetails = {
+  model?: string | null;
+  matched_text?: string | null;
+} & Record<string, unknown>;
+
 type TaskSuggestion = {
   id: number;
   project_id: number;
   conversation_id: number | null;
   target_task_id: number | null;
   action_type: "add" | "complete" | string;
-  payload: Record<string, any>;
+  payload: TaskSuggestionPayload;
   confidence: number;
   status: string;
   task_description?: string | null;
@@ -119,6 +131,7 @@ type TaskTelemetryAction = {
   timestamp: string;
   action: string;
   confidence: number;
+  model?: string | null;
   task_id?: number | null;
   task_description?: string | null;
   task_status?: string | null;
@@ -128,7 +141,7 @@ type TaskTelemetryAction = {
   task_group?: string | null;
   project_id?: number | null;
   conversation_id?: number | null;
-  details?: Record<string, any>;
+  details?: TaskTelemetryDetails;
   matched_text?: string | null;
 };
 
@@ -157,7 +170,7 @@ type IngestionJob = {
   processed_bytes: number;
   cancel_requested: boolean;
   error_message?: string | null;
-  meta?: Record<string, any> | null;
+  meta?: Record<string, unknown> | null;
   started_at?: string | null;
   finished_at?: string | null;
   created_at: string;
@@ -169,6 +182,7 @@ type ConversationUsage = {
   total_tokens_in: number | null;
   total_tokens_out: number | null;
   total_cost_estimate: number | null;
+  auto_reason?: string | null;
   records: UsageRecord[];
 };
 
@@ -197,7 +211,7 @@ type TelemetrySnapshot = {
     };
     suggestions?: TaskSuggestion[];
   };
-  ingestion: Record<string, any>;
+  ingestion: Record<string, unknown>;
 };
 
 type ProjectDecision = {
@@ -331,7 +345,7 @@ const formatDateTime = (value?: string | null): string | null => {
 // For QA runs we set VITE_API_BASE; fallback remains 8000.
 const BACKEND_BASE =
   (typeof import.meta !== "undefined" &&
-    (import.meta as any)?.env?.VITE_API_BASE) ||
+    (import.meta as ImportMeta)?.env?.VITE_API_BASE) ||
   "http://127.0.0.1:8000";
 
 function App() {
@@ -894,7 +908,7 @@ function App() {
     return Array.from(map.values());
   }, [windowedUsageRecords]);
 
-  const lastUsageAutoReason = (usage as any)?.auto_reason;
+  const lastUsageAutoReason = usage?.auto_reason ?? null;
 
   // Fallback model options from task telemetry when usage breakdown is empty.
   const telemetryModelOptions = useMemo(() => {
@@ -904,7 +918,7 @@ function App() {
       if (selectedProjectId && a.project_id !== selectedProjectId) {
         return;
       }
-      const actionModel = (a as any).model || a.details?.model;
+      const actionModel = a.model ?? a.details?.model;
       if (actionModel) {
         models.add(actionModel);
       }
@@ -944,8 +958,7 @@ function App() {
         usageGroupFilter === "all" ||
         (a.task_group || "").toLowerCase() === usageGroupFilter;
 
-      const actionModel =
-        a.details?.model || (a as any).model || lastUsageModel || null;
+      const actionModel = a.model ?? a.details?.model ?? lastUsageModel ?? null;
       const matchesModel =
         usageModelFilter === "all" || actionModel === usageModelFilter;
 
@@ -978,7 +991,7 @@ function App() {
   const modelCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     timeFilteredRecentActions.forEach((a) => {
-      const m = (a as any).model || a.details?.model || "unknown";
+      const m = a.model ?? a.details?.model ?? "unknown";
       counts[m] = (counts[m] || 0) + 1;
     });
     return counts;
@@ -1068,7 +1081,8 @@ function App() {
             "Failed to copy to clipboard; export is still shown below."
           )
         );
-    } catch (err) {
+    } catch (error: unknown) {
+      console.error("Failed to generate JSON export:", error);
       setUsageExportError("Failed to generate JSON export.");
     }
   }, [timeFilteredRecentActions]);
@@ -1101,7 +1115,7 @@ function App() {
         return;
       }
       const rows = timeFilteredRecentActions.map((a) => {
-        const m = (a as any).model || a.details?.model || "";
+        const m = a.model ?? a.details?.model ?? "";
         return [
           a.timestamp ?? "",
           a.action ?? "",
@@ -1126,7 +1140,8 @@ function App() {
         );
       setUsageExportFormat("csv");
       setUsageExportJson(csv);
-    } catch (err) {
+    } catch (error: unknown) {
+      console.error("Failed to generate CSV export:", error);
       setUsageExportError("Failed to generate CSV export.");
     }
   }, [timeFilteredRecentActions]);
@@ -1510,9 +1525,7 @@ function App() {
                       {a.action} · conf {(a.confidence ?? 0).toFixed(2)}
                       {(() => {
                         const actionModel =
-                          a.details?.model ||
-                          (a as any).model ||
-                          lastUsageModel;
+                          a.details?.model ?? a.model ?? lastUsageModel;
                         return actionModel ? (
                           <span className="usage-subtext">
                             (model: {actionModel})
@@ -1579,7 +1592,7 @@ function App() {
   );
 
   const handleCommandPaletteInputKeyDown = (
-    event: KeyboardEvent<HTMLInputElement>
+    event: ReactKeyboardEvent<HTMLInputElement>
   ) => {
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -2145,7 +2158,7 @@ function App() {
       }
       const data: ConversationUsage = await res.json();
       setUsage(data);
-    } catch (e) {
+    } catch (e: unknown) {
       console.error("Fetching usage threw:", e);
       setUsage(null);
       setUsageError("Unexpected error loading usage.");
@@ -2171,11 +2184,12 @@ function App() {
       }
       const data: TelemetrySnapshot = await res.json();
       setTelemetry(data);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("Fetching telemetry threw:", e);
       setTelemetry(null);
-      const msg = e?.message
-        ? `Unexpected error: ${e.message}`
+      const message = e instanceof Error ? e.message : null;
+      const msg = message
+        ? `Unexpected error: ${message}`
         : "Unexpected error loading telemetry.";
       setTelemetryError(msg);
     } finally {
@@ -2913,8 +2927,8 @@ function App() {
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown as any);
-    return () => window.removeEventListener("keydown", handleKeyDown as any);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [setRightTab, showCommandPalette]);
 
   // ---------- When project changes, load its conversations + docs + tasks + files ----------
@@ -3057,7 +3071,7 @@ function App() {
     }
   };
 
-  const handleChatKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleChatKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (!isSending) {
@@ -3552,7 +3566,7 @@ function App() {
     }
   };
 
-  const handleNewTaskKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+  const handleNewTaskKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
       if (!isSavingTask) {
@@ -3808,7 +3822,7 @@ function App() {
     }
   };
 
-  const handleSearchKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleSearchKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (!isSearching) handleSearch();
@@ -4484,9 +4498,17 @@ function App() {
 
         {/* RIGHT: Workbench (tabbed) */}
         <section className="column column-right" ref={rightColumnRef}>
-          <div className="right-tabs">
+          <div
+            className="right-tabs"
+            role="tablist"
+            aria-label="Workbench sections"
+          >
             <button
               type="button"
+              id="right-tab-tasks"
+              role="tab"
+              aria-selected={rightTab === "tasks"}
+              aria-controls="right-panel-tasks"
               className={
                 "right-tab" + (rightTab === "tasks" ? " active" : "")
               }
@@ -4496,6 +4518,10 @@ function App() {
             </button>
             <button
               type="button"
+              id="right-tab-files"
+              role="tab"
+              aria-selected={rightTab === "files"}
+              aria-controls="right-panel-files"
               className={
                 "right-tab" + (rightTab === "files" ? " active" : "")
               }
@@ -4505,6 +4531,10 @@ function App() {
             </button>
             <button
               type="button"
+              id="right-tab-docs"
+              role="tab"
+              aria-selected={rightTab === "docs"}
+              aria-controls="right-panel-docs"
               className={
                 "right-tab" + (rightTab === "docs" ? " active" : "")
               }
@@ -4514,6 +4544,10 @@ function App() {
             </button>
             <button
               type="button"
+              id="right-tab-search"
+              role="tab"
+              aria-selected={rightTab === "search"}
+              aria-controls="right-panel-search"
               className={
                 "right-tab" + (rightTab === "search" ? " active" : "")
               }
@@ -4523,6 +4557,10 @@ function App() {
             </button>
             <button
               type="button"
+              id="right-tab-terminal"
+              role="tab"
+              aria-selected={rightTab === "terminal"}
+              aria-controls="right-panel-terminal"
               className={
                 "right-tab" + (rightTab === "terminal" ? " active" : "")
               }
@@ -4532,6 +4570,10 @@ function App() {
             </button>
             <button
               type="button"
+              id="right-tab-usage"
+              role="tab"
+              aria-selected={rightTab === "usage"}
+              aria-controls="right-panel-usage"
               className={
                 "right-tab" + (rightTab === "usage" ? " active" : "")
               }
@@ -4541,6 +4583,10 @@ function App() {
             </button>
             <button
               type="button"
+              id="right-tab-notes"
+              role="tab"
+              aria-selected={rightTab === "notes"}
+              aria-controls="right-panel-notes"
               className={
                 "right-tab" + (rightTab === "notes" ? " active" : "")
               }
@@ -4550,6 +4596,10 @@ function App() {
             </button>
             <button
               type="button"
+              id="right-tab-memory"
+              role="tab"
+              aria-selected={rightTab === "memory"}
+              aria-controls="right-panel-memory"
               className={
                 "right-tab" + (rightTab === "memory" ? " active" : "")
               }
@@ -4569,7 +4619,13 @@ function App() {
           </div>
 
           {rightTab === "tasks" && (
-            <div className="tab-stack">
+            <div
+              className="tab-stack"
+              role="tabpanel"
+              id="right-panel-tasks"
+              aria-labelledby="right-tab-tasks"
+              tabIndex={0}
+            >
               <section className="tab-section">
                 <div className="tab-section-header">
                   <div>
@@ -4870,7 +4926,13 @@ function App() {
           )}
 
           {rightTab === "docs" && (
-            <div className="tab-stack">
+            <div
+              className="tab-stack"
+              role="tabpanel"
+              id="right-panel-docs"
+              aria-labelledby="right-tab-docs"
+              tabIndex={0}
+            >
               <section className="tab-section">
                 <div className="tab-section-header">
                   <div>
@@ -5152,7 +5214,13 @@ function App() {
           )}
 
           {rightTab === "notes" && (
-            <div className="tab-stack">
+            <div
+              className="tab-stack"
+              role="tabpanel"
+              id="right-panel-notes"
+              aria-labelledby="right-tab-notes"
+              tabIndex={0}
+            >
               <section className="tab-section">
                 <div className="tab-section-header">
                   <div>
@@ -5654,7 +5722,13 @@ function App() {
           )}
 
           {rightTab === "memory" && (
-            <>
+            <div
+              className="tab-stack memory-tab-panel"
+              role="tabpanel"
+              id="right-panel-memory"
+              aria-labelledby="right-tab-memory"
+              tabIndex={0}
+            >
               <div className="memory-header">Project memories</div>
               <div className="memory-panel">
                 {selectedProjectId == null ? (
@@ -5754,11 +5828,17 @@ function App() {
                   </>
                 )}
               </div>
-            </>
+            </div>
           )}
 
           {rightTab === "files" && (
-            <div className="tab-stack">
+            <div
+              className="tab-stack"
+              role="tabpanel"
+              id="right-panel-files"
+              aria-labelledby="right-tab-files"
+              tabIndex={0}
+            >
               <section className="tab-section">
                 <div className="tab-section-header">
                   <div>
@@ -6029,7 +6109,13 @@ function App() {
           )}
 
           {rightTab === "search" && (
-            <div className="tab-stack">
+            <div
+              className="tab-stack"
+              role="tabpanel"
+              id="right-panel-search"
+              aria-labelledby="right-tab-search"
+              tabIndex={0}
+            >
               <section className="tab-section">
                 <div className="tab-section-header">
                   <div>
@@ -6299,7 +6385,13 @@ function App() {
           )}
 
           {rightTab === "terminal" && (
-            <div className="tab-stack">
+            <div
+              className="tab-stack"
+              role="tabpanel"
+              id="right-panel-terminal"
+              aria-labelledby="right-tab-terminal"
+              tabIndex={0}
+            >
               <section className="tab-section">
                 <div className="tab-section-header">
                   <div>
@@ -6560,7 +6652,13 @@ function App() {
           )}
 
           {rightTab === "usage" && (
-            <>
+            <div
+              className="tab-stack usage-tab-panel"
+              role="tabpanel"
+              id="right-panel-usage"
+              aria-labelledby="right-tab-usage"
+              tabIndex={0}
+            >
               {/* Usage panel */}
               <div className="usage-header">
                 Usage dashboard
@@ -6575,8 +6673,8 @@ function App() {
                   <label className="usage-filter">
                     <span>Select conversation</span>
                     <select
-                    aria-label="Select conversation for usage"
-                    title="Select conversation for usage"
+                      aria-label="Select conversation for usage"
+                      title="Select conversation for usage"
                       value={usageConversationId ?? ""}
                       onChange={handleUsageConversationChange}
                     >
@@ -6601,94 +6699,96 @@ function App() {
                   >
                     Use current chat
                   </button>
-              <div className="usage-filter-row">
-                <label className="usage-filter">
-                  <span>Action filter</span>
-                  <select
-                    aria-label="Action filter"
-                    title="Action filter"
-                    value={usageActionFilter}
-                    onChange={(e) => setUsageActionFilter(e.target.value)}
-                  >
-                    <option value="all">All actions</option>
-                    <option value="auto_added">Auto-added</option>
-                    <option value="auto_completed">Auto-completed</option>
-                    <option value="suggested">Suggested (add/complete)</option>
-                    <option value="auto_suggested">Auto-suggested</option>
-                    <option value="auto_dismissed">Auto-dismissed</option>
-                    <option value="auto_deduped">Auto-deduped</option>
-                  </select>
-                </label>
-                <label className="usage-filter">
-                  <span>Group filter</span>
-                  <select
-                    value={usageGroupFilter}
-                    onChange={(e) => setUsageGroupFilter(e.target.value)}
-                    aria-label="Group filter"
-                    title="Group filter"
-                  >
-                    <option value="all">All groups</option>
-                    <option value="critical">Critical</option>
-                    <option value="blocked">Blocked</option>
-                    <option value="ready">Ready</option>
-                  </select>
-                </label>
-                <label className="usage-filter">
-                  <span>Model filter</span>
-                  <select
-                    value={usageModelFilter}
-                    onChange={(e) => setUsageModelFilter(e.target.value)}
-                    aria-label="Model filter"
-                    title="Model filter"
-                  >
-                    <option value="all">All models</option>
-                    {modelFilterOptions.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="usage-filter">
-                  <span>Time filter</span>
-                  <select
-                    value={usageTimeFilter}
-                    onChange={(e) => setUsageTimeFilter(e.target.value)}
-                    aria-label="Time filter"
-                    title="Time filter"
-                  >
-                    <option value="all">All</option>
-                    <option value="last5">Last 5</option>
-                    <option value="last10">Last 10</option>
-                  </select>
-                </label>
-                <label className="usage-filter">
-                  <span>Range</span>
-                  <select
-                    value={usageRangeFilter}
-                    onChange={(e) => setUsageRangeFilter(e.target.value)}
-                    aria-label="Usage time range"
-                    title="Usage time range"
-                  >
-                    <option value="recent">Recent actions only</option>
-                    <option value="records10">Last 10 usage records</option>
-                  </select>
-                </label>
-                <label className="usage-filter">
-                  <span>Usage records window</span>
-                  <select
-                    value={usageRecordsWindow}
-                    onChange={(e) => setUsageRecordsWindow(e.target.value)}
-                    aria-label="Usage records window"
-                    title="Usage records window"
-                  >
-                    <option value="all">All time</option>
-                    <option value="1h">Last hour</option>
-                    <option value="24h">Last 24h</option>
-                    <option value="7d">Last 7d</option>
-                  </select>
-                </label>
-              </div>
+                  <div className="usage-filter-row">
+                    <label className="usage-filter">
+                      <span>Action filter</span>
+                      <select
+                        aria-label="Action filter"
+                        title="Action filter"
+                        value={usageActionFilter}
+                        onChange={(e) => setUsageActionFilter(e.target.value)}
+                      >
+                        <option value="all">All actions</option>
+                        <option value="auto_added">Auto-added</option>
+                        <option value="auto_completed">Auto-completed</option>
+                        <option value="suggested">
+                          Suggested (add/complete)
+                        </option>
+                        <option value="auto_suggested">Auto-suggested</option>
+                        <option value="auto_dismissed">Auto-dismissed</option>
+                        <option value="auto_deduped">Auto-deduped</option>
+                      </select>
+                    </label>
+                    <label className="usage-filter">
+                      <span>Group filter</span>
+                      <select
+                        value={usageGroupFilter}
+                        onChange={(e) => setUsageGroupFilter(e.target.value)}
+                        aria-label="Group filter"
+                        title="Group filter"
+                      >
+                        <option value="all">All groups</option>
+                        <option value="critical">Critical</option>
+                        <option value="blocked">Blocked</option>
+                        <option value="ready">Ready</option>
+                      </select>
+                    </label>
+                    <label className="usage-filter">
+                      <span>Model filter</span>
+                      <select
+                        value={usageModelFilter}
+                        onChange={(e) => setUsageModelFilter(e.target.value)}
+                        aria-label="Model filter"
+                        title="Model filter"
+                      >
+                        <option value="all">All models</option>
+                        {modelFilterOptions.map((m) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="usage-filter">
+                      <span>Time filter</span>
+                      <select
+                        value={usageTimeFilter}
+                        onChange={(e) => setUsageTimeFilter(e.target.value)}
+                        aria-label="Time filter"
+                        title="Time filter"
+                      >
+                        <option value="all">All</option>
+                        <option value="last5">Last 5</option>
+                        <option value="last10">Last 10</option>
+                      </select>
+                    </label>
+                    <label className="usage-filter">
+                      <span>Usage time range</span>
+                      <select
+                        value={usageRangeFilter}
+                        onChange={(e) => setUsageRangeFilter(e.target.value)}
+                        aria-label="Usage time range"
+                        title="Usage time range"
+                      >
+                        <option value="recent">Recent actions only</option>
+                        <option value="records10">Last 10 usage records</option>
+                      </select>
+                    </label>
+                    <label className="usage-filter">
+                      <span>Usage records window</span>
+                      <select
+                        value={usageRecordsWindow}
+                        onChange={(e) => setUsageRecordsWindow(e.target.value)}
+                        aria-label="Usage records window"
+                        title="Usage records window"
+                      >
+                        <option value="all">All time</option>
+                        <option value="1h">Last hour</option>
+                        <option value="24h">Last 24h</option>
+                        <option value="7d">Last 7d</option>
+                      </select>
+                    </label>
+                  </div>
                 </div>
                 {usageConversationId == null ? (
                   <div className="usage-empty">
@@ -6707,66 +6807,68 @@ function App() {
                 ) : (
                   <>
                     <div className="usage-summary">
-                    <div className="usage-cards">
-                    <div className="usage-card">
-                      <div className="usage-card-title">Last chosen model</div>
-                      <div className="usage-card-value">
-                        {usage.records[usage.records.length - 1]?.model ||
-                          "—"}
+                      <div className="usage-cards">
+                        <div className="usage-card">
+                          <div className="usage-card-title">
+                            Last chosen model
+                          </div>
+                          <div className="usage-card-value">
+                            {usage.records[usage.records.length - 1]?.model ||
+                              "—"}
+                          </div>
+                          {telemetry?.llm?.auto_routes && lastUsageAutoReason && (
+                            <div className="usage-subtext">
+                              Routed: {lastUsageAutoReason}
+                            </div>
+                          )}
+                          {modelOverrideMode !== "default" && (
+                            <div className="usage-subtext">
+                              Next override:{" "}
+                              {modelOverrideMode === "custom"
+                                ? modelOverrideCustom || "custom"
+                                : modelOverrideMode}
+                            </div>
+                          )}
+                        </div>
+                        <div className="usage-card">
+                          <div className="usage-card-title">Total cost</div>
+                          <div className="usage-card-value">
+                            {usage.total_cost_estimate != null
+                              ? `$${usage.total_cost_estimate.toFixed(4)}`
+                              : "—"}
+                          </div>
+                        </div>
+                        <div className="usage-card">
+                          <div className="usage-card-title">Total calls</div>
+                          <div className="usage-card-value">
+                            {usage.records.length.toLocaleString()}
+                          </div>
+                        </div>
+                        <div className="usage-card">
+                          <div className="usage-card-title">Tokens in</div>
+                          <div className="usage-card-value">
+                            {usage.total_tokens_in?.toLocaleString() ?? 0}
+                          </div>
+                        </div>
+                        <div className="usage-card">
+                          <div className="usage-card-title">Tokens out</div>
+                          <div className="usage-card-value">
+                            {usage.total_tokens_out?.toLocaleString() ?? 0}
+                          </div>
+                        </div>
+                        <div className="usage-card">
+                          <div className="usage-card-title">Auto-added</div>
+                          <div className="usage-card-value">
+                            {telemetry?.tasks?.auto_added ?? "—"}
+                          </div>
+                        </div>
+                        <div className="usage-card">
+                          <div className="usage-card-title">Auto-completed</div>
+                          <div className="usage-card-value">
+                            {telemetry?.tasks?.auto_completed ?? "—"}
+                          </div>
+                        </div>
                       </div>
-                      {telemetry?.llm?.auto_routes && lastUsageAutoReason && (
-                        <div className="usage-subtext">
-                          Routed: {lastUsageAutoReason}
-                        </div>
-                      )}
-                      {modelOverrideMode !== "default" && (
-                        <div className="usage-subtext">
-                          Next override:{" "}
-                          {modelOverrideMode === "custom"
-                            ? modelOverrideCustom || "custom"
-                            : modelOverrideMode}
-                        </div>
-                      )}
-                    </div>
-                      <div className="usage-card">
-                        <div className="usage-card-title">Total cost</div>
-                        <div className="usage-card-value">
-                          {usage.total_cost_estimate != null
-                            ? `$${usage.total_cost_estimate.toFixed(4)}`
-                            : "—"}
-                        </div>
-                      </div>
-                      <div className="usage-card">
-                        <div className="usage-card-title">Total calls</div>
-                        <div className="usage-card-value">
-                          {usage.records.length.toLocaleString()}
-                        </div>
-                      </div>
-                      <div className="usage-card">
-                        <div className="usage-card-title">Tokens in</div>
-                        <div className="usage-card-value">
-                          {usage.total_tokens_in?.toLocaleString() ?? 0}
-                        </div>
-                      </div>
-                      <div className="usage-card">
-                        <div className="usage-card-title">Tokens out</div>
-                        <div className="usage-card-value">
-                          {usage.total_tokens_out?.toLocaleString() ?? 0}
-                        </div>
-                      </div>
-                      <div className="usage-card">
-                        <div className="usage-card-title">Auto-added</div>
-                        <div className="usage-card-value">
-                          {telemetry?.tasks?.auto_added ?? "—"}
-                        </div>
-                      </div>
-                      <div className="usage-card">
-                        <div className="usage-card-title">Auto-completed</div>
-                        <div className="usage-card-value">
-                          {telemetry?.tasks?.auto_completed ?? "—"}
-                        </div>
-                      </div>
-                    </div>
                     </div>
                     <div className="usage-breakdown">
                       <div className="usage-breakdown-title">
@@ -6827,34 +6929,29 @@ function App() {
                               .reverse()
                               .slice(0, 5)
                         ).map((r) => (
-                            <li
-                              key={r.id}
-                              className="usage-record-item"
-                            >
-                              <div className="usage-record-main">
-                                <span className="usage-model">
-                                  {r.model || "model?"}
-                                </span>
-                                <span className="usage-tokens">
-                                  in {(r.tokens_in ?? 0).toLocaleString()} ·
-                                  out {(r.tokens_out ?? 0).toLocaleString()}
-                                </span>
-                              </div>
-                              <div className="usage-record-sub">
-                                msg #{r.message_id ?? "?"} ·{" "}
-                                {new Date(
-                                  r.created_at
-                                ).toLocaleTimeString()}
-                              </div>
-                            </li>
-                          ))}
+                          <li key={r.id} className="usage-record-item">
+                            <div className="usage-record-main">
+                              <span className="usage-model">
+                                {r.model || "model?"}
+                              </span>
+                              <span className="usage-tokens">
+                                in {(r.tokens_in ?? 0).toLocaleString()} · out{" "}
+                                {(r.tokens_out ?? 0).toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="usage-record-sub">
+                              msg #{r.message_id ?? "?"} ·{" "}
+                              {new Date(r.created_at).toLocaleTimeString()}
+                            </div>
+                          </li>
+                        ))}
                       </ul>
                     </div>
                   </>
                 )}
               </div>
               {telemetryPanel}
-            </>
+            </div>
           )}
         </section>
       </main>

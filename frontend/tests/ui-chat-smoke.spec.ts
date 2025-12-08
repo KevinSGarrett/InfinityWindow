@@ -7,8 +7,6 @@ const UI_BASE = process.env.PLAYWRIGHT_UI_BASE ?? 'http://localhost:5173';
 
 test.describe('UI Chat Smoke - Chat, Remember, Usage, Search', () => {
   let projectId: number;
-  let conversationId: number | null = null;
-  let seededDocId: number | null = null;
 
   test.beforeAll(async ({ request }) => {
     await waitForBackend(240_000);
@@ -28,8 +26,7 @@ test.describe('UI Chat Smoke - Chat, Remember, Usage, Search', () => {
       },
     });
     if (docResp.ok()) {
-      const docJson = await docResp.json();
-      seededDocId = docJson.document?.id ?? null;
+      await docResp.json();
     }
   });
 

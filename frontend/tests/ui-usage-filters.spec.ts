@@ -39,7 +39,7 @@ test('usage filters and exports', async ({ page, request }) => {
   await page.locator('.project-selector select').selectOption(String(projectId));
 
   // Go to Usage tab
-  await page.getByRole('button', { name: 'Usage' }).click();
+  await page.getByRole('tab', { name: 'Usage' }).click();
 
   // Select conversation and load telemetry
   await page.locator('select[aria-label="Select conversation for usage"]').selectOption(String(conversationId));

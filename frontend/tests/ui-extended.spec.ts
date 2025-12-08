@@ -7,7 +7,6 @@ const UI_BASE = process.env.PLAYWRIGHT_UI_BASE ?? 'http://localhost:5173';
 
 test.describe('UI Extended Smoke - Files / Folders / Decisions / Terminal', () => {
   let projectId: number;
-  let conversationId: number | null = null;
 
   test.beforeAll(async ({ request }) => {
     await waitForBackend(240_000);
@@ -32,8 +31,7 @@ test.describe('UI Extended Smoke - Files / Folders / Decisions / Terminal', () =
       data: { project_id: projectId, title: 'Extended Conv' },
     });
     if (convResp.ok()) {
-      const convJson = await convResp.json();
-      conversationId = convJson.id ?? null;
+      await convResp.json();
     }
 
     // Seed a task suggestion so the suggestions panel can be exercised

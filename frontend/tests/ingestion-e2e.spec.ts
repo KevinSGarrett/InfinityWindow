@@ -31,6 +31,11 @@ const TEST_NAME_PREFIX = 'E2E_Test';
 const API_BASE = process.env.PLAYWRIGHT_API_BASE ?? 'http://127.0.0.1:8001';
 const UI_BASE = process.env.PLAYWRIGHT_UI_BASE ?? 'http://localhost:5173';
 
+type ProjectListItem = {
+  id: number;
+  local_root_path?: string | null;
+};
+
 // Helper to ensure the ingest form is visible (details expanded)
 async function openIngestForm(page: Page) {
   const ingestRepoSummary = page.locator('summary', { hasText: 'Ingest local repo' });
@@ -59,11 +64,12 @@ async function ensureProject(request: APIRequestContext): Promise<number> {
     if (!resp.ok()) {
       throw new Error(`Failed to create or fetch a project: ${e}`);
     }
-    const projects = await resp.json();
+    const projects: ProjectListItem[] = await resp.json();
     if (!projects || projects.length === 0) {
       throw new Error(`No projects available after create fallback: ${e}`);
     }
-    const candidate = projects.find((p: any) => p.local_root_path) ?? projects[0];
+    const candidate =
+      projects.find((p) => p.local_root_path) ?? projects[0];
     return candidate.id;
   }
 }
@@ -74,8 +80,8 @@ async function assertProjectRootConfigured(request: APIRequestContext, id: numbe
   if (!resp.ok()) {
     throw new Error(`Failed to list projects: ${resp.status()}`);
   }
-  const projects = await resp.json();
-  const project = projects.find((p: any) => p.id === id);
+  const projects: ProjectListItem[] = await resp.json();
+  const project = projects.find((p) => p.id === id);
   if (!project) {
     throw new Error(`Project ${id} not found in list`);
   }
@@ -84,20 +90,10 @@ async function assertProjectRootConfigured(request: APIRequestContext, id: numbe
   }
 }
 
-interface IngestionJob {
-  id: number;
-  status: string;
-  processed_items: number;
-  total_items: number;
-  processed_bytes: number;
-  total_bytes: number;
-  error_message?: string | null;
-}
-
 test.describe('Large Repo Ingestion Batching - E2E Tests', () => {
   let page: Page;
   let projectId: number;
-  let testResults: {
+  const testResults: {
     testName: string;
     passed: boolean;
     details: string;

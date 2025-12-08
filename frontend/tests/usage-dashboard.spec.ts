@@ -37,7 +37,7 @@ test.describe("Usage dashboard charts and exports", () => {
 
     await page.locator(".project-selector select").selectOption(String(projectId));
 
-    await page.getByRole("button", { name: "Usage" }).click();
+    await page.getByRole("tab", { name: "Usage" }).click();
     await page
       .locator('select[aria-label="Select conversation for usage"]')
       .selectOption(String(conversationId));
