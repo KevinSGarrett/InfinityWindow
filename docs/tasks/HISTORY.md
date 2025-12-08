@@ -42,4 +42,6 @@ This log captures the task-related work done in the current window. For broader 
   - Expanded priority vocab (critical/high/low) and blocked patterns (blocked on/waiting on/once we…).
   - Audit snippets now include confidence + matched text when auto-closing tasks.
   - Telemetry recent actions lift matched_text/priority/blocked for Usage UI.
+- Context/prompt: extraction now injects blocked-items context (recent blocked tasks) in addition to goals/instructions/pinned/top tasks.
+- Telemetry/UI: task actions and Usage telemetry include task_group; Tasks UI shows group chip (critical/blocked/ready).
 

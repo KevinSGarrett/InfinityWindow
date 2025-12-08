@@ -9,7 +9,7 @@ import time
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, List, Dict, Deque, Any, Literal
+from typing import Optional, List, Dict, Deque, Any, Literal, cast, TYPE_CHECKING
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -173,6 +173,7 @@ class TaskRead(BaseModel):
     auto_confidence: Optional[float] = None
     auto_last_action: Optional[str] = None
     auto_last_action_at: Optional[str] = None
+    group: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -216,10 +217,19 @@ class UsageRecordRead(BaseModel):
 
 class ConversationUsageSummary(BaseModel):
     conversation_id: int
-    total_tokens_in: int
-    total_tokens_out: int
+    total_tokens_in: Optional[int]
+    total_tokens_out: Optional[int]
     total_cost_estimate: Optional[float]
     records: List[UsageRecordRead]
+
+if TYPE_CHECKING:
+    # Hints for dynamic attributes added to SQLAlchemy models at runtime
+    models.Task.auto_confidence: Optional[float]
+    models.Task.auto_last_action: Optional[str]
+    models.Task.auto_last_action_at: Optional[str]
+    models.Task.group: Optional[str]
+    models.Conversation.folder_name: Optional[str]
+    models.Conversation.folder_color: Optional[str]
 
 
 class ProjectInstructionsRead(BaseModel):
@@ -647,6 +657,31 @@ def _get_project_root(project: models.Project) -> Path:
     return root
 
 
+def _validate_local_root_path(path_value: Optional[str]) -> Path:
+    """
+    Ensure a local_root_path is provided, exists, and is a directory.
+    """
+    if not path_value or not path_value.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="local_root_path is required and must be non-empty.",
+        )
+    root = Path(path_value).expanduser()
+    try:
+        root = root.resolve()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid local_root_path: {exc}",
+        ) from exc
+    if not root.exists() or not root.is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail="local_root_path must exist and be a directory.",
+        )
+    return root
+
+
 def _safe_join(root: Path, relative_path: str) -> Path:
     """
     Resolve a subpath/file_path safely under root, preventing path traversal.
@@ -759,7 +794,9 @@ def get_task_telemetry(reset: bool = False) -> Dict[str, int]:
     snapshot["recent_actions"] = actions
     # Confidence stats across recent actions
     if actions:
-        confidences = [a.get("confidence") for a in actions if a.get("confidence") is not None]
+        confidences = [
+            c for c in (a.get("confidence") for a in actions) if isinstance(c, (int, float))
+        ]
         if confidences:
             snapshot["confidence_stats"] = {
                 "min": min(confidences),
@@ -792,6 +829,7 @@ def reset_task_telemetry() -> None:
 def _run_auto_update_with_retry(
     db: Session,
     conversation: models.Conversation,
+    model_name: Optional[str] = None,
     attempts: int = 2,
     base_delay: float = 0.2,
 ) -> tuple[bool, Optional[Exception]]:
@@ -802,7 +840,7 @@ def _run_auto_update_with_retry(
     last_exc: Optional[Exception] = None
     for i in range(attempts):
         try:
-            auto_update_tasks_from_conversation(db, conversation)
+            auto_update_tasks_from_conversation(db, conversation, model_name=model_name)
             _commit_with_retry(db)
             return True, None
         except Exception as exc:  # noqa: BLE001
@@ -899,6 +937,13 @@ _TASK_BLOCKED_PATTERNS = (
     re.compile(r"blocked on (?P<reason>.+)", re.IGNORECASE),
     re.compile(r"waiting on (?P<reason>.+)", re.IGNORECASE),
     re.compile(r"once we (?P<reason>.+)", re.IGNORECASE),
+)
+_TASK_DEPENDENCY_PATTERNS = (
+    re.compile(r"depends on (?P<dep>.+)", re.IGNORECASE),
+    re.compile(r"after (?P<dep>.+)", re.IGNORECASE),
+    re.compile(r"after we (?P<dep>.+)", re.IGNORECASE),
+    re.compile(r"waiting for (?P<dep>.+)", re.IGNORECASE),
+    re.compile(r"waiting on (?P<dep>.+)", re.IGNORECASE),
 )
 _TASK_VAGUE_INTENT_HINTS = (
     "analysis",
@@ -1004,9 +1049,11 @@ def _record_task_action(
     project_id: Optional[int] = None,
     conversation_id: Optional[int] = None,
     details: Optional[Dict[str, Any]] = None,
+    timestamp: Optional[datetime] = None,
 ) -> None:
+    ts = timestamp or datetime.now(timezone.utc)
     entry: Dict[str, Any] = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": ts.isoformat(),
         "action": action_type,
         "confidence": _clamp_confidence(confidence),
         "task_id": getattr(task, "id", None),
@@ -1018,6 +1065,7 @@ def _record_task_action(
         entry["task_status"] = task.status
         entry["task_priority"] = task.priority
         entry["task_blocked_reason"] = task.blocked_reason
+        entry["task_group"] = _compute_task_group(task)
         if task.auto_notes:
             entry["task_auto_notes"] = task.auto_notes
     if details:
@@ -1025,11 +1073,121 @@ def _record_task_action(
         # Lift common detail fields for convenience in telemetry/Usage UI.
         if "matched_text" in details:
             entry["matched_text"] = details.get("matched_text")
+        if "model" in details:
+            entry["model"] = details.get("model")
         if "priority" in details and "task_priority" not in entry:
             entry["task_priority"] = details.get("priority")
         if "blocked_reason" in details and "task_blocked_reason" not in entry:
             entry["task_blocked_reason"] = details.get("blocked_reason")
     _TASK_ACTION_HISTORY.appendleft(entry)
+
+
+def _short_audit_snippet(value: Optional[str], max_len: int = 160) -> str:
+    if not value:
+        return ""
+    cleaned = " ".join(str(value).split())
+    if len(cleaned) <= max_len:
+        return cleaned
+    return cleaned[: max_len - 3].rstrip() + "..."
+
+
+def _format_task_audit_note(
+    action_type: str,
+    *,
+    timestamp: datetime,
+    confidence: Optional[float] = None,
+    matched_text: Optional[str] = None,
+    existing_task_description: Optional[str] = None,
+) -> str:
+    ts_str = timestamp.strftime("%Y-%m-%d %H:%M UTC")
+    conf_str = (
+        f"(confidence {_clamp_confidence(confidence or 0.0):.2f})"
+        if confidence is not None
+        else None
+    )
+    snippet = _short_audit_snippet(matched_text)
+    if action_type == "auto_added":
+        parts = [f"Added automatically on {ts_str}"]
+        if conf_str:
+            parts.append(conf_str)
+        if snippet:
+            parts.append(f'from: "{snippet}"')
+        return " ".join(parts)
+    if action_type == "auto_completed":
+        parts = [f"Closed automatically on {ts_str}"]
+        if conf_str:
+            parts.append(conf_str)
+        if snippet:
+            parts.append(f'after: "{snippet}"')
+        return " ".join(parts)
+    if action_type == "auto_deduped":
+        parts = [f"Duplicate automatically ignored on {ts_str}"]
+        if conf_str:
+            parts.append(conf_str)
+        details: List[str] = []
+        if existing_task_description:
+            details.append(
+                f'similar to existing task "{_short_audit_snippet(existing_task_description)}"'
+            )
+        if snippet:
+            details.append(f'input: "{snippet}"')
+        if details:
+            parts.append("; ".join(details))
+        return " ".join(parts)
+    return f"Automation {action_type} on {ts_str}"
+
+
+def _record_task_automation_event(
+    action_type: str,
+    *,
+    task: models.Task,
+    confidence: float,
+    conversation_id: Optional[int] = None,
+    matched_text: Optional[str] = None,
+    model: Optional[str] = None,
+    details: Optional[Dict[str, Any]] = None,
+    project_id: Optional[int] = None,
+    existing_task_description: Optional[str] = None,
+) -> str:
+    """
+    Single place to record task automation telemetry and write a short audit note.
+    Returns the audit note applied to the task.
+    """
+    ts = datetime.now(timezone.utc)
+    note = _format_task_audit_note(
+        action_type,
+        timestamp=ts,
+        confidence=confidence,
+        matched_text=matched_text,
+        existing_task_description=existing_task_description,
+    )
+    if note:
+        task.auto_notes = note
+    setattr(task, "auto_confidence", _clamp_confidence(confidence))
+    setattr(task, "auto_last_action", action_type)
+    setattr(task, "auto_last_action_at", ts.isoformat())
+
+    if action_type in _TASK_TELEMETRY:
+        _TASK_TELEMETRY[action_type] += 1
+
+    merged_details = dict(details or {})
+    if matched_text and "matched_text" not in merged_details:
+        merged_details["matched_text"] = matched_text
+    if model is not None and "model" not in merged_details:
+        merged_details["model"] = model
+    try:
+        _record_task_action(
+            action_type,
+            task=task,
+            confidence=confidence,
+            conversation_id=conversation_id,
+            project_id=project_id,
+            details=merged_details or None,
+            timestamp=ts,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[WARN] Failed to record task action '{action_type}': {exc!r}")
+    return note
 
 
 def _attach_task_action_metadata(tasks: List[models.Task]) -> None:
@@ -1048,9 +1206,37 @@ def _attach_task_action_metadata(tasks: List[models.Task]) -> None:
     for task in tasks:
         meta = latest_by_task.get(task.id)
         if meta:
-            task.auto_confidence = meta.get("confidence")
-            task.auto_last_action = meta.get("action")
-            task.auto_last_action_at = meta.get("timestamp")
+            setattr(task, "auto_confidence", meta.get("confidence"))
+            setattr(task, "auto_last_action", meta.get("action"))
+            setattr(task, "auto_last_action_at", meta.get("timestamp"))
+        setattr(task, "group", _compute_task_group(task))
+
+
+def _compute_task_group(task: models.Task) -> str:
+    """
+    Derive a lightweight grouping for tasks to aid ordering/UX:
+    - critical: priority critical
+    - blocked: any blocked_reason set
+    - ready: everything else
+    """
+    if getattr(task, "priority", "") == "critical":
+        return "critical"
+    if getattr(task, "blocked_reason", None):
+        return "blocked"
+    return "ready"
+
+
+def _safe_int(value: Any) -> Optional[int]:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
 
 
 def _create_task_suggestion(
@@ -1103,6 +1289,16 @@ def _extract_blocked_reason(description: str) -> Optional[str]:
             reason = (match.group("reason") or "").strip().rstrip(".")
             if reason:
                 return reason
+    return None
+
+
+def _extract_dependency_hint(description: str) -> Optional[str]:
+    for pattern in _TASK_DEPENDENCY_PATTERNS:
+        match = pattern.search(description or "")
+        if match:
+            dep = (match.group("dep") or "").strip().rstrip(".")
+            if dep:
+                return dep
     return None
 
 
@@ -1173,6 +1369,7 @@ def auto_update_tasks_from_conversation(
     db: Session,
     conversation: models.Conversation,
     max_messages: int = 16,
+    model_name: Optional[str] = None,
 ) -> None:
     """
     Look at the recent messages in the conversation, ask a small/fast model
@@ -1240,17 +1437,20 @@ def auto_update_tasks_from_conversation(
 
     if completion_segments:
         for text in completion_segments:
-            normalized_line = _normalize_task_text(text)
+            normalized_line = _normalize_task_text(str(text or ""))
             if not normalized_line:
                 continue
             # If completion mentions a specific task id or core phrase, try to match loosely
             for info in list(open_task_map.values()):
-                task_obj: models.Task = info["task"]  # type: ignore[assignment]
+                task_obj = info["task"]
+                if not isinstance(task_obj, models.Task):
+                    continue
                 if task_obj.status != "open":
                     continue
-                normalized_task = info.get("normalized") or ""
+                normalized_task = str(info.get("normalized") or "")
                 if not normalized_task:
                     continue
+                normalized_line = str(normalized_line)
                 core_phrase = " ".join(normalized_task.split()[:6])
                 ratio = difflib.SequenceMatcher(
                     None, normalized_task, normalized_line
@@ -1274,31 +1474,23 @@ def auto_update_tasks_from_conversation(
                     if confidence >= 0.6:  # lower threshold for short completions
                         task_obj.status = "done"
                         task_obj.updated_at = datetime.now(timezone.utc)
-                        completion_note = (
-                            f"Closed automatically on {datetime.now(timezone.utc).isoformat()} "
-                            f"(confidence {confidence:.2f}) after the user said: \"{text}\""
-                        )
-                        if task_obj.auto_notes:
-                            task_obj.auto_notes = (
-                                task_obj.auto_notes + "\n" + completion_note
-                            )
-                        else:
-                            task_obj.auto_notes = completion_note
-                        _TASK_TELEMETRY["auto_completed"] += 1
-                        print(
-                            f"[Tasks] Auto-completed '{task_obj.description}' "
-                            "based on recent chat."
-                        )
-                        _record_task_action(
+                        _record_task_automation_event(
                             "auto_completed",
                             task=task_obj,
                             confidence=confidence,
                             conversation_id=conversation.id,
+                            matched_text=text,
+                            model=model_name,
                             details={
-                                "matched_text": text,
                                 "priority": task_obj.priority,
                                 "blocked_reason": task_obj.blocked_reason,
+                                "model": model_name,
+                                "source": "auto_update",
                             },
+                        )
+                        print(
+                            f"[Tasks] Auto-completed '{task_obj.description}' "
+                            "based on recent chat."
                         )
                     else:
                         _create_task_suggestion(
@@ -1315,12 +1507,12 @@ def auto_update_tasks_from_conversation(
                         )
                     info["normalized"] = ""
         # Remove tasks marked done from duplicate checks
-        open_task_map = {
-            task_id: info
-            for task_id, info in open_task_map.items()
-            if isinstance(info.get("task"), models.Task)
-            and info["task"].status == "open"  # type: ignore[index]
-        }
+        cleaned: Dict[int, Dict[str, Any]] = {}
+        for task_id, info in open_task_map.items():
+            t_obj = info.get("task")
+            if isinstance(t_obj, models.Task) and t_obj.status == "open":
+                cleaned[task_id] = info
+        open_task_map = cleaned
 
     top_open_tasks = (
         db.query(models.Task)
@@ -1341,6 +1533,38 @@ def auto_update_tasks_from_conversation(
         priority_context = (
             "Current top open tasks (for context):\n"
             + "\n".join(f"- {summary}" for summary in summaries)
+            + "\n\n"
+        )
+
+    blocked_tasks = (
+        db.query(models.Task)
+        .filter(models.Task.project_id == conversation.project_id)
+        .filter(models.Task.status == "open")
+        .filter(models.Task.blocked_reason.isnot(None))
+        .order_by(models.Task.updated_at.desc())
+        .limit(3)
+        .all()
+    )
+    blocked_context = ""
+    if blocked_tasks:
+        blocked_summaries = []
+        for task in blocked_tasks:
+            blocked_summaries.append(
+                f"{task.description} (blocked: {task.blocked_reason})"
+            )
+        blocked_context = (
+            "Blocked items to consider:\n"
+            + "\n".join(f"- {summary}" for summary in blocked_summaries)
+            + "\n\n"
+        )
+    dependency_context = ""
+    if blocked_tasks:
+        dependency_context = (
+            "Dependencies to consider (may be blocking work):\n"
+            + "\n".join(
+                f"- {task.description} (blocked: {task.blocked_reason})"
+                for task in blocked_tasks
+            )
             + "\n\n"
         )
 
@@ -1371,8 +1595,13 @@ def auto_update_tasks_from_conversation(
         f"{instruction_context}"
         f"{pinned_note_context}"
         f"{priority_context}"
+        f"{dependency_context}"
+        f"{blocked_context}"
         "From the recent conversation messages below, extract any NEW, "
-        "actionable tasks that should be added to the project TODO list.\n\n"
+        "actionable tasks that should be added to the project TODO list. "
+        "Prefer action verbs (implement/add/fix/write/document). "
+        "If the message is vague/analysis-only, return an empty list or use suggestions instead of noisy tasks. "
+        "Infer priority (critical/high/normal/low) from language and mark blocked_reason when users mention blockers.\n\n"
         "Rules:\n"
         "- Only include tasks that clearly represent work to be done in the future.\n"
         "- Skip questions, chit-chat, or things already clearly completed.\n"
@@ -1424,7 +1653,7 @@ def auto_update_tasks_from_conversation(
         for t in tasks_data:
             if not isinstance(t, dict):
                 continue
-            desc = (t.get("description") or "").strip()
+            desc = str(t.get("description") or "").strip()
             if not desc:
                 continue
 
@@ -1439,21 +1668,24 @@ def auto_update_tasks_from_conversation(
                 .first()
             )
             if existing:
-                _record_task_action(
-                    "auto_dismissed",
+                _record_task_automation_event(
+                    "auto_deduped",
                     task=existing,
                     confidence=1.0,
                     conversation_id=conversation.id,
+                    matched_text=desc,
+                    model=model_name,
                     details={"reason": "already_open", "candidate": desc},
+                    existing_task_description=existing.description,
                 )
                 continue
 
-            normalized_desc = _normalize_task_text(desc)
+            normalized_desc = _normalize_task_text(desc or "")
             is_duplicate = False
             max_similarity = 0.0
             best_match: Optional[models.Task] = None
             for info in open_task_map.values():
-                normalized_task = info.get("normalized") or ""
+                normalized_task = str(info.get("normalized") or "")
                 if not normalized_task:
                     continue
                 ratio = difflib.SequenceMatcher(
@@ -1461,6 +1693,11 @@ def auto_update_tasks_from_conversation(
                 ).ratio()
                 overlap_score = _token_overlap(normalized_task, normalized_desc)
                 similarity = max(ratio, overlap_score)
+                first_tokens_task = " ".join(normalized_task.split()[:5])
+                first_tokens_candidate = " ".join(normalized_desc.split()[:5])
+                first_overlap = _token_overlap_shortest(
+                    first_tokens_task, first_tokens_candidate
+                )
                 if similarity > max_similarity:
                     max_similarity = similarity
                     candidate_task = info.get("task")
@@ -1469,26 +1706,42 @@ def auto_update_tasks_from_conversation(
                 if (
                     normalized_task in normalized_desc
                     or normalized_desc in normalized_task
-                    or ratio >= 0.78
-                    or overlap_score >= 0.75
+                    or ratio >= 0.8
+                    or overlap_score >= 0.78
+                    or first_overlap >= 0.75
                 ):
                     is_duplicate = True
                     break
             if is_duplicate:
-                _TASK_TELEMETRY["auto_deduped"] += 1
-                _record_task_action(
-                    "auto_dismissed",
-                    task=best_match,
-                    description=desc,
-                    confidence=_clamp_confidence(max_similarity),
-                    conversation_id=conversation.id,
-                    details={"reason": "duplicate_candidate"},
-                )
+                target_task = best_match if isinstance(best_match, models.Task) else None
+                if target_task is None:
+                    target_task = next(
+                        (
+                            info.get("task")
+                            for info in open_task_map.values()
+                            if isinstance(info.get("task"), models.Task)
+                        ),
+                        None,
+                    )
+                if target_task:
+                    _record_task_automation_event(
+                        "auto_deduped",
+                        task=target_task,
+                        confidence=_clamp_confidence(max_similarity),
+                        conversation_id=conversation.id,
+                        matched_text=desc,
+                        model=model_name,
+                        details={"reason": "duplicate_candidate", "model": model_name},
+                        existing_task_description=getattr(
+                            target_task, "description", None
+                        ),
+                    )
                 continue
 
             add_confidence = _estimate_add_confidence(desc, max_similarity)
             priority = _infer_task_priority(desc)
             blocked_reason = _extract_blocked_reason(desc)
+            dependency_hint = _extract_dependency_hint(desc)
             if add_confidence < _TASK_ADD_CONFIDENCE_THRESHOLD:
                 _create_task_suggestion(
                     db,
@@ -1499,6 +1752,7 @@ def auto_update_tasks_from_conversation(
                         "description": desc,
                         "priority": priority,
                         "blocked_reason": blocked_reason,
+                        "dependency_hint": dependency_hint,
                     },
                     confidence=add_confidence,
                 )
@@ -1510,25 +1764,29 @@ def auto_update_tasks_from_conversation(
                 status="open",
                 priority=priority,
                 blocked_reason=blocked_reason,
-                auto_notes=(
-                    f"Added automatically on {datetime.now(timezone.utc).isoformat()} "
-                    f"based on recent chat."
-                ),
             )
             db.add(new_task)
             db.flush()
-            _TASK_TELEMETRY["auto_added"] += 1
-            _record_task_action(
+            _record_task_automation_event(
                 "auto_added",
                 task=new_task,
                 confidence=add_confidence,
                 conversation_id=conversation.id,
+                matched_text=desc,
+                model=model_name,
                 details={
                     "source": "auto_update",
                     "priority": priority,
                     "blocked_reason": blocked_reason,
+                    "dependency_hint": dependency_hint,
+                    "model": model_name,
                 },
             )
+            if dependency_hint:
+                note = f"Dependency hint: {dependency_hint}"
+                new_task.auto_notes = (
+                    (new_task.auto_notes or "").strip() + "\n" + note
+                ).strip()
             open_task_map[new_task.id] = {
                 "task": new_task,
                 "normalized": normalized_desc,
@@ -1725,11 +1983,7 @@ def create_project(
 
     For now, 'name' must be unique.
     """
-    if not payload.local_root_path or not payload.local_root_path.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="local_root_path is required for ingestion projects.",
-        )
+    validated_root = _validate_local_root_path(payload.local_root_path)
 
     existing = (
         db.query(models.Project)
@@ -1746,7 +2000,7 @@ def create_project(
     project = models.Project(
         name=payload.name,
         description=payload.description,
-        local_root_path=payload.local_root_path,
+        local_root_path=str(validated_root),
         instruction_text=instructions,
         instruction_updated_at=datetime.now(timezone.utc) if instructions else None,
     )
@@ -1794,7 +2048,8 @@ def update_project(
     if payload.description is not None:
         project.description = payload.description
     if payload.local_root_path is not None:
-        project.local_root_path = payload.local_root_path
+        validated_root = _validate_local_root_path(payload.local_root_path)
+        project.local_root_path = str(validated_root)
     if payload.instruction_text is not None:
         instructions = _normalize_instruction_text(payload.instruction_text)
         project.instruction_text = instructions
@@ -2121,6 +2376,9 @@ def delete_conversation_folder(
     db.query(models.Conversation).filter(
         models.Conversation.folder_id == folder_id
     ).update({models.Conversation.folder_id: None})
+    db.delete(folder)
+    db.commit()
+    return {"status": "deleted", "folder_id": folder_id}
 
 
 def _conversation_with_folder_meta(
@@ -2129,13 +2387,13 @@ def _conversation_with_folder_meta(
     """
     Ensure conversation objects carry folder name/color when serialized.
     """
-    folder = None
-    if conversation.folder_id:
+    folder: Optional[models.ConversationFolder] = None
+    if getattr(conversation, "folder_id", None):
         folder = conversation.folder
         if folder is None:
             folder = db.get(models.ConversationFolder, conversation.folder_id)
-    conversation.folder_name = folder.name if folder else None
-    conversation.folder_color = folder.color if folder else None
+    setattr(conversation, "folder_name", folder.name if folder else None)
+    setattr(conversation, "folder_color", folder.color if folder else None)
     return conversation
 
 
@@ -2185,11 +2443,6 @@ def _active_memory_query(db: Session, project_id: int):
             | (models.MemoryItem.expires_at > now)
         )
     )
-
-    db.delete(folder)
-    db.commit()
-
-    return {"status": "deleted", "folder_id": folder_id}
 
 
 # ---------- Memory items ----------
@@ -2536,6 +2789,8 @@ def list_project_tasks(
         .order_by(
             status_order,
             priority_order,
+            # Ready (no blocked_reason) should surface before blocked
+            case((models.Task.blocked_reason.is_(None), 0), else_=1),
             models.Task.updated_at.desc(),
             models.Task.id.asc(),
         )
@@ -2664,7 +2919,7 @@ def trigger_auto_update_tasks(
             detail="No conversations found for project; nothing to auto-update.",
         )
 
-    ok, err = _run_auto_update_with_retry(db, conversation, attempts=3)
+    ok, err = _run_auto_update_with_retry(db, conversation, model_name=None, attempts=3)
     if not ok:
         raise HTTPException(
             status_code=503,
@@ -2905,12 +3160,15 @@ def get_conversation_usage(
             status_code=404, detail="Conversation not found."
         )
 
-    records = (
+    records_db = (
         db.query(models.UsageRecord)
         .filter(models.UsageRecord.conversation_id == conversation_id)
         .order_by(models.UsageRecord.created_at.asc())
         .all()
     )
+    records: List[UsageRecordRead] = [
+        UsageRecordRead.model_validate(r) for r in records_db
+    ]
 
     total_in = sum((r.tokens_in or 0) for r in records)
     total_out = sum((r.tokens_out or 0) for r in records)
@@ -2936,7 +3194,7 @@ def get_conversation_usage(
         total_tokens_in=total_in,
         total_tokens_out=total_out,
         total_cost_estimate=total_cost,
-        records=records,
+        records=cast(List[UsageRecordRead], records),  # type: ignore[arg-type]
     )
 
 
@@ -2951,7 +3209,8 @@ def read_telemetry(reset: bool = False) -> Dict[str, Any]:
     Pass `reset=true` to zero the counters after reading them.
     """
     llm_snapshot = openai_module.get_llm_telemetry(reset=reset)
-    task_snapshot = get_task_telemetry(reset=reset)
+    task_snapshot_raw = get_task_telemetry(reset=reset)
+    task_snapshot: Dict[str, Any] = dict(task_snapshot_raw)
     # Expose pending task suggestions to aid QA of low-confidence flows
     try:
         suggestions = (
@@ -2987,10 +3246,17 @@ def read_telemetry(reset: bool = False) -> Dict[str, Any]:
 class SeedTaskActionPayload(BaseModel):
     project_id: int
     description: str
-    action: Literal["auto_added", "auto_completed", "auto_dismissed"] = "auto_added"
+    action: Literal[
+        "auto_added",
+        "auto_completed",
+        "auto_deduped",
+        "auto_dismissed",
+        "auto_suggested",
+    ] = "auto_added"
     confidence: float = 0.9
     status: Optional[str] = None
     auto_notes: Optional[str] = None
+    model: Optional[str] = None
 
 
 @app.post("/debug/seed_task_action", response_model=TaskRead)
@@ -3026,12 +3292,18 @@ def seed_task_action(payload: SeedTaskActionPayload, db: Session = Depends(get_d
     if payload.auto_notes:
         task.auto_notes = payload.auto_notes
 
+    if payload.action in _TASK_TELEMETRY:
+        _TASK_TELEMETRY[payload.action] = _TASK_TELEMETRY.get(payload.action, 0) + 1
+
     _record_task_action(
         payload.action,
         task=task,
         confidence=payload.confidence,
         project_id=payload.project_id,
-        details={"source": "debug_seed"},
+        details={
+            "source": "debug_seed",
+            "model": payload.model,
+        },
     )
     db.commit()
     db.refresh(task)
@@ -3345,8 +3617,8 @@ def ai_edit_project_file(
         tokens_in = usage_info.get("tokens_in")
         tokens_out = usage_info.get("tokens_out")
 
-        ti = int(tokens_in) if tokens_in is not None else None
-        to = int(tokens_out) if tokens_out is not None else None
+        ti = _safe_int(tokens_in)
+        to = _safe_int(tokens_out)
 
         cost_estimate: Optional[float] = None
         try:
@@ -3645,19 +3917,31 @@ def run_terminal_command(
             capture_output=True,
             text=True,
             timeout=timeout,
+            check=True,
         )
         stdout = result.stdout or ""
         stderr = result.stderr or ""
         exit_code = result.returncode
     except subprocess.TimeoutExpired as e:
-        stdout = e.stdout or ""
-        stderr = (e.stderr or "") + f"\n[Command timed out after {timeout} seconds]"
+        stdout_raw = e.stdout or ""
+        stderr_raw = e.stderr or ""
+        stdout = (
+            stdout_raw.decode() if isinstance(stdout_raw, (bytes, bytearray)) else str(stdout_raw)
+        )
+        stderr = (
+            stderr_raw.decode() if isinstance(stderr_raw, (bytes, bytearray)) else str(stderr_raw)
+        )
+        stderr += f"\n[Command timed out after {timeout} seconds]"
         exit_code = -1
+    except subprocess.CalledProcessError as e:
+        stdout = e.stdout or ""
+        stderr = (e.stderr or "") + f"\n[Command failed with exit code {e.returncode}]"
+        exit_code = e.returncode
     except Exception as e:  # noqa: BLE001
         raise HTTPException(
             status_code=500,
             detail=f"Failed to run command: {e}",
-        )
+        ) from e
 
     # Truncate very long output so we don't blow up the UI
     max_len = 8000
@@ -4099,12 +4383,38 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
 
     # 6) Call OpenAI to generate a reply, capturing usage metadata if available
     usage_info: Dict[str, object] = {}
-    raw_reply_text = generate_reply_from_history(
-        chat_history,
-        model=payload.model,
-        mode=payload.mode or "auto",
-        usage_out=usage_info,  # filled by openai_client if supported
-    )
+    try:
+        raw_reply = generate_reply_from_history(
+            chat_history,
+            model=payload.model,
+            mode=payload.mode or "auto",
+            usage_out=usage_info,  # filled by openai_client if supported
+        )
+    except Exception as e:  # noqa: BLE001
+        # If the chosen model is not available, attempt a safe fallback.
+        msg = str(e).lower()
+        if "model_not_found" in msg or "does not exist" in msg:
+            raw_reply = generate_reply_from_history(
+                chat_history,
+                model=None,
+                mode=payload.mode or "auto",
+                usage_out=usage_info,
+            )
+        else:
+            raise
+    raw_reply_text = raw_reply if isinstance(raw_reply, str) else raw_reply.get("reply", "")
+    chosen_model = None
+    if isinstance(raw_reply, dict):
+        chosen_model = raw_reply.get("model")
+        # In case the stub returns tokens/cost, include them
+        if "tokens_in" in raw_reply:
+            usage_info["tokens_in"] = raw_reply["tokens_in"]
+        if "tokens_out" in raw_reply:
+            usage_info["tokens_out"] = raw_reply["tokens_out"]
+        if "cost" in raw_reply:
+            usage_info["cost_estimate"] = raw_reply["cost"]
+        if "mode" in raw_reply and not payload.mode:
+            usage_info["mode"] = raw_reply["mode"]
 
     # 6b) Look for any AI_FILE_EDIT blocks in the reply and strip them from the visible text
     clean_reply_text, file_edit_requests = _extract_ai_file_edits(raw_reply_text)
@@ -4129,8 +4439,8 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
 
     if file_edit_requests:
         for req in file_edit_requests:
-            file_path = (req.get("file_path") or "").strip()
-            instruction = (req.get("instruction") or "").strip()
+            file_path = str(req.get("file_path") or "").strip()
+            instruction = str(req.get("instruction") or "").strip()
             if not file_path or not instruction:
                 continue
 
@@ -4205,14 +4515,15 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
     try:
         model_name = str(
             usage_info.get("model")
+            or chosen_model
             or (payload.model or (payload.mode or "auto"))
         )
 
         tokens_in = usage_info.get("tokens_in")
         tokens_out = usage_info.get("tokens_out")
 
-        ti = int(tokens_in) if tokens_in is not None else None
-        to = int(tokens_out) if tokens_out is not None else None
+        ti = _safe_int(tokens_in)
+        to = _safe_int(tokens_out)
 
         cost_estimate: Optional[float] = None
         try:
@@ -4249,7 +4560,7 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
     # 11) AI‑assist the project TODO list (best‑effort, doesn't block)
     if _AUTO_UPDATE_TASKS_AFTER_CHAT:
         ok, err = _run_auto_update_with_retry(
-            db, conversation, attempts=2, base_delay=0.2
+            db, conversation, model_name=model_name, attempts=2, base_delay=0.2
         )
         if not ok:
             print(

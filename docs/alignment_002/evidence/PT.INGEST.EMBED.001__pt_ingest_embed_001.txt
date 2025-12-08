@@ -1,0 +1,23 @@
+path: backend/app/llm/embeddings.py
+lines: 92-165
+
+def embed_texts_batched(
+    texts: List[str],
+    *,
+    max_tokens_per_batch: Optional[int] = None,
+    max_items_per_batch: Optional[int] = None,
+    model: Optional[str] = None,
+) -> List[List[float]]:
+    """
+    Embed a list of texts by splitting them into smaller batches that satisfy
+    both token-count and item-count limits. This prevents gigantic ingestion
+    jobs from exceeding OpenAI's per-request caps.
+    """
+    if not texts:
+        return []
+
+    tokens_cap = max_tokens_per_batch or _resolve_batch_limit(
+        "MAX_EMBED_TOKENS_PER_BATCH", _DEFAULT_MAX_TOKENS_PER_BATCH
+    )
+    items_cap = max_items_per_batch or _resolve_batch_limit(
+        "MAX_EMBED_ITEMS_PER_BATCH", _DEFAULT_MAX_ITEMS_PER_BATCH

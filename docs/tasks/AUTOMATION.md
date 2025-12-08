@@ -10,31 +10,41 @@ This document captures the live task surface (APIs, automation behavior, telemet
 - `DELETE /tasks/{task_id}` — delete task (cleanup/artifacts).
 - `POST /projects/{id}/auto_update_tasks` — manual trigger; runs best-effort on latest conversation (400 if none).
 - Suggestions: `GET /projects/{id}/task_suggestions`, `POST /task_suggestions/{id}/approve|dismiss`.
-- Telemetry: `GET /debug/telemetry` (task counters + confidence stats) and Usage tab drawer (recent task actions incl. status/priority/blocked_reason/auto_notes/confidence/matched_text).
+- Telemetry: `GET /debug/telemetry` (task counters + confidence stats) and Usage tab drawer (recent task actions incl. status/priority/blocked_reason/auto_notes/confidence/matched_text/task_group).
 - Task responses include automation metadata: `auto_confidence`, `auto_last_action`, `auto_last_action_at`, plus `auto_notes` (with audit snippets for auto-closed tasks).
 
 ## Automation behavior
 - Post-/chat hook: after `/chat`, auto-update runs by default (`AUTO_UPDATE_TASKS_AFTER_CHAT`, retry + timeout guard).
-- Extraction prompt context: project description, instructions, pinned notes, top open tasks.
+- Extraction prompt context: project description, instructions, pinned notes, top open tasks, blocked-items context, and a new “Dependencies to consider” line (derived from blocked items).
 - Priority/blocked heuristics: critical/high/low keyword lists (expanded); blocked reason regexes (blocked on / waiting on / once we …); ordering keeps open tasks first.
+- Dependency hints: new tasks capture “depends on / after / waiting for …” phrasing, append a `Dependency hint:` line to `auto_notes`, and store `dependency_hint` in recent action details.
 - Intent guardrails: vague/analysis-only asks are penalized into suggestions unless action verbs are present.
+- Grouping heuristic: tasks expose `group` (critical/blocked/ready) derived from priority/blocked_reason; surfaced in API and Usage telemetry.
+- Context-aware prompt: injects goals/instructions/pinned notes/top open tasks plus blocked/dependency context.
 - Completion detection: fuzzy phrase + token-overlap with recent messages; stale completion suggestions are auto-dismissed.
 - Aliases/ergonomics:
   - Filesystem read accepts `file_path` or `subpath`.
   - AI edit accepts `instruction` or `instructions`.
   - Terminal scoped run injects `project_id` from path; body `project_id` optional.
 
-## Telemetry & usage
-- Task counters: auto-added / auto-completed / auto-deduped; confidence stats + buckets; recent actions list (with status/priority/blocked/auto_notes/confidence/action/timestamp/matched_text when present).
+-## Telemetry & usage
+- Task counters: auto-added / auto-completed / auto-deduped; confidence stats + buckets; recent actions list (with status/priority/blocked/auto_notes/confidence/action/timestamp/matched_text/task_group and `dependency_hint` when present).
 - Cost: pricing table includes `gpt-5-nano`, `gpt-5-pro`, `gpt-5.1-codex`; Usage tab now shows non-zero totals.
-- Usage tab surfaces confidence buckets (lt_0_4, 0_4_0_7, gte_0_7) and per-action confidence.
+- Usage tab surfaces confidence buckets (lt_0_4, 0_4_0_7, gte_0_7) and per-action confidence; added filters (action/group/model) and JSON export for recent task actions.
 - Dev/test seed helper: `/debug/seed_task_action` can create a task and record an automation action with confidence/notes for UI/QA.
 
 ## Tests (current)
 - API: `qa/tests_api/test_chat_tasks_autopilot.py` (auto-add + complete) and `qa/tests_api/test_chat_tasks_noisy.py` (noisy convo add/complete).
+- E2E: `qa/tests_e2e/test_chat_search_tasks.py` (chat → tasks auto-add + message search).
 - Smoke: `qa/run_smoke.py` includes tasks auto-loop probe.
 - UI: Playwright suite on backend 8000 now green — `frontend/tests/tasks-suggestions.spec.ts` (suggestion drawer approve/dismiss; priority/blocked chips), `frontend/tests/tasks-confidence.spec.ts` (confidence chip + Usage buckets), `frontend/tests/ui-smoke.spec.ts` (instructions meta tightened), `frontend/tests/ui-chat-smoke.spec.ts`, `frontend/tests/ui-extended.spec.ts`.
 - Ingestion-adjacent (for completeness): `qa/tests_api/test_ingestion_e2e.py` ensures ingestion does not block task flows.
+
+## Telemetry & usage
+- Task counters: auto-added / auto-completed / auto-deduped; confidence stats + buckets; recent actions list (with status/priority/blocked/auto_notes/confidence/action/timestamp/matched_text/task_group and `dependency_hint` when present).
+- Cost: pricing table includes `gpt-5-nano`, `gpt-5-pro`, `gpt-5.1-codex`; Usage tab now shows non-zero totals.
+- Usage tab (2025-12-12): filters (action/group/model), time filter (all/last5/last10), action/model counts, JSON/CSV export for filtered recent actions; shows routing reason for auto mode when available.
+- Dev/test seed helper: `/debug/seed_task_action` can create a task and record an automation action with confidence/notes for UI/QA.
 
 ## Recent telemetry / usage checks
 - `/debug/telemetry` on 8000 shows non-zero task confidence stats and recent actions (auto_added/auto_suggested).
@@ -51,6 +61,8 @@ This document captures the live task surface (APIs, automation behavior, telemet
   - Expand priority inference (Critical/High/Ready) and blocked detection with richer phrase lists and context (instructions/goals). (shipped v1 keyword expansion)
   - Emit audit snippets in `auto_notes` when automation closes a task, including confidence and matched text. (shipped)
   - Telemetry polish: include matched_text where safe, ensure confidence stats align with audit notes, and surface priority/blocked in recent actions consistently. (shipped)
+  - Add blocked-context into extraction prompt (shipped v1); consider surfacing grouping in Usage charts/table.
+  - Future dashboard: dedicated Usage/telemetry dashboard with graphs/filters/long-term analytics (design goal).
 
 ## Quick operational notes
 - If automation misbehaves in QA, ensure the DB/Chroma are clean (`tools/reset_qa_env.py` in QA copy) and rerun `python -m qa.run_smoke`.

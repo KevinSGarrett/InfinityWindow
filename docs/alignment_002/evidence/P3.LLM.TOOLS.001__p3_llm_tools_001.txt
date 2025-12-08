@@ -1,0 +1,23 @@
+path: backend/app/api/main.py
+lines: 3313-3405
+
+@app.get("/projects/{project_id}/fs/read")
+def read_project_file(
+    project_id: int,
+    file_path: Optional[str] = None,
+    subpath: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Read a text file under the project's local_root_path.
+    """
+    project = _ensure_project(db, project_id)
+    root = _get_project_root(project)
+    effective_path = file_path or subpath
+    if not effective_path:
+        raise HTTPException(
+            status_code=422,
+            detail="file_path (or subpath) is required.",
+        )
+
+    target = _safe_join(root, effective_path)

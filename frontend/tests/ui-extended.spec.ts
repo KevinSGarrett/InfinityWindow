@@ -117,9 +117,10 @@ test.describe('UI Extended Smoke - Files / Folders / Decisions / Terminal', () =
     await page
       .getByRole('button', { name: /Add decision/i })
       .click({ timeout: 10_000 });
-    await expect(
-      page.locator('li.decision-item', { hasText: 'Extended decision' })
-    ).toBeVisible({ timeout: 15_000 });
+    const decisionList = page.locator('li.decision-item', {
+      hasText: 'Extended decision',
+    });
+    await expect(decisionList.first()).toBeVisible({ timeout: 15_000 });
 
     // Memory: verify seeded entry
     await page.getByText('Memory', { exact: true }).click();

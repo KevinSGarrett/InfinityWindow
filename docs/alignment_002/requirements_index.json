@@ -1,0 +1,546 @@
+[
+  {
+    "id": "P1.DATA.MODEL.001",
+    "title": "Blueprint model",
+    "description": "SQLAlchemy Blueprint with project/document FKs, status/version, primary/parent/replaced relationships, plan_nodes relationship, timestamps.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "1.1 Data models",
+    "type": "model"
+  },
+  {
+    "id": "P1.DATA.MODEL.002",
+    "title": "PlanNode model",
+    "description": "PlanNode with blueprint FK, parent, kind/title/summary, doc anchors and offsets, order_index, status/priority/estimate/risk, extra_metadata, linked_task_id and indexes.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "1.1 Data models",
+    "type": "model"
+  },
+  {
+    "id": "P1.DATA.MODEL.003",
+    "title": "PlanNodeTaskLink model",
+    "description": "Join table linking PlanNodes to Tasks with weight to support 1-N relationships.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "1.1 Data models",
+    "type": "model"
+  },
+  {
+    "id": "P1.DATA.MODEL.004",
+    "title": "TaskDependency model",
+    "description": "TaskDependency with task_id and depends_on_task_id plus index for dependency graph.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "1.1 Data models",
+    "type": "model"
+  },
+  {
+    "id": "P1.DATA.MODEL.005",
+    "title": "BlueprintIngestionJob model",
+    "description": "Tracks ingestion progress for blueprint plan generation with status, counts, error_message, timestamps.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "1.1 Data models",
+    "type": "model"
+  },
+  {
+    "id": "P1.DATA.MODEL.006",
+    "title": "Project.active_blueprint_id",
+    "description": "Project gains active_blueprint_id FK to selected blueprint.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "1.1 Data models",
+    "type": "model"
+  },
+  {
+    "id": "P1.API.ENDPOINT.001",
+    "title": "POST /projects/{id}/blueprints",
+    "description": "Create blueprint from document with optional base_blueprint_id and mark_active flag; versioning semantics.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "1.2 Blueprint & plan endpoints",
+    "type": "endpoint"
+  },
+  {
+    "id": "P1.API.ENDPOINT.002",
+    "title": "GET /projects/{id}/blueprints",
+    "description": "List blueprints for project including is_primary flag.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "1.2 Blueprint & plan endpoints",
+    "type": "endpoint"
+  },
+  {
+    "id": "P1.API.ENDPOINT.003",
+    "title": "GET /blueprints/{id}",
+    "description": "Return blueprint metadata, plan tree, and ingestion job.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "1.2 Blueprint & plan endpoints",
+    "type": "endpoint"
+  },
+  {
+    "id": "P1.API.ENDPOINT.004",
+    "title": "PATCH /blueprints/{id}",
+    "description": "Update blueprint title/description/status and optionally mark_active.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "1.2 Blueprint & plan endpoints",
+    "type": "endpoint"
+  },
+  {
+    "id": "P1.API.ENDPOINT.005",
+    "title": "PATCH /plan_nodes/{id}",
+    "description": "Update PlanNode fields such as title, summary, kind, status, priority, order_index, estimate_points, risk_level, extra_metadata.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "1.2 Blueprint & plan endpoints",
+    "type": "endpoint"
+  },
+  {
+    "id": "P1.API.ENDPOINT.006",
+    "title": "POST /blueprints/{id}/generate_plan",
+    "description": "Generate or regenerate PlanNode tree from blueprint document, optionally track BlueprintIngestionJob.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "1.2 Blueprint & plan endpoints",
+    "type": "endpoint"
+  },
+  {
+    "id": "P1.API.ENDPOINT.007",
+    "title": "POST /plan_nodes/{id}/generate_tasks",
+    "description": "Generate tasks for a PlanNode using LLM and link via PlanNodeTaskLink.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "1.4 PlanNode \u2192 Tasks",
+    "type": "endpoint"
+  },
+  {
+    "id": "P1.API.ENDPOINT.008",
+    "title": "POST /blueprints/{id}/generate_all_tasks",
+    "description": "Generate tasks for all feature/story nodes in a blueprint (heavy option).",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "1.4 PlanNode \u2192 Tasks",
+    "type": "endpoint"
+  },
+  {
+    "id": "P1.API.ENDPOINT.009",
+    "title": "POST /blueprints/{id}/compare_to_parent",
+    "description": "Compare blueprint to its parent and mark changed nodes in metadata.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "1.2 Blueprint & plan endpoints",
+    "type": "endpoint"
+  },
+  {
+    "id": "P1.SERVICE.BLUEPRINT.001",
+    "title": "Blueprint ingestion pipeline",
+    "description": "services/blueprints.py chunk\u2192outline\u2192merge flow to create PlanNodes with offsets, anchors, order_index, error handling.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "1.3 Ingestion pipeline",
+    "type": "service"
+  },
+  {
+    "id": "P1.SERVICE.BLUEPRINT.002",
+    "title": "PlanNode task generation helper",
+    "description": "generate_tasks_for_plan_node creates tasks with metadata, links, dependencies from LLM output.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "1.4 PlanNode \u2192 Tasks",
+    "type": "service"
+  },
+  {
+    "id": "P1.UI.PLAN.001",
+    "title": "Plan tree UI",
+    "description": "Tasks tab shows blueprint selector and nested Plan tree with status/priority chips and doc snippets.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "1.5 Frontend \u2013 Blueprint & Plan view",
+    "type": "ui"
+  },
+  {
+    "id": "P1.UI.PLAN.002",
+    "title": "Generate tasks button",
+    "description": "UI actions to trigger POST /plan_nodes/{id}/generate_tasks and set active phase on phase nodes.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "1.5 Frontend \u2013 Blueprint & Plan view",
+    "type": "ui"
+  },
+  {
+    "id": "P2.DATA.MODEL.001",
+    "title": "ConversationSummary model",
+    "description": "conversation_summaries table with conversation_id unique FK, short_summary, detail_summary, last_message_id, updated_at.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "2.1 Conversation summaries",
+    "type": "model"
+  },
+  {
+    "id": "P2.DATA.MODEL.002",
+    "title": "ProjectSnapshot model",
+    "description": "project_snapshots table with project_id unique FK, summary_text, active_phase_node_id, key_metrics_json, updated_at.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "2.2 ProjectSnapshot",
+    "type": "model"
+  },
+  {
+    "id": "P2.SERVICE.CONVO.001",
+    "title": "Conversation summary helper",
+    "description": "update_conversation_summary that rolls summaries after N messages using fast/deep model.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "2.1 Conversation summaries",
+    "type": "service"
+  },
+  {
+    "id": "P2.SERVICE.SNAPSHOT.001",
+    "title": "Project snapshot helper and endpoint",
+    "description": "refresh_project_snapshot builds summary doc + ProjectSnapshot and exposes POST /projects/{id}/snapshot/refresh.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "2.2 ProjectSnapshot",
+    "type": "service"
+  },
+  {
+    "id": "P2.SERVICE.CONTEXT.001",
+    "title": "ContextBuilder with ContextBundle",
+    "description": "context_builder.py with dataclasses (PlanNodeContext, TaskContext, etc.) selecting plan/tasks/decisions/memory for chat.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "2.3 ContextBuilder",
+    "type": "service"
+  },
+  {
+    "id": "P2.SERVICE.ALIGN.001",
+    "title": "check_alignment helper",
+    "description": "services/alignment.py to score file edits/terminal commands with snapshot/plan/decisions context and return alignment JSON.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "2.4 Alignment helper",
+    "type": "service"
+  },
+  {
+    "id": "P2.UI.SNAPSHOT.001",
+    "title": "Snapshot UI surfaces",
+    "description": "Docs tab pins snapshot doc; Notes tab shows snapshot card with status/metrics.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "2.2 ProjectSnapshot Frontend",
+    "type": "ui"
+  },
+  {
+    "id": "P3.DATA.MODEL.001",
+    "title": "ExecutionRun model",
+    "description": "execution_runs with project/task/conversation FKs, run_type, status, started_by, meta, touched_files_json, timestamps, indexes.",
+    "plan_file": "Updated_Project_Plan_2_Phase3_4.txt",
+    "plan_section": "3.1 Backend models for runs",
+    "type": "model"
+  },
+  {
+    "id": "P3.DATA.MODEL.002",
+    "title": "ExecutionStep model",
+    "description": "execution_steps with run FK, order_index, actor, tool, input/output payloads, status, rollback_data, timestamps, index.",
+    "plan_file": "Updated_Project_Plan_2_Phase3_4.txt",
+    "plan_section": "3.1 Backend models for runs",
+    "type": "model"
+  },
+  {
+    "id": "P3.API.ENDPOINT.001",
+    "title": "POST /projects/{id}/runs",
+    "description": "Create ExecutionRun with validation of project/task and status planned.",
+    "plan_file": "Updated_Project_Plan_2_Phase3_4.txt",
+    "plan_section": "3.4 Endpoints",
+    "type": "endpoint"
+  },
+  {
+    "id": "P3.API.ENDPOINT.002",
+    "title": "GET /projects/{id}/runs",
+    "description": "List runs for project with optional status filter (open/all).",
+    "plan_file": "Updated_Project_Plan_2_Phase3_4.txt",
+    "plan_section": "3.4 Endpoints",
+    "type": "endpoint"
+  },
+  {
+    "id": "P3.API.ENDPOINT.003",
+    "title": "GET /runs/{id}",
+    "description": "Fetch run with ordered steps.",
+    "plan_file": "Updated_Project_Plan_2_Phase3_4.txt",
+    "plan_section": "3.4 Endpoints",
+    "type": "endpoint"
+  },
+  {
+    "id": "P3.API.ENDPOINT.004",
+    "title": "POST /runs/{id}/advance",
+    "description": "Advance run with approval=approve|skip|abort and execute next step via worker wrappers.",
+    "plan_file": "Updated_Project_Plan_2_Phase3_4.txt",
+    "plan_section": "3.4 Endpoints",
+    "type": "endpoint"
+  },
+  {
+    "id": "P3.API.ENDPOINT.005",
+    "title": "POST /runs/{id}/rollback",
+    "description": "Rollback touched files using rollback_data and mark run aborted.",
+    "plan_file": "Updated_Project_Plan_2_Phase3_4.txt",
+    "plan_section": "3.4 Endpoints",
+    "type": "endpoint"
+  },
+  {
+    "id": "P3.SERVICE.RUNS.001",
+    "title": "runs orchestration helpers",
+    "description": "services/runs.py with create_run, append_step, get_next_pending_step, mark_step_status, mark_run_status, rollback_run.",
+    "plan_file": "Updated_Project_Plan_2_Phase3_4.txt",
+    "plan_section": "3.2 Backend run orchestration",
+    "type": "service"
+  },
+  {
+    "id": "P3.LLM.TOOLS.001",
+    "title": "run_agent_with_tools and tool schemas",
+    "description": "openai_client tool definitions for read_file/write_file/run_terminal/search_docs/search_messages and run_agent_with_tools mapping tool calls to ExecutionSteps.",
+    "plan_file": "Updated_Project_Plan_2_Phase3_4.txt",
+    "plan_section": "3.3 LLM tool-calling",
+    "type": "service"
+  },
+  {
+    "id": "P3.SERVICE.WORKER.001",
+    "title": "Worker role wrappers",
+    "description": "services/workers.py with run_code_worker/test_worker/doc_worker using role-specific prompts and allowed tools.",
+    "plan_file": "Updated_Project_Plan_2_Phase3_4.txt",
+    "plan_section": "3.3 Worker roles module",
+    "type": "service"
+  },
+  {
+    "id": "P3.SAFETY.DIFF.001",
+    "title": "Diff and rollback capture",
+    "description": "Before write_file capture original content/diff into ExecutionStep.output_payload and touched_files_json with rollback_data.",
+    "plan_file": "Updated_Project_Plan_2_Phase3_4.txt",
+    "plan_section": "3.5 Diffs & rollback details",
+    "type": "safety"
+  },
+  {
+    "id": "P3.SAFETY.TERM.001",
+    "title": "Command allowlist and forbidden substrings",
+    "description": "SAFE_COMMAND_PREFIXES and FORBIDDEN_SUBSTRINGS enforced for run_terminal steps, gating approvals in semi/full auto.",
+    "plan_file": "Updated_Project_Plan_2_Phase3_4.txt",
+    "plan_section": "3.6 Command safety allowlist",
+    "type": "safety"
+  },
+  {
+    "id": "P3.UI.RUNS.001",
+    "title": "Runs panel UI",
+    "description": "Runs tab/panel listing runs and steps with status, alignment badge, approvals (approve/skip/abort) and diff viewer.",
+    "plan_file": "Updated_Project_Plan_2_Phase3_4.txt",
+    "plan_section": "3.6 Frontend: Runs panel & step UI",
+    "type": "ui"
+  },
+  {
+    "id": "P4.DATA.MODEL.001",
+    "title": "Project autonomy fields",
+    "description": "Project fields: autonomy_mode, active_phase_node_id, autopilot_paused, max_parallel_runs.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "3.1 Models (Phase 3/4 carry-over) and 4.1 Project autonomy settings",
+    "type": "model"
+  },
+  {
+    "id": "P4.SERVICE.INTENT.001",
+    "title": "Intent classifier",
+    "description": "intent_classifier.py classify_intent using model alias intent; integrated in chat endpoint before Manager handling.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "4.2 Intent classifier",
+    "type": "service"
+  },
+  {
+    "id": "P4.SERVICE.MANAGER.001",
+    "title": "ManagerAgent orchestration",
+    "description": "ManagerAgent class handling start/continue runs, choose tasks, advance runs, explain_plan with heuristics and safety/autonomy rules.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "4.3 ManagerAgent",
+    "type": "service"
+  },
+  {
+    "id": "P4.API.ENDPOINT.001",
+    "title": "POST /projects/{id}/autopilot_tick",
+    "description": "Autopilot heartbeat endpoint that is idempotent and safe; uses ManagerAgent to start/advance runs or return waiting status.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "4.4 Autopilot tick endpoint",
+    "type": "endpoint"
+  },
+  {
+    "id": "P4.API.ENDPOINT.002",
+    "title": "GET /projects/{id}/manager/plan",
+    "description": "Explain current plan/next tasks/runs for UI consumption.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "4.3 Manager explain_plan",
+    "type": "endpoint"
+  },
+  {
+    "id": "P4.UI.AUTOPILOT.001",
+    "title": "Autopilot controls & heartbeat UI",
+    "description": "UI dropdown for autonomy mode, pause/resume, status pill, heartbeat polling every 30\u201360s calling /autopilot_tick, with toasts/badges.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "4.5 Frontend heartbeat & controls",
+    "type": "ui"
+  },
+  {
+    "id": "P4.LEARN.MODEL.001",
+    "title": "Task learning fields",
+    "description": "Task fields: difficulty_score, rework_count, planned_phase_node_id, actual_phase_node_id, actual_started_at/completed_at.",
+    "plan_file": "Updated_Project_Plan_2_AUTOPILOT_LEARNING.txt",
+    "plan_section": "1.1 Task learning fields",
+    "type": "model"
+  },
+  {
+    "id": "P4.LEARN.MODEL.002",
+    "title": "PlanNode learning fields",
+    "description": "PlanNode learned_priority, learned_risk_level, inferred_dependency_json.",
+    "plan_file": "Updated_Project_Plan_2_AUTOPILOT_LEARNING.txt",
+    "plan_section": "1.2 PlanNode learning fields",
+    "type": "model"
+  },
+  {
+    "id": "P4.LEARN.MODEL.003",
+    "title": "ExecutionRun learning fields",
+    "description": "ExecutionRun outcome and learning_notes fields populated after runs.",
+    "plan_file": "Updated_Project_Plan_2_AUTOPILOT_LEARNING.txt",
+    "plan_section": "1.3 ExecutionRun learning fields",
+    "type": "model"
+  },
+  {
+    "id": "P4.LEARN.SERVICE.001",
+    "title": "Blueprint understanding pipeline",
+    "description": "services/blueprint_understanding.py producing architecture/foundations/sequence docs and annotating PlanNodes with learned fields.",
+    "plan_file": "Updated_Project_Plan_2_AUTOPILOT_LEARNING.txt",
+    "plan_section": "2.1 Blueprint Understanding Pipeline",
+    "type": "service"
+  },
+  {
+    "id": "P4.LEARN.SERVICE.002",
+    "title": "Run outcome recording & retrospectives",
+    "description": "ManagerAgent.record_run_outcome and periodic_retrospective/refine_plan methods updating learned fields and tasks.",
+    "plan_file": "Updated_Project_Plan_2_AUTOPILOT_LEARNING.txt",
+    "plan_section": "3 Run-Time Learning & 3.2 Periodic retrospectives",
+    "type": "service"
+  },
+  {
+    "id": "P4.LEARN.API.001",
+    "title": "POST /projects/{id}/refine_plan",
+    "description": "Endpoint invoking ManagerAgent.refine_plan to adjust ordering/priorities using learning signals.",
+    "plan_file": "Updated_Project_Plan_2_AUTOPILOT_LEARNING.txt",
+    "plan_section": "4.1 API: refine_plan",
+    "type": "endpoint"
+  },
+  {
+    "id": "P4.LEARN.API.002",
+    "title": "GET /projects/{id}/learning_metrics",
+    "description": "Endpoint returning learning metrics (cycle time, difficulty, fragile areas, plan deviation, blocked tasks).",
+    "plan_file": "Updated_Project_Plan_2_AUTOPILOT_LEARNING.txt",
+    "plan_section": "5.1 Backend metrics endpoint",
+    "type": "endpoint"
+  },
+  {
+    "id": "P4.LEARN.UI.001",
+    "title": "Learning metrics UI",
+    "description": "UI card showing learning_metrics and button to call refine_plan.",
+    "plan_file": "Updated_Project_Plan_2_AUTOPILOT_LEARNING.txt",
+    "plan_section": "5.3 Frontend surfaces",
+    "type": "ui"
+  },
+  {
+    "id": "PT.INGEST.EMBED.001",
+    "title": "embed_texts_batched & embed_batch helper",
+    "description": "Centralized embeddings batching respecting MAX_EMBED_TOKENS_PER_BATCH and MAX_EMBED_ITEMS_PER_BATCH using embed_batch wrapper.",
+    "plan_file": "Updated_Project_Plan_2_Ingestion_Plan.txt",
+    "plan_section": "T1.1 Centralized batched embeddings helper",
+    "type": "service"
+  },
+  {
+    "id": "PT.INGEST.MODEL.001",
+    "title": "IngestionJob model and endpoints",
+    "description": "IngestionJob with progress fields plus POST/GET endpoints for project-scoped ingestion jobs and cancel.",
+    "plan_file": "Updated_Project_Plan_2_Ingestion_Plan.txt",
+    "plan_section": "T1.2 IngestionJob model for resumable ingestion",
+    "type": "model"
+  },
+  {
+    "id": "PT.INGEST.MODEL.002",
+    "title": "FileIngestionState hash tracking",
+    "description": "file_ingestion_state table tracking sha256 per project/path for incremental re-ingestion.",
+    "plan_file": "Updated_Project_Plan_2_Ingestion_Plan.txt",
+    "plan_section": "T2.2 Hash-based incremental ingestion",
+    "type": "model"
+  },
+  {
+    "id": "PT.INGEST.MODEL.003",
+    "title": "BlueprintSectionSummary model",
+    "description": "BlueprintSectionSummary per PlanNode with short_summary and detailed_summary updated during plan generation.",
+    "plan_file": "Updated_Project_Plan_2_Ingestion_Plan.txt",
+    "plan_section": "T3.1 BlueprintSection summaries",
+    "type": "model"
+  },
+  {
+    "id": "PT.INGEST.API.001",
+    "title": "Windowed read_file",
+    "description": "Filesystem read endpoint supports start_line/end_line to allow windowed reads for workers.",
+    "plan_file": "Updated_Project_Plan_2_Ingestion_Plan.txt",
+    "plan_section": "T4.2 Code workers: windowed file reads",
+    "type": "endpoint"
+  },
+  {
+    "id": "PT.INGEST.BUDGET.001",
+    "title": "Budget/env knobs for embeddings and context",
+    "description": "CONFIG_ENV and backend honor MAX_EMBED_TOKENS_PER_BATCH, MAX_EMBED_ITEMS_PER_BATCH, MAX_CONTEXT_TOKENS_PER_CALL, AUTOPILOT_MAX_TOKENS_PER_RUN.",
+    "plan_file": "Updated_Project_Plan_2_Ingestion_Plan.txt",
+    "plan_section": "T5.1 Budget knobs in config",
+    "type": "env"
+  },
+  {
+    "id": "PM.MATRIX.ROLE.001",
+    "title": "Role alias env vars",
+    "description": "Env vars OPENAI_MODEL_SUMMARY/SNAPSHOT/BLUEPRINT/PLAN_TASKS/MANAGER/WORKER_CODE/WORKER_TEST/WORKER_DOC/ALIGNMENT/INTENT/RESEARCH_DEEP defined.",
+    "plan_file": "Updated_Project_Plan_2_Model_Matrix.txt",
+    "plan_section": "1.1 Core env vars & 1.2 defaults",
+    "type": "env"
+  },
+  {
+    "id": "PM.MATRIX.ROLE.002",
+    "title": "get_model_for_role helper",
+    "description": "openai_client implements _ROLE_ENV_VARS/_ROLE_DEFAULT_MODELS and get_model_for_role(role).",
+    "plan_file": "Updated_Project_Plan_2_Model_Matrix.txt",
+    "plan_section": "4.1 Role \u2192 env \u2192 model resolution",
+    "type": "service"
+  },
+  {
+    "id": "PM.MATRIX.ROLE.003",
+    "title": "call_model_for_role usage",
+    "description": "Subsystems call call_model_for_role for manager/workers/blueprint/plan_tasks/summary/snapshot/alignment/intent.",
+    "plan_file": "Updated_Project_Plan_2_Model_Matrix.txt",
+    "plan_section": "4.2 Calling helper & 3.x subsystem wiring",
+    "type": "service"
+  },
+  {
+    "id": "PM.MATRIX.EMBED.001",
+    "title": "Embedding model default",
+    "description": "get_embedding_model uses OPENAI_EMBEDDING_MODEL default text-embedding-3-small across ingestion/search/memory/blueprints.",
+    "plan_file": "Updated_Project_Plan_2_Model_Matrix.txt",
+    "plan_section": "5.1 Embedding model",
+    "type": "env"
+  },
+  {
+    "id": "PS.SAFETY.FS.001",
+    "title": "Filesystem confinement",
+    "description": "All file ops normalized and confined to project local_root_path (no path escape).",
+    "plan_file": "Updated_Project_Plan_2_AUTOPILOT_LIMITATIONS.txt",
+    "plan_section": "3.1 Filesystem safety",
+    "type": "safety"
+  },
+  {
+    "id": "PS.SAFETY.TERM.001",
+    "title": "Terminal allowlist/forbidden commands",
+    "description": "Terminal commands auto-run only from safe prefixes; forbidden substrings rm/del/git push/format/shutdown/reboot etc.",
+    "plan_file": "Updated_Project_Plan_2_AUTOPILOT_LIMITATIONS.txt",
+    "plan_section": "3.2 Terminal safety",
+    "type": "safety"
+  },
+  {
+    "id": "PS.SAFETY.APPROVAL.001",
+    "title": "Approval gates by autonomy mode",
+    "description": "Suggest: everything needs approval; Semi: safe reads/tests auto, writes/unsafe commands need approval; Full: auto except forbidden commands; rollback available.",
+    "plan_file": "Updated_Project_Plan_2_AUTOPILOT_LIMITATIONS.txt",
+    "plan_section": "3.3 Approval gates",
+    "type": "safety"
+  },
+  {
+    "id": "PD.DOCS.001",
+    "title": "Docs updates for new features",
+    "description": "SYSTEM_OVERVIEW, SYSTEM_MATRIX, API_REFERENCE, USER_MANUAL, DEV_GUIDE, AGENT_GUIDE, OPERATIONS_RUNBOOK, TEST_PLAN updated for blueprint/runs/autopilot.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "5.2 Docs to update",
+    "type": "docs"
+  },
+  {
+    "id": "PD.QA.001",
+    "title": "QA probes for blueprints and runs/autopilot",
+    "description": "qa/blueprints_probe.py, qa/runs_autopilot_probe.py and smoke coverage added; TEST_PLAN scenarios H-Blueprint-01, H-Autopilot-01/02.",
+    "plan_file": "Updated_Project_Plan_2.txt",
+    "plan_section": "5.3 QA & smoke tests",
+    "type": "tests"
+  }
+]

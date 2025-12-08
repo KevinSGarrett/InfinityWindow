@@ -7,6 +7,7 @@ Sources: `docs/TODO_CHECKLIST.md` and `docs/PROGRESS.md` (current window). This 
 - [x] Autopilot reliability: mitigate 503s for auto_update_tasks. (TODO_CHECKLIST §6)
 - [x] Autopilot reliability: handle missing task backlog files gracefully. (TODO_CHECKLIST §6)
 - [~] Autopilot reliability: improve task intent extraction to reduce extra “analysis” tasks and handle vague prompts; tighten dedupe/completion on noisy conversations; add telemetry-backed confidence scoring and audit snippets. (TODO_CHECKLIST §6)
+- [x] Dependency hints captured on new tasks (“depends on / after / waiting for”), appended to auto_notes and telemetry details; tightened near-duplicate detection (first tokens overlap).
 - [x] Autonomous task loop upgraded (auto-complete, dedupe, ordering). (TODO_CHECKLIST §1 / PROGRESS Notes)
 - [~] Task-aware auto-mode routing (heuristic + telemetry done; refine heuristics and add UI override). (TODO_CHECKLIST §2)
 - [~] Suggested-change queue / Approve–Dismiss flow for low-confidence add/complete (initial version shipped; refine). (TODO_CHECKLIST §2)

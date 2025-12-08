@@ -139,9 +139,12 @@ def _extract_last_user_prompt(messages: List[Dict[str, str]]) -> str:
     return ""
 
 
-def _infer_auto_submode(messages: List[Dict[str, str]]) -> str:
+def _infer_auto_submode(
+    messages: List[Dict[str, str]]
+) -> Tuple[str, str]:
     """
     Lightweight heuristic that decides which logical mode auto should route to.
+    Returns (mode, reason).
     """
     prompt = _extract_last_user_prompt(messages)
     lowered = prompt.lower()
@@ -151,7 +154,7 @@ def _infer_auto_submode(messages: List[Dict[str, str]]) -> str:
     has_code_block = "```" in prompt or bool(re.search(r"[{};]", prompt))
     code_hint = any(hint in lowered for hint in _CODE_HINTS)
     if has_code_block or code_hint:
-        return "code"
+        return "code", "code-like prompt"
 
     is_researchy = (
         stripped_len > 800
@@ -159,15 +162,15 @@ def _infer_auto_submode(messages: List[Dict[str, str]]) -> str:
         or any(term in lowered for term in _RESEARCH_HINTS)
     )
     if is_researchy:
-        return "research"
+        return "research", "long/research prompt"
 
     if any(term in lowered for term in _PLANNING_HINTS):
-        return "deep"
+        return "deep", "planning prompt"
 
     if stripped_len < 120 and newline_count <= 1:
-        return "fast"
+        return "fast", "short prompt"
 
-    return "deep"
+    return "deep", "default"
 
 
 def _record_auto_route(route: str) -> None:
@@ -475,12 +478,15 @@ def generate_reply_from_history(
     routed_mode = normalized_mode
 
     if model is None and normalized_mode == "auto":
-        inferred_mode = _infer_auto_submode(messages)
+        inferred_mode, inferred_reason = _infer_auto_submode(messages)
         routed_mode = inferred_mode or "deep"
         _record_auto_route(routed_mode)
         print(
-            f"[LLM] Auto mode heuristics routed this prompt to '{routed_mode}'."
+            f"[LLM] Auto mode heuristics routed this prompt to '{routed_mode}' ({inferred_reason})."
         )
+        if usage_out is not None:
+            usage_out["auto_mode"] = routed_mode
+            usage_out["auto_reason"] = inferred_reason
 
     chosen_model = (model or _get_model_for_mode(routed_mode)).strip()
 

@@ -1,6 +1,6 @@
 # InfinityWindow – End‑to‑End Test Plan (v0 / v1 / v2 Baseline)
 
-_Goal: Systematically test all currently implemented features so we can be highly confident that the “v2” feature set described in `Hydration_File_002.txt`, `To_Do_List_001.txt`, and `docs/PROGRESS.md` is working as expected. This plan is for **exhaustive manual + scripted testing**; it does not assume an existing automated test suite._
+_Goal: Systematically test all currently implemented features so we can be highly confident that the “v2” feature set described in `Hydration_File_002.txt`, `To_Do_List_001.txt`, and `docs/PROGRESS.md` is working as expected. This plan is for **exhaustive manual + scripted testing**; it does not assume an existing automated test suite. Refreshed 2025-12-12; extend with new cases as upcoming work lands (auto-mode routing reason, telemetry dashboard v2 exports/time filter, task dependency/audit)._
 
 ---
 
@@ -45,6 +45,7 @@ We’ll run tests in phases to keep things organized and to isolate failures:
    - Backend/Frontend startup, health checks, CORS, basic logging.
 2. **Phase B – Core data model & CRUD**
    - Projects, conversations, messages, tasks, docs, usage.
+   - **Tasks coverage gate**: must pair with `docs/tasks/TEST_PLAN_TASKS.md` and hit ≥98/100 for the task scope (API + UI + chat automation + telemetry).
 3. **Phase C – Retrieval & vector store**
    - Message search, doc search, memory item retrieval.
 4. **Phase D – Filesystem & AI file edits**
@@ -68,6 +69,8 @@ Each phase below lists **test cases** with:
 - Expected results.
 
 Results and issues for each test should be recorded in a separate test report (see `docs/TEST_REPORT_TEMPLATE.md`).  
+
+**Scoring:** Target ≥98/100 overall. Any critical failure blocks release. For tasks, use the rubric in `docs/tasks/TEST_PLAN_TASKS.md` (also ≥98/100 target).
 
 ---
 
@@ -159,6 +162,7 @@ Record any problems under `A-Env-*` in test reports.
 - **Expected**:
   - Manual tasks behave correctly.
   - Auto‑extracted tasks appear when appropriate and do not duplicate identical open tasks.
+  - Enum validation rejects bad status/priority values (422).
 
 ### B-Tasks-02 – Autonomous TODO maintenance loop
 
@@ -172,6 +176,7 @@ Record any problems under `A-Env-*` in test reports.
   - TODO items are created automatically from conversation context.
   - When progress/completion is mentioned, the assistant updates task status (done vs open) without being explicitly instructed to edit the list.
   - Tasks appear in a sensible order (highest-priority/newest items surfaced appropriately) or are reordered when dependencies are clarified.
+  - Dependency phrasing (“depends on / after / waiting for”) is captured in auto_notes and telemetry details without duplication.
 
 ### B-Tasks-03 – Suggested-change queue & telemetry
 
@@ -189,6 +194,7 @@ Record any problems under `A-Env-*` in test reports.
   - Low-confidence requests generate suggestions instead of immediate changes.
   - Approve/dismiss endpoints work and mutate the task list accordingly.
   - Telemetry counters and `recent_actions` capture each action with timestamps/confidence.
+  - Stale suggestions are cleared when the referenced task is already done.
 
 ### B-Tasks-E2E – Chat → tasks auto-add/auto-complete (API)
 
@@ -201,6 +207,7 @@ Record any problems under `A-Env-*` in test reports.
 - **Expected**:
   - Tasks are added automatically after chat without manual calls to `auto_update_tasks`.
   - Follow-up chat marks the matching task `done` and leaves unrelated tasks `open`.
+  - Model override path: when mode/model override is set in the request, the response still triggers auto-update and telemetry shows the chosen model.
 
 ### B-Tasks-Noisy – Chat → tasks with noisy conversation (API)
 
@@ -217,7 +224,9 @@ Record any problems under `A-Env-*` in test reports.
 - **Telemetry & Usage quick checks**  
   - `GET /debug/telemetry` before/after chat to see task counters and confidence buckets.  
   - `GET /conversations/{id}/usage` to confirm non-zero cost totals after chat; compare with Usage tab.  
+  - Usage tab shows confidence buckets, recent actions with status/priority/blocked_reason/auto_notes/matched_text/task_group, model filter, time filter (all/last5/last10), action/model counts, JSON/CSV export (filtered recent actions), routing reason, and “Last chosen model”/“Next override” cards aligned with recent `/chat` runs.  
   - For exhaustive task automation/UI coverage (target ≥98/100), also run `docs/tasks/TEST_PLAN_TASKS.md` alongside this plan; it aligns with the current green Playwright + API suites on port 8000 and documents stability aids (seed data, refresh-all).
+  - Confirm telemetry reset (`reset=true`) zeroes counters and clears recent actions; Usage tab refresh reflects the reset state.
 
 #### Large repo ingestion test harness (B-Docs-01 → B-Docs-07) — long-running
 

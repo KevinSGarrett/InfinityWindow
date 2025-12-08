@@ -88,6 +88,7 @@ type Task = {
   auto_confidence?: number | null;
   auto_last_action?: string | null;
   auto_last_action_at?: string | null;
+  group?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -124,9 +125,11 @@ type TaskTelemetryAction = {
   task_priority?: string | null;
   task_blocked_reason?: string | null;
   task_auto_notes?: string | null;
+  task_group?: string | null;
   project_id?: number | null;
   conversation_id?: number | null;
   details?: Record<string, any>;
+  matched_text?: string | null;
 };
 
 type UsageRecord = {
@@ -139,6 +142,7 @@ type UsageRecord = {
   tokens_out: number | null;
   cost_estimate: number | null;
   created_at: string;
+  mode?: string | null;
 };
 
 type IngestionJob = {
@@ -374,6 +378,8 @@ function App() {
     "auto" | "fast" | "deep" | "budget" | "research" | "code"
   >("auto");
   const [modelOverride, setModelOverride] = useState("");
+  const [modelOverrideMode, setModelOverrideMode] = useState("default");
+  const [modelOverrideCustom, setModelOverrideCustom] = useState("");
 
   // Project documents
   const [projectDocs, setProjectDocs] = useState<ProjectDocument[]>([]);
@@ -418,6 +424,17 @@ function App() {
   const [telemetry, setTelemetry] = useState<TelemetrySnapshot | null>(null);
   const [isLoadingTelemetry, setIsLoadingTelemetry] = useState(false);
   const [telemetryError, setTelemetryError] = useState<string | null>(null);
+  const [usageActionFilter, setUsageActionFilter] = useState<string>("all");
+  const [usageGroupFilter, setUsageGroupFilter] = useState<string>("all");
+  const [usageModelFilter, setUsageModelFilter] = useState<string>("all");
+  const [usageTimeFilter, setUsageTimeFilter] = useState<string>("all");
+  const [usageRangeFilter, setUsageRangeFilter] = useState<string>("recent");
+  const [usageRecordsWindow, setUsageRecordsWindow] =
+    useState<string>("all");
+  const [usageError, setUsageError] = useState<string | null>(null);
+  const [usageExportJson, setUsageExportJson] = useState<string | null>(null);
+  const [usageExportFormat, setUsageExportFormat] = useState<"json" | "csv" | null>(null);
+  const [usageExportError, setUsageExportError] = useState<string | null>(null);
 
   // Project instructions
   const [projectInstructions, setProjectInstructions] = useState("");
@@ -593,6 +610,27 @@ function App() {
       stopRepoIngestionPolling();
     };
   }, [stopRepoIngestionPolling]);
+
+  // Load telemetry/usage when entering the Usage tab
+  useEffect(() => {
+    if (rightTab === "usage") {
+      loadTelemetry(false);
+      if (usageConversationId && usageConversationId > 0) {
+        loadUsageForConversation(usageConversationId);
+      } else if (selectedConversationId) {
+        loadUsageForConversation(selectedConversationId);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rightTab]);
+
+  // Ensure telemetry refreshes when project or usage conversation changes while on Usage tab.
+  useEffect(() => {
+    if (rightTab === "usage") {
+      loadTelemetry(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProjectId, usageConversationId]);
 
   const commandPaletteActions = useMemo(
     () => [
@@ -811,15 +849,34 @@ function App() {
     return Array.from(map.values());
   }, [searchDocHits, projectDocs]);
 
-  const usageModelBreakdown = useMemo(() => {
+  const windowedUsageRecords = useMemo(() => {
     if (!usage?.records || usage.records.length === 0) {
+      return [];
+    }
+    if (usageRecordsWindow === "all") return usage.records;
+    const now = Date.now();
+    const windowMs =
+      usageRecordsWindow === "1h"
+        ? 60 * 60 * 1000
+        : usageRecordsWindow === "24h"
+        ? 24 * 60 * 60 * 1000
+        : 7 * 24 * 60 * 60 * 1000;
+    const cutoff = now - windowMs;
+    return usage.records.filter((record) => {
+      const ts = new Date(record.created_at ?? 0).getTime();
+      return Number.isFinite(ts) && ts >= cutoff;
+    });
+  }, [usage, usageRecordsWindow]);
+
+  const usageModelBreakdown = useMemo(() => {
+    if (!windowedUsageRecords.length) {
       return [];
     }
     const map = new Map<
       string,
       { model: string; count: number; tokensIn: number; tokensOut: number }
     >();
-    usage.records.forEach((record) => {
+    windowedUsageRecords.forEach((record) => {
       const key = record.model || "unknown";
       const entry =
         map.get(key) ??
@@ -835,7 +892,680 @@ function App() {
       map.set(key, entry);
     });
     return Array.from(map.values());
+  }, [windowedUsageRecords]);
+
+  const lastUsageAutoReason = (usage as any)?.auto_reason;
+
+  // Fallback model options from task telemetry when usage breakdown is empty.
+  const telemetryModelOptions = useMemo(() => {
+    if (!telemetry?.tasks?.recent_actions) return [];
+    const models = new Set<string>();
+    telemetry.tasks.recent_actions.forEach((a) => {
+      if (selectedProjectId && a.project_id !== selectedProjectId) {
+        return;
+      }
+      const actionModel = (a as any).model || a.details?.model;
+      if (actionModel) {
+        models.add(actionModel);
+      }
+    });
+    return Array.from(models);
+  }, [telemetry, selectedProjectId]);
+
+  const modelFilterOptions = useMemo(() => {
+    if (usageModelBreakdown.length > 0) {
+      return usageModelBreakdown.map((m) => m.model);
+    }
+    return telemetryModelOptions;
+  }, [usageModelBreakdown, telemetryModelOptions]);
+
+  const lastUsageModel = useMemo(() => {
+    if (!usage?.records?.length) return null;
+    return usage.records[usage.records.length - 1]?.model ?? null;
   }, [usage]);
+
+  const filteredRecentActions = useMemo(() => {
+    if (!telemetry?.tasks.recent_actions) return [];
+    const suggestedActions = new Set(["auto_suggested", "auto_dismissed", "auto_deduped"]);
+    return telemetry.tasks.recent_actions.filter((a) => {
+      if (selectedProjectId && a.project_id !== selectedProjectId) {
+        return false;
+      }
+      const action = a.action || "";
+      const actionFilter = usageActionFilter;
+      const matchesAction =
+        actionFilter === "all"
+          ? true
+          : actionFilter === "suggested"
+          ? suggestedActions.has(action)
+          : action === actionFilter || action.startsWith(actionFilter);
+
+      const matchesGroup =
+        usageGroupFilter === "all" ||
+        (a.task_group || "").toLowerCase() === usageGroupFilter;
+
+      const actionModel =
+        a.details?.model || (a as any).model || lastUsageModel || null;
+      const matchesModel =
+        usageModelFilter === "all" || actionModel === usageModelFilter;
+
+      return matchesAction && matchesGroup && matchesModel;
+    });
+  }, [
+    telemetry,
+    usageActionFilter,
+    usageGroupFilter,
+    usageModelFilter,
+    lastUsageModel,
+    selectedProjectId,
+  ]);
+
+  const timeFilteredRecentActions = useMemo(() => {
+    if (!filteredRecentActions.length) return [];
+    if (usageTimeFilter === "all") return filteredRecentActions;
+    const limit = usageTimeFilter === "last5" ? 5 : 10;
+    return filteredRecentActions.slice(0, limit);
+  }, [filteredRecentActions, usageTimeFilter]);
+
+  const actionCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    timeFilteredRecentActions.forEach((a) => {
+      counts[a.action] = (counts[a.action] || 0) + 1;
+    });
+    return counts;
+  }, [timeFilteredRecentActions]);
+
+  const modelCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    timeFilteredRecentActions.forEach((a) => {
+      const m = (a as any).model || a.details?.model || "unknown";
+      counts[m] = (counts[m] || 0) + 1;
+    });
+    return counts;
+  }, [timeFilteredRecentActions]);
+
+  const bucketCounts = useMemo(() => {
+    const counts: Record<string, number> = { "lt_0_4": 0, "0_4_0_7": 0, "gte_0_7": 0 };
+    timeFilteredRecentActions.forEach((a) => {
+      const c = a.confidence ?? 0;
+      if (c < 0.4) counts["lt_0_4"] += 1;
+      else if (c < 0.7) counts["0_4_0_7"] += 1;
+      else counts["gte_0_7"] += 1;
+    });
+    return counts;
+  }, [timeFilteredRecentActions]);
+
+  const actionChartData = useMemo(() => {
+    const entries = Object.entries(actionCounts);
+    if (!entries.length) return [];
+    const max = Math.max(...entries.map(([, v]) => v));
+    return entries
+      .map(([action, count]) => ({
+        key: action,
+        label: action,
+        count,
+        percent: max ? (count / max) * 100 : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
+  }, [actionCounts]);
+
+  const modelChartData = useMemo(() => {
+    const entries = Object.entries(modelCounts);
+    if (!entries.length) return [];
+    const max = Math.max(...entries.map(([, v]) => v));
+    return entries
+      .map(([model, count]) => ({
+        key: model || "unknown",
+        label: model || "unknown",
+        count,
+        percent: max ? (count / max) * 100 : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
+  }, [modelCounts]);
+
+  const confidenceChartData = useMemo(() => {
+    const labels: Record<string, string> = {
+      lt_0_4: "<0.4",
+      "0_4_0_7": "0.4–0.7",
+      gte_0_7: "≥0.7",
+    };
+    const entries = Object.entries(bucketCounts).map(([bucket, count]) => ({
+      key: bucket,
+      label: labels[bucket] || bucket,
+      count,
+    }));
+    if (!entries.length) return [];
+    const max = Math.max(...entries.map((e) => e.count));
+    return entries.map((e) => ({
+      ...e,
+      percent: max ? (e.count / max) * 100 : 0,
+    }));
+  }, [bucketCounts]);
+
+  const modeUsageChartData = useMemo(() => {
+    const routes = telemetry?.llm?.auto_routes || {};
+    const entries = Object.entries(routes)
+      .filter(([, count]) => count > 0)
+      .map(([mode, count]) => ({ key: mode, label: mode, count }));
+    if (!entries.length) return [];
+    const max = Math.max(...entries.map((e) => e.count));
+    return entries.map((e) => ({
+      ...e,
+      percent: max ? (e.count / max) * 100 : 0,
+    }));
+  }, [telemetry]);
+
+  const copyRecentActionsJson = useCallback(() => {
+    setUsageExportError(null);
+    try {
+      const data = JSON.stringify(timeFilteredRecentActions, null, 2);
+      setUsageExportFormat("json");
+      setUsageExportJson(data);
+      navigator.clipboard
+        ?.writeText(data)
+        .catch(() =>
+          setUsageExportError(
+            "Failed to copy to clipboard; export is still shown below."
+          )
+        );
+    } catch (err) {
+      setUsageExportError("Failed to generate JSON export.");
+    }
+  }, [timeFilteredRecentActions]);
+
+  const copyRecentActionsCsv = useCallback(() => {
+    setUsageExportError(null);
+    const header = [
+      "timestamp",
+      "action",
+      "confidence",
+      "task_id",
+      "task_description",
+      "task_status",
+      "task_priority",
+      "task_group",
+      "model",
+    ];
+    try {
+      if (!timeFilteredRecentActions.length) {
+        const emptyCsv = header.join(",");
+        setUsageExportFormat("csv");
+        setUsageExportJson(emptyCsv);
+        navigator.clipboard
+          ?.writeText(emptyCsv)
+          .catch(() =>
+            setUsageExportError(
+              "Failed to copy CSV; preview remains available."
+            )
+          );
+        return;
+      }
+      const rows = timeFilteredRecentActions.map((a) => {
+        const m = (a as any).model || a.details?.model || "";
+        return [
+          a.timestamp ?? "",
+          a.action ?? "",
+          a.confidence ?? "",
+          a.task_id ?? "",
+          a.task_description ?? "",
+          a.task_status ?? "",
+          a.task_priority ?? "",
+          a.task_group ?? "",
+          m,
+        ]
+          .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+          .join(",");
+      });
+      const csv = [header.join(","), ...rows].join("\n");
+      navigator.clipboard
+        ?.writeText(csv)
+        .catch(() =>
+          setUsageExportError(
+            "Failed to copy CSV; export is still shown below."
+          )
+        );
+      setUsageExportFormat("csv");
+      setUsageExportJson(csv);
+    } catch (err) {
+      setUsageExportError("Failed to generate CSV export.");
+    }
+  }, [timeFilteredRecentActions]);
+
+  const maxActionConfidence =
+    telemetry?.tasks.recent_actions?.reduce(
+      (max, a) => Math.max(max, a.confidence ?? 0),
+      0
+    ) ?? 0;
+
+  const confidenceBuckets = telemetry?.tasks.confidence_buckets;
+  const confidenceTotal =
+    (confidenceBuckets?.lt_0_4 ?? 0) +
+    (confidenceBuckets?.["0_4_0_7"] ?? 0) +
+    (confidenceBuckets?.gte_0_7 ?? 0);
+
+  const percentToWidthClass = (value: number) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(value / 5) * 5));
+    return `mini-bar-fill width-${clamped}`;
+  };
+
+  const telemetryPanel = (
+    <div className="usage-telemetry">
+      <div className="usage-telemetry-header">
+        <span>Routing & tasks telemetry</span>
+        <div className="usage-telemetry-actions">
+          <button
+            type="button"
+            className="btn-secondary small"
+            onClick={() => loadTelemetry(false)}
+            disabled={isLoadingTelemetry}
+          >
+            Refresh
+          </button>
+          <button
+            type="button"
+            className="btn-link small"
+            onClick={() => loadTelemetry(true)}
+            disabled={isLoadingTelemetry}
+          >
+            Refresh & reset
+          </button>
+        </div>
+      </div>
+      {isLoadingTelemetry ? (
+        <div className="usage-telemetry-body">Loading telemetry…</div>
+      ) : telemetryError ? (
+        <div className="usage-telemetry-body usage-telemetry-error">
+          {telemetryError}
+        </div>
+      ) : !telemetry ? (
+        <div className="usage-telemetry-body">
+          No telemetry loaded yet. Click Refresh to fetch routing and task
+          counters.
+        </div>
+      ) : (
+        <div className="usage-telemetry-body">
+          <div className="usage-telemetry-section">
+            <div className="usage-telemetry-title">Auto-mode routes</div>
+            {Object.keys(telemetry.llm.auto_routes).length === 0 ? (
+              <div className="usage-telemetry-empty">
+                No auto-mode calls recorded yet.
+              </div>
+            ) : (
+              <ul className="usage-telemetry-list">
+                {Object.entries(telemetry.llm.auto_routes).map(
+                  ([mode, count]) => (
+                    <li key={mode}>
+                      <span className="usage-label">{mode}</span>
+                      <span className="usage-value">{count}</span>
+                    </li>
+                  )
+                )}
+              </ul>
+            )}
+          </div>
+          <div className="usage-telemetry-section">
+            <div className="usage-telemetry-title">Fallbacks & tasks</div>
+            <ul className="usage-telemetry-list">
+              <li>
+                <span className="usage-label">Fallback attempts</span>
+                <span className="usage-value">
+                  {telemetry.llm.fallback_attempts}
+                </span>
+              </li>
+              <li>
+                <span className="usage-label">Fallback successes</span>
+                <span className="usage-value">
+                  {telemetry.llm.fallback_success}
+                </span>
+              </li>
+              <li>
+                <span className="usage-label">Tasks auto-added</span>
+                <span className="usage-value">
+                  {telemetry.tasks.auto_added}
+                </span>
+              </li>
+              <li>
+                <span className="usage-label">Tasks auto-completed</span>
+                <span className="usage-value">
+                  {telemetry.tasks.auto_completed}
+                </span>
+              </li>
+              <li>
+                <span className="usage-label">Tasks auto-deduped</span>
+                <span className="usage-value">
+                  {telemetry.tasks.auto_deduped}
+                </span>
+              </li>
+            </ul>
+          </div>
+          <div className="usage-telemetry-section">
+            <div className="usage-telemetry-title">Confidence stats</div>
+            {telemetry.tasks.confidence_stats ? (
+              <ul className="usage-telemetry-list">
+                <li>
+                  <span className="usage-label">Min</span>
+                  <span className="usage-value">
+                    {telemetry.tasks.confidence_stats.min}
+                  </span>
+                </li>
+                <li>
+                  <span className="usage-label">Max</span>
+                  <span className="usage-value">
+                    {telemetry.tasks.confidence_stats.max}
+                  </span>
+                </li>
+                <li>
+                  <span className="usage-label">Avg</span>
+                  <span className="usage-value">
+                    {telemetry.tasks.confidence_stats.avg}
+                  </span>
+                </li>
+                <li>
+                  <span className="usage-label">Count</span>
+                  <span className="usage-value">
+                    {telemetry.tasks.confidence_stats.count}
+                  </span>
+                </li>
+              </ul>
+            ) : (
+              <div className="usage-telemetry-empty">
+                No confidence data yet.
+              </div>
+            )}
+            {telemetry.tasks.confidence_buckets && (
+              <ul className="usage-telemetry-list">
+                <li>
+                  <span className="usage-label">&lt;0.4</span>
+                  <span className="usage-value">
+                    {telemetry.tasks.confidence_buckets.lt_0_4}
+                  </span>
+                  <div className="mini-bar">
+                    <div
+                      className={percentToWidthClass(
+                        confidenceTotal
+                          ? (telemetry.tasks.confidence_buckets.lt_0_4 /
+                              confidenceTotal) *
+                            100
+                          : 0
+                      )}
+                    />
+                  </div>
+                </li>
+                <li>
+                  <span className="usage-label">0.4–0.7</span>
+                  <span className="usage-value">
+                    {telemetry.tasks.confidence_buckets["0_4_0_7"]}
+                  </span>
+                  <div className="mini-bar">
+                    <div
+                      className={percentToWidthClass(
+                        confidenceTotal
+                          ? (telemetry.tasks.confidence_buckets["0_4_0_7"] /
+                              confidenceTotal) *
+                            100
+                          : 0
+                      )}
+                    />
+                  </div>
+                </li>
+                <li>
+                  <span className="usage-label">≥0.7</span>
+                  <span className="usage-value">
+                    {telemetry.tasks.confidence_buckets.gte_0_7}
+                  </span>
+                  <div className="mini-bar">
+                    <div
+                      className={percentToWidthClass(
+                        confidenceTotal
+                          ? (telemetry.tasks.confidence_buckets.gte_0_7 /
+                              confidenceTotal) *
+                            100
+                          : 0
+                      )}
+                    />
+                  </div>
+                </li>
+              </ul>
+            )}
+          </div>
+          <div className="usage-telemetry-section">
+            <div className="usage-telemetry-title">Recent task actions</div>
+            <div className="usage-telemetry-sub">
+              Filters and time window apply to charts, list, and exports.
+            </div>
+            <div className="usage-charts-grid">
+              <div className="usage-chart-card" data-testid="chart-actions">
+                <div className="usage-chart-heading">Action types</div>
+                {actionChartData.length ? (
+                  <ul className="usage-chart-list">
+                    {actionChartData.map((entry) => (
+                      <li key={entry.key} className="usage-chart-row">
+                        <div className="usage-chart-label">
+                          {entry.label}
+                          <span className="usage-chart-count">
+                            {entry.count}
+                          </span>
+                        </div>
+                        <div
+                          className="mini-bar"
+                          aria-label={`${entry.label} count ${entry.count}`}
+                        >
+                          <div
+                            className={percentToWidthClass(entry.percent)}
+                            aria-hidden
+                          />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="usage-telemetry-empty">
+                    No filtered actions yet.
+                  </div>
+                )}
+              </div>
+              <div className="usage-chart-card" data-testid="chart-models">
+                <div className="usage-chart-heading">Calls per model</div>
+                {modelChartData.length ? (
+                  <ul className="usage-chart-list">
+                    {modelChartData.map((entry) => (
+                      <li key={entry.key} className="usage-chart-row">
+                        <div className="usage-chart-label">
+                          {entry.label}
+                          <span className="usage-chart-count">
+                            {entry.count}
+                          </span>
+                        </div>
+                        <div
+                          className="mini-bar"
+                          aria-label={`${entry.label} calls ${entry.count}`}
+                        >
+                          <div
+                            className={percentToWidthClass(entry.percent)}
+                            aria-hidden
+                          />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="usage-telemetry-empty">
+                    No model data for the current filters.
+                  </div>
+                )}
+              </div>
+              <div className="usage-chart-card" data-testid="chart-confidence">
+                <div className="usage-chart-heading">Confidence buckets</div>
+                {confidenceChartData.length ? (
+                  <ul className="usage-chart-list">
+                    {confidenceChartData.map((entry) => (
+                      <li key={entry.key} className="usage-chart-row">
+                        <div className="usage-chart-label">
+                          {entry.label}
+                          <span className="usage-chart-count">
+                            {entry.count}
+                          </span>
+                        </div>
+                        <div
+                          className="mini-bar"
+                          aria-label={`${entry.label} ${entry.count}`}
+                        >
+                          <div
+                            className={percentToWidthClass(entry.percent)}
+                            aria-hidden
+                          />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="usage-telemetry-empty">
+                    No confidence data for the filtered actions.
+                  </div>
+                )}
+              </div>
+              <div className="usage-chart-card" data-testid="chart-modes">
+                <div className="usage-chart-heading">
+                  Mode usage (auto routes)
+                </div>
+                <div className="usage-telemetry-sub">
+                  Counters reset with “Refresh & reset”.
+                </div>
+                {modeUsageChartData.length ? (
+                  <ul className="usage-chart-list">
+                    {modeUsageChartData.map((entry) => (
+                      <li key={entry.key} className="usage-chart-row">
+                        <div className="usage-chart-label">
+                          {entry.label}
+                          <span className="usage-chart-count">
+                            {entry.count}
+                          </span>
+                        </div>
+                        <div
+                          className="mini-bar"
+                          aria-label={`${entry.label} routes ${entry.count}`}
+                        >
+                          <div
+                            className={percentToWidthClass(entry.percent)}
+                            aria-hidden
+                          />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="usage-telemetry-empty">
+                    No auto-mode routes recorded yet.
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="usage-export">
+              <div className="usage-export-header">
+                <span>Export filtered actions</span>
+                <span className="usage-export-meta">
+                  {timeFilteredRecentActions.length} action
+                  {timeFilteredRecentActions.length === 1 ? "" : "s"} in view
+                </span>
+              </div>
+              <div className="usage-export-buttons">
+                <button
+                  type="button"
+                  className="btn-link tiny"
+                  onClick={copyRecentActionsJson}
+                >
+                  Copy JSON
+                </button>
+                <button
+                  type="button"
+                  className="btn-link tiny"
+                  onClick={copyRecentActionsCsv}
+                >
+                  Copy CSV
+                </button>
+              </div>
+              {usageExportError && (
+                <div className="usage-telemetry-error">{usageExportError}</div>
+              )}
+              {usageExportJson && (
+                <pre
+                  className="usage-export-json"
+                  data-testid="usage-export-preview"
+                >
+                  {usageExportFormat
+                    ? `${usageExportFormat.toUpperCase()} export\n`
+                    : ""}
+                  {usageExportJson}
+                </pre>
+              )}
+            </div>
+            {timeFilteredRecentActions && timeFilteredRecentActions.length > 0 ? (
+              <ul
+                className="usage-telemetry-list"
+                data-testid="recent-actions-list"
+              >
+                {timeFilteredRecentActions.map((a, idx) => (
+                  <li key={`${a.timestamp}-${idx}`}>
+                    <div className="usage-label">
+                      {a.action} · conf {(a.confidence ?? 0).toFixed(2)}
+                      {(() => {
+                        const actionModel =
+                          a.details?.model ||
+                          (a as any).model ||
+                          lastUsageModel;
+                        return actionModel ? (
+                          <span className="usage-subtext">
+                            (model: {actionModel})
+                          </span>
+                        ) : null;
+                      })()}
+                    </div>
+                    <div className="usage-telemetry-sub">
+                      {a.task_description ?? "—"}
+                    </div>
+                    <div className="usage-telemetry-sub">
+                      {a.task_status ? `status: ${a.task_status}` : ""}
+                      {a.task_priority ? ` · priority: ${a.task_priority}` : ""}
+                      {a.task_group ? ` · group: ${a.task_group}` : ""}
+                      {a.task_blocked_reason
+                        ? ` · blocked: ${a.task_blocked_reason}`
+                        : ""}
+                    </div>
+                    {(a.details?.matched_text || a.matched_text) ? (
+                      <div className="usage-telemetry-sub">
+                        matched: {a.details?.matched_text ?? a.matched_text}
+                      </div>
+                    ) : null}
+                    <div className="mini-bar">
+                      <div
+                        className={percentToWidthClass(
+                          ((a.confidence ?? 0) /
+                            (maxActionConfidence || 1)) *
+                            100
+                        )}
+                      />
+                    </div>
+                    {a.timestamp ? (
+                      <div className="usage-telemetry-sub">at: {a.timestamp}</div>
+                    ) : null}
+                    {a.task_auto_notes ? (
+                      <div className="usage-telemetry-sub">
+                        notes: {a.task_auto_notes}
+                      </div>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="usage-telemetry-empty">
+                No recent task actions recorded yet.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   const executeCommandPaletteAction = useCallback(
     (actionIndex: number) => {
@@ -1403,12 +2133,14 @@ function App() {
     try {
       setIsLoadingUsage(true);
       setUsageConversationId(conversationId);
+      setUsageError(null);
       const res = await fetch(
         `${BACKEND_BASE}/conversations/${conversationId}/usage`
       );
       if (!res.ok) {
         console.error("Fetching usage failed:", res.status);
         setUsage(null);
+        setUsageError(`Failed to load usage (status ${res.status}).`);
         return;
       }
       const data: ConversationUsage = await res.json();
@@ -1416,6 +2148,7 @@ function App() {
     } catch (e) {
       console.error("Fetching usage threw:", e);
       setUsage(null);
+      setUsageError("Unexpected error loading usage.");
     } finally {
       setIsLoadingUsage(false);
     }
@@ -1433,15 +2166,18 @@ function App() {
       if (!res.ok) {
         console.error("Fetching telemetry failed:", res.status);
         setTelemetry(null);
-        setTelemetryError("Failed to load telemetry.");
+        setTelemetryError(`Failed to load telemetry (status ${res.status}).`);
         return;
       }
       const data: TelemetrySnapshot = await res.json();
       setTelemetry(data);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Fetching telemetry threw:", e);
       setTelemetry(null);
-      setTelemetryError("Unexpected error loading telemetry.");
+      const msg = e?.message
+        ? `Unexpected error: ${e.message}`
+        : "Unexpected error loading telemetry.";
+      setTelemetryError(msg);
     } finally {
       setIsLoadingTelemetry(false);
     }
@@ -1850,8 +2586,13 @@ function App() {
           project_id: selectedProjectId,
           conversation_id: convIdBefore,
           message: messageText,
-          mode: chatMode,
-          model: modelOverride.trim() || null,
+          mode:
+            modelOverrideMode !== "default" ? modelOverrideMode : chatMode,
+          model:
+            (modelOverrideMode === "custom"
+              ? modelOverrideCustom
+              : modelOverride) ||
+            null,
         }),
       });
 
@@ -2277,8 +3018,13 @@ function App() {
           project_id: selectedProjectId,
           conversation_id: convIdBefore,
           message: userText,
-          mode: chatMode,
-          model: modelOverride.trim() || null,
+          mode:
+            modelOverrideMode !== "default" ? modelOverrideMode : chatMode,
+          model:
+            (modelOverrideMode === "custom"
+              ? modelOverrideCustom
+              : modelOverride) ||
+            null,
           // Frontend always sends the conversation_id (if existing), so folder assignment
           // happens server-side already. For new chats (convIdBefore=null), backend picks default folder.
         }),
@@ -3100,11 +3846,13 @@ function App() {
     }
     const convId = Number(value);
     loadUsageForConversation(convId);
+    loadTelemetry(false);
   };
 
   const handleFocusCurrentConversationUsage = () => {
     if (!selectedConversationId) return;
     loadUsageForConversation(selectedConversationId);
+    loadTelemetry(false);
   };
 
   // ---------- Render ----------
@@ -3161,6 +3909,8 @@ function App() {
           <div className="project-selector">
             <div className="project-label">Project</div>
             <select
+                aria-label="Select project"
+                title="Select project"
               value={selectedProjectId ?? ""}
               onChange={handleProjectChange}
             >
@@ -3189,6 +3939,8 @@ function App() {
               <div className="foldered-conversation-list">
                 <div className="folder-toolbar">
                   <select
+                      aria-label="Filter conversations by folder"
+                      title="Filter conversations by folder"
                     value={
                       selectedFolderId === "all"
                         ? "all"
@@ -3276,6 +4028,7 @@ function App() {
                           <>
                             <input
                               className="conversation-rename-input"
+                              aria-label="Conversation title"
                               value={renameTitle}
                               onChange={(e) =>
                                 setRenameTitle(e.target.value)
@@ -3330,12 +4083,11 @@ function App() {
                                   {selectedFolderId === "all" && (
                                     <span
                                       className="conversation-folder-pill"
-                                      style={{
-                                        backgroundColor:
-                                          c.folder_color || "#e5e7eb",
-                                      }}
                                     >
                                       {c.folder_name || "Unsorted"}
+                                      {c.folder_color
+                                        ? ` (${c.folder_color})`
+                                        : ""}
                                     </span>
                                   )}
                                 </div>
@@ -3351,6 +4103,8 @@ function App() {
                               Rename
                             </button>
                                   <select
+                            aria-label="Move conversation to folder"
+                            title="Move conversation to folder"
                                     className="folder-assign-select"
                                     value={
                                       c.folder_id != null
@@ -3650,8 +4404,11 @@ function App() {
             />
             <div className="chat-right-controls">
               <div className="chat-mode-selector">
-                <label>Mode</label>
+                <label htmlFor="chat-mode">Mode</label>
                 <select
+                  id="chat-mode"
+                  aria-label="Chat mode"
+                  title="Chat mode"
                   value={chatMode}
                   onChange={(e) =>
                     setChatMode(
@@ -3674,16 +4431,43 @@ function App() {
                 </select>
               </div>
               <div className="chat-model-override">
-                <label htmlFor="model-override-input">Model override</label>
+                <label htmlFor="model-override-select">Model override</label>
+                <select
+                  id="model-override-select"
+                  aria-label="Model override"
+                  title="Model override"
+                  value={modelOverrideMode}
+                  onChange={(e) => setModelOverrideMode(e.target.value)}
+                >
+                  <option value="default">Default (use Mode)</option>
+                  <option value="auto">auto</option>
+                  <option value="fast">fast</option>
+                  <option value="deep">deep</option>
+                  <option value="budget">budget</option>
+                  <option value="research">research</option>
+                  <option value="code">code</option>
+                  <option value="custom">Custom</option>
+                </select>
+                {modelOverrideMode === "custom" && (
+                  <input
+                    id="model-override-input"
+                    type="text"
+                    placeholder="Custom model id"
+                    aria-label="Custom model id"
+                    value={modelOverrideCustom}
+                    onChange={(e) => setModelOverrideCustom(e.target.value)}
+                  />
+                )}
                 <input
-                  id="model-override-input"
+                  id="model-override-input-main"
                   type="text"
                   placeholder="Optional model id"
+                  aria-label="Optional model id"
                   value={modelOverride}
                   onChange={(e) => setModelOverride(e.target.value)}
                 />
                 <div className="chat-model-override-hint">
-                  Leave blank to let mode choose the model automatically.
+                  Leave blank to let mode choose automatically; use override or custom to force a model.
                 </div>
               </div>
               <button
@@ -3700,7 +4484,7 @@ function App() {
 
         {/* RIGHT: Workbench (tabbed) */}
         <section className="column column-right" ref={rightColumnRef}>
-          <div className="right-tabs" role="tablist">
+          <div className="right-tabs">
             <button
               type="button"
               className={
@@ -3882,6 +4666,7 @@ function App() {
                         <input
                           type="checkbox"
                           checked={task.status === "done"}
+                          aria-label={`Toggle status for ${task.description}`}
                           onChange={() => handleToggleTaskStatus(task)}
                         />
                           <div className="task-body">
@@ -3893,12 +4678,17 @@ function App() {
                         >
                           {task.description}
                             </div>
-                            <div className="task-meta">
+                        <div className="task-meta">
                               <span
                                 className={`task-priority-chip priority-${priority}`}
                               >
                                 {task.priority || "normal"}
                               </span>
+                              {task.group && (
+                                <span className={`task-group-chip group-${task.group}`}>
+                                  {task.group}
+                                </span>
+                              )}
                           {typeof task.auto_confidence === "number" && (
                             <span className="task-confidence-chip">
                               {(task.auto_last_action || "auto").replaceAll("_", " ")} ·{" "}
@@ -4186,6 +4976,8 @@ function App() {
                     className="ingest-input"
                     type="text"
                     placeholder="Root path (e.g. C:\\InfinityWindow)"
+                    aria-label="Repository root path"
+                    title="Repository root path"
                     value={repoRootPath}
                     onChange={(e) => setRepoRootPath(e.target.value)}
                   />
@@ -4193,6 +4985,8 @@ function App() {
                     className="ingest-input"
                     type="text"
                     placeholder="Name prefix (e.g. InfinityWindow/)"
+                    aria-label="Repository name prefix"
+                    title="Repository name prefix"
                     value={repoNamePrefix}
                     onChange={(e) =>
                       setRepoNamePrefix(e.target.value)
@@ -4494,6 +5288,8 @@ function App() {
                         <label className="decision-filter">
                           <span>Status</span>
                           <select
+                            aria-label="Filter decisions by status"
+                            title="Filter decisions by status"
                             value={decisionStatusFilter}
                             onChange={(e) =>
                               setDecisionStatusFilter(e.target.value)
@@ -4509,6 +5305,8 @@ function App() {
                         <label className="decision-filter">
                           <span>Category</span>
                           <select
+                            aria-label="Filter decisions by category"
+                            title="Filter decisions by category"
                             value={decisionCategoryFilter}
                             onChange={(e) =>
                               setDecisionCategoryFilter(e.target.value)
@@ -4525,6 +5323,8 @@ function App() {
                         <label className="decision-filter">
                           <span>Tag</span>
                           <select
+                            aria-label="Filter decisions by tag"
+                            title="Filter decisions by tag"
                             value={decisionTagFilter}
                             onChange={(e) =>
                               setDecisionTagFilter(e.target.value)
@@ -5096,6 +5896,8 @@ function App() {
                         </div>
                         <textarea
                           className="file-editor-textarea"
+                          aria-label="File editor"
+                          title="File editor"
                           value={fsEditedContent}
                           onChange={(e) =>
                             setFsEditedContent(e.target.value)
@@ -5773,6 +6575,8 @@ function App() {
                   <label className="usage-filter">
                     <span>Select conversation</span>
                     <select
+                    aria-label="Select conversation for usage"
+                    title="Select conversation for usage"
                       value={usageConversationId ?? ""}
                       onChange={handleUsageConversationChange}
                     >
@@ -5797,52 +6601,172 @@ function App() {
                   >
                     Use current chat
                   </button>
+              <div className="usage-filter-row">
+                <label className="usage-filter">
+                  <span>Action filter</span>
+                  <select
+                    aria-label="Action filter"
+                    title="Action filter"
+                    value={usageActionFilter}
+                    onChange={(e) => setUsageActionFilter(e.target.value)}
+                  >
+                    <option value="all">All actions</option>
+                    <option value="auto_added">Auto-added</option>
+                    <option value="auto_completed">Auto-completed</option>
+                    <option value="suggested">Suggested (add/complete)</option>
+                    <option value="auto_suggested">Auto-suggested</option>
+                    <option value="auto_dismissed">Auto-dismissed</option>
+                    <option value="auto_deduped">Auto-deduped</option>
+                  </select>
+                </label>
+                <label className="usage-filter">
+                  <span>Group filter</span>
+                  <select
+                    value={usageGroupFilter}
+                    onChange={(e) => setUsageGroupFilter(e.target.value)}
+                    aria-label="Group filter"
+                    title="Group filter"
+                  >
+                    <option value="all">All groups</option>
+                    <option value="critical">Critical</option>
+                    <option value="blocked">Blocked</option>
+                    <option value="ready">Ready</option>
+                  </select>
+                </label>
+                <label className="usage-filter">
+                  <span>Model filter</span>
+                  <select
+                    value={usageModelFilter}
+                    onChange={(e) => setUsageModelFilter(e.target.value)}
+                    aria-label="Model filter"
+                    title="Model filter"
+                  >
+                    <option value="all">All models</option>
+                    {modelFilterOptions.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="usage-filter">
+                  <span>Time filter</span>
+                  <select
+                    value={usageTimeFilter}
+                    onChange={(e) => setUsageTimeFilter(e.target.value)}
+                    aria-label="Time filter"
+                    title="Time filter"
+                  >
+                    <option value="all">All</option>
+                    <option value="last5">Last 5</option>
+                    <option value="last10">Last 10</option>
+                  </select>
+                </label>
+                <label className="usage-filter">
+                  <span>Range</span>
+                  <select
+                    value={usageRangeFilter}
+                    onChange={(e) => setUsageRangeFilter(e.target.value)}
+                    aria-label="Usage time range"
+                    title="Usage time range"
+                  >
+                    <option value="recent">Recent actions only</option>
+                    <option value="records10">Last 10 usage records</option>
+                  </select>
+                </label>
+                <label className="usage-filter">
+                  <span>Usage records window</span>
+                  <select
+                    value={usageRecordsWindow}
+                    onChange={(e) => setUsageRecordsWindow(e.target.value)}
+                    aria-label="Usage records window"
+                    title="Usage records window"
+                  >
+                    <option value="all">All time</option>
+                    <option value="1h">Last hour</option>
+                    <option value="24h">Last 24h</option>
+                    <option value="7d">Last 7d</option>
+                  </select>
+                </label>
+              </div>
                 </div>
                 {usageConversationId == null ? (
                   <div className="usage-empty">
                     Select a conversation to view usage analytics.
                   </div>
+                ) : usageError ? (
+                  <div className="usage-empty usage-telemetry-error">
+                    {usageError}
+                  </div>
                 ) : isLoadingUsage ? (
                   <div className="usage-empty">Loading usage…</div>
-                ) : !usage || !usage.records.length ? (
+                ) : !usage || !windowedUsageRecords.length ? (
                   <div className="usage-empty">
                     No usage records yet for this conversation.
                   </div>
                 ) : (
                   <>
                     <div className="usage-summary">
-                      <div>
-                        <span className="usage-label">
-                          Total tokens in:
-                        </span>{" "}
-                        <span className="usage-value">
-                          {usage.total_tokens_in?.toLocaleString() ?? 0}
-                        </span>
+                    <div className="usage-cards">
+                    <div className="usage-card">
+                      <div className="usage-card-title">Last chosen model</div>
+                      <div className="usage-card-value">
+                        {usage.records[usage.records.length - 1]?.model ||
+                          "—"}
                       </div>
-                      <div>
-                        <span className="usage-label">
-                          Total tokens out:
-                        </span>{" "}
-                        <span className="usage-value">
-                          {usage.total_tokens_out?.toLocaleString() ?? 0}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="usage-label">
-                          Total cost:
-                        </span>{" "}
-                        <span className="usage-value">
+                      {telemetry?.llm?.auto_routes && lastUsageAutoReason && (
+                        <div className="usage-subtext">
+                          Routed: {lastUsageAutoReason}
+                        </div>
+                      )}
+                      {modelOverrideMode !== "default" && (
+                        <div className="usage-subtext">
+                          Next override:{" "}
+                          {modelOverrideMode === "custom"
+                            ? modelOverrideCustom || "custom"
+                            : modelOverrideMode}
+                        </div>
+                      )}
+                    </div>
+                      <div className="usage-card">
+                        <div className="usage-card-title">Total cost</div>
+                        <div className="usage-card-value">
                           {usage.total_cost_estimate != null
                             ? `$${usage.total_cost_estimate.toFixed(4)}`
                             : "—"}
-                        </span>
+                        </div>
                       </div>
-                      <div>
-                        <span className="usage-label">Total calls:</span>{" "}
-                        <span className="usage-value">
+                      <div className="usage-card">
+                        <div className="usage-card-title">Total calls</div>
+                        <div className="usage-card-value">
                           {usage.records.length.toLocaleString()}
-                        </span>
+                        </div>
                       </div>
+                      <div className="usage-card">
+                        <div className="usage-card-title">Tokens in</div>
+                        <div className="usage-card-value">
+                          {usage.total_tokens_in?.toLocaleString() ?? 0}
+                        </div>
+                      </div>
+                      <div className="usage-card">
+                        <div className="usage-card-title">Tokens out</div>
+                        <div className="usage-card-value">
+                          {usage.total_tokens_out?.toLocaleString() ?? 0}
+                        </div>
+                      </div>
+                      <div className="usage-card">
+                        <div className="usage-card-title">Auto-added</div>
+                        <div className="usage-card-value">
+                          {telemetry?.tasks?.auto_added ?? "—"}
+                        </div>
+                      </div>
+                      <div className="usage-card">
+                        <div className="usage-card-title">Auto-completed</div>
+                        <div className="usage-card-value">
+                          {telemetry?.tasks?.auto_completed ?? "—"}
+                        </div>
+                      </div>
+                    </div>
                     </div>
                     <div className="usage-breakdown">
                       <div className="usage-breakdown-title">
@@ -5874,6 +6798,15 @@ function App() {
                                   out {entry.tokensOut.toLocaleString()}
                                 </span>
                               </div>
+                              <div className="mini-bar">
+                                <div
+                                  className={percentToWidthClass(
+                                    (entry.count /
+                                      (usageModelBreakdown[0]?.count || 1)) *
+                                      100
+                                  )}
+                                />
+                              </div>
                             </li>
                           ))}
                         </ul>
@@ -5884,11 +6817,16 @@ function App() {
                         Recent assistant calls
                       </div>
                       <ul>
-                        {usage.records
-                          .slice()
-                          .reverse()
-                          .slice(0, 10)
-                          .map((r) => (
+                        {(usageRangeFilter === "records10"
+                          ? windowedUsageRecords
+                              .slice()
+                              .reverse()
+                              .slice(0, 10)
+                          : windowedUsageRecords
+                              .slice()
+                              .reverse()
+                              .slice(0, 5)
+                        ).map((r) => (
                             <li
                               key={r.id}
                               className="usage-record-item"
@@ -5912,231 +6850,10 @@ function App() {
                           ))}
                       </ul>
                     </div>
-                    <div className="usage-telemetry">
-                      <div className="usage-telemetry-header">
-                        <span>Routing & tasks telemetry</span>
-                        <div className="usage-telemetry-actions">
-                          <button
-                            type="button"
-                            className="btn-secondary small"
-                            onClick={() => loadTelemetry(false)}
-                            disabled={isLoadingTelemetry}
-                          >
-                            Refresh
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-link small"
-                            onClick={() => loadTelemetry(true)}
-                            disabled={isLoadingTelemetry}
-                          >
-                            Refresh & reset
-                          </button>
-                        </div>
-                      </div>
-                      {isLoadingTelemetry ? (
-                        <div className="usage-telemetry-body">
-                          Loading telemetry…
-                        </div>
-                      ) : telemetryError ? (
-                        <div className="usage-telemetry-body usage-telemetry-error">
-                          {telemetryError}
-                        </div>
-                      ) : !telemetry ? (
-                        <div className="usage-telemetry-body">
-                          No telemetry loaded yet. Click Refresh to fetch
-                          routing and task counters.
-                        </div>
-                      ) : (
-                        <div className="usage-telemetry-body">
-                          <div className="usage-telemetry-section">
-                            <div className="usage-telemetry-title">
-                              Auto-mode routes
-                            </div>
-                            {Object.keys(telemetry.llm.auto_routes).length ===
-                            0 ? (
-                              <div className="usage-telemetry-empty">
-                                No auto-mode calls recorded yet.
-                              </div>
-                            ) : (
-                              <ul className="usage-telemetry-list">
-                                {Object.entries(
-                                  telemetry.llm.auto_routes
-                                ).map(([mode, count]) => (
-                                  <li key={mode}>
-                                    <span className="usage-label">
-                                      {mode}
-                                    </span>
-                                    <span className="usage-value">
-                                      {count}
-                                    </span>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
-                          <div className="usage-telemetry-section">
-                            <div className="usage-telemetry-title">
-                              Fallbacks & tasks
-                            </div>
-                            <ul className="usage-telemetry-list">
-                              <li>
-                                <span className="usage-label">
-                                  Fallback attempts
-                                </span>
-                                <span className="usage-value">
-                                  {telemetry.llm.fallback_attempts}
-                                </span>
-                              </li>
-                              <li>
-                                <span className="usage-label">
-                                  Fallback successes
-                                </span>
-                                <span className="usage-value">
-                                  {telemetry.llm.fallback_success}
-                                </span>
-                              </li>
-                              <li>
-                                <span className="usage-label">
-                                  Tasks auto-added
-                                </span>
-                                <span className="usage-value">
-                                  {telemetry.tasks.auto_added}
-                                </span>
-                              </li>
-                              <li>
-                                <span className="usage-label">
-                                  Tasks auto-completed
-                                </span>
-                                <span className="usage-value">
-                                  {telemetry.tasks.auto_completed}
-                                </span>
-                              </li>
-                              <li>
-                                <span className="usage-label">
-                                  Tasks auto-deduped
-                                </span>
-                                <span className="usage-value">
-                                  {telemetry.tasks.auto_deduped}
-                                </span>
-                              </li>
-                            </ul>
-                          </div>
-                          <div className="usage-telemetry-section">
-                            <div className="usage-telemetry-title">
-                              Confidence stats
-                            </div>
-                            {telemetry.tasks.confidence_stats ? (
-                              <ul className="usage-telemetry-list">
-                                <li>
-                                  <span className="usage-label">Min</span>
-                                  <span className="usage-value">
-                                    {telemetry.tasks.confidence_stats.min}
-                                  </span>
-                                </li>
-                                <li>
-                                  <span className="usage-label">Max</span>
-                                  <span className="usage-value">
-                                    {telemetry.tasks.confidence_stats.max}
-                                  </span>
-                                </li>
-                                <li>
-                                  <span className="usage-label">Avg</span>
-                                  <span className="usage-value">
-                                    {telemetry.tasks.confidence_stats.avg}
-                                  </span>
-                                </li>
-                                <li>
-                                  <span className="usage-label">Count</span>
-                                  <span className="usage-value">
-                                    {telemetry.tasks.confidence_stats.count}
-                                  </span>
-                                </li>
-                              </ul>
-                            ) : (
-                              <div className="usage-telemetry-empty">
-                                No confidence data yet.
-                              </div>
-                            )}
-                            {telemetry.tasks.confidence_buckets && (
-                              <ul className="usage-telemetry-list">
-                                <li>
-                                  <span className="usage-label">&lt;0.4</span>
-                                  <span className="usage-value">
-                                    {telemetry.tasks.confidence_buckets.lt_0_4}
-                                  </span>
-                                </li>
-                                <li>
-                                  <span className="usage-label">0.4–0.7</span>
-                                  <span className="usage-value">
-                                    {telemetry.tasks.confidence_buckets["0_4_0_7"]}
-                                  </span>
-                                </li>
-                                <li>
-                                  <span className="usage-label">≥0.7</span>
-                                  <span className="usage-value">
-                                    {telemetry.tasks.confidence_buckets.gte_0_7}
-                                  </span>
-                                </li>
-                              </ul>
-                            )}
-                          </div>
-                          <div className="usage-telemetry-section">
-                            <div className="usage-telemetry-title">
-                              Recent task actions
-                            </div>
-                            {telemetry.tasks.recent_actions &&
-                            telemetry.tasks.recent_actions.length > 0 ? (
-                              <ul className="usage-telemetry-list">
-                                {telemetry.tasks.recent_actions
-                                  .slice(0, 8)
-                                  .map((a, idx) => (
-                                    <li key={`${a.timestamp}-${idx}`}>
-                                      <div className="usage-label">
-                                        {a.action} · conf {a.confidence.toFixed(2)}
-                                      </div>
-                                  <div className="usage-telemetry-sub">
-                                        {a.task_description ?? "—"}
-                                      </div>
-                                      <div className="usage-telemetry-sub">
-                                        {a.task_status ? `status: ${a.task_status}` : ""}
-                                        {a.task_priority
-                                          ? ` · priority: ${a.task_priority}`
-                                          : ""}
-                                        {a.task_blocked_reason
-                                          ? ` · blocked: ${a.task_blocked_reason}`
-                                          : ""}
-                                      </div>
-                                      {a.details?.matched_text ? (
-                                        <div className="usage-telemetry-sub">
-                                          matched: {a.details.matched_text}
-                                        </div>
-                                      ) : null}
-                                      {a.timestamp ? (
-                                        <div className="usage-telemetry-sub">
-                                          at: {a.timestamp}
-                                        </div>
-                                      ) : null}
-                                      {a.task_auto_notes ? (
-                                        <div className="usage-telemetry-sub">
-                                          notes: {a.task_auto_notes}
-                                        </div>
-                                      ) : null}
-                                    </li>
-                                  ))}
-                              </ul>
-                            ) : (
-                              <div className="usage-telemetry-empty">
-                                No recent task actions recorded yet.
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
                   </>
                 )}
               </div>
+              {telemetryPanel}
             </>
           )}
         </section>
@@ -6145,7 +6862,6 @@ function App() {
       {showCommandPalette && (
         <div
           className="command-palette-overlay"
-          role="presentation"
           onClick={() => setShowCommandPalette(false)}
         >
           <div
@@ -6175,7 +6891,7 @@ function App() {
               }}
               onKeyDown={handleCommandPaletteInputKeyDown}
             />
-            <div className="command-palette-list" role="listbox">
+            <div className="command-palette-list">
               {filteredCommandActions.length === 0 ? (
                 <div className="command-palette-empty">No matches</div>
               ) : (

@@ -47,10 +47,11 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
   - [x] Basic ordering heuristics (open first, then by `updated_at`).  
   - [x] Confidence scores + telemetry for auto actions (add/complete).  
   - [~] Suggested-change queue / Approve–Dismiss flow for low-confidence additions or completions (initial version shipped; refine heuristics/UX over time).  
-  - [ ] Priority & grouping heuristics (Critical / Blocked / Ready) instead of pure recency.  
+  - [~] Priority & grouping heuristics (Critical / Blocked / Ready) instead of pure recency.  
   - [ ] Dependency tracking and smarter duplicate detection beyond simple similarity.  
   - [x] Core telemetry: counters + `/debug/telemetry` endpoint + Usage tab telemetry drawer for task automation.  
-  - [ ] Full usage/telemetry dashboard UI (graphs, filters, long‑term analytics).  
+- [~] Full usage/telemetry dashboard UI (graphs, filters, long‑term analytics).  (Phase 2 shipped: charts for action/model/confidence/mode with shared filters/time window, filtered exports, and inline empty/error states; Phase 3 long-term analytics/persistence still future.)  
+  - [x] Usage tab filters/render verification (ISSUE-027/028/029/042); telemetry now fetches on tab entry/Use current chat; filters verified.  
   - [ ] Audit trail snippets when the maintainer closes a task (“Closed automatically on …”).  
   - [ ] Context-aware extraction prompts (feed project goals, sprint focus, blockers).  
   - [ ] Additional QA around noisy projects and long histories.  
@@ -110,12 +111,13 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
 - [x] `docs/TEST_REPORT_2025-12-02.md` completed and updated after fixes.  
 - [x] `qa/` package created with smoke probes.  
 - [x] `Makefile` in QA copy with `make ci` target (backend tests + frontend build).  
-- [ ] Port CI configuration back into primary repo once test suite is richer.  
-- [ ] Add coverage reporting and basic performance checks.  
+- [~] Port CI configuration back into primary repo once test suite is richer. (Repo-root `Makefile` now includes `ci` for backend API tests + frontend build.)  
+- [x] Add coverage reporting and basic performance checks. (Coverage defaults on via `COVERAGE_ARGS`; `make perf` runs perf smoke.)
+- [ ] Usage/telemetry dashboard (graphs/filters/long-term analytics) – design drafted (`docs/USAGE_TELEMETRY_DASHBOARD.md`); implement in phases.
 
 ### QA & E2E
 
-- [ ] End-to-end chat flow for search and tasks.
+- [x] End-to-end chat flow for search and tasks. (qa/tests_e2e/test_chat_search_tasks.py)
 - [x] Add API regression for chat → tasks auto-add/complete (B-Tasks-E2E).
 
 ---
@@ -126,7 +128,9 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
 - [x] Stabilize `auto_update_tasks` (503 mitigation + retry).
 - [x] Handle missing task backlog files gracefully (skip/log missing targets).
 - [~] Improve task intent extraction to reduce extra “analysis” tasks and handle vague prompts.
-  - Next: tighten dedupe/completion on noisy conversations; add telemetry-backed confidence scoring and audit snippets for auto-closed tasks.
+  - Next: tighten dedupe/completion on noisy conversations; add telemetry-backed confidence scoring.
+- [x] Audit snippets for auto-added/completed/deduped tasks (stored in `Task.auto_notes` and shown in Tasks/Usage UI).
+- [x] Add dependency hints to new tasks (detect “depends on/after/waiting for” phrasing; append to auto notes) and tighten dedupe thresholds.
 
 ---
 

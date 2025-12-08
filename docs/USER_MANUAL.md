@@ -347,6 +347,8 @@ Common example model IDs you can use here:
 To inspect how auto‑mode and tasks automation are behaving:
 
 - Open the **Usage** tab (right column).
+- The dashboard cards are followed by lightweight charts for task action types, calls per model, confidence buckets, and auto-mode routes; these charts share the same action/group/model filters and time window as the recent actions list.
+- Use the filters (action/group/model) and the time filter (all/last5/last10) to scope both the charts and the recent actions list; “Copy JSON/CSV” exports exactly that filtered set and shows a preview inline.
 - At the bottom, in **Routing & tasks telemetry**:
   - Click **Refresh** to fetch `/debug/telemetry` from the backend.
   - Optionally click **Refresh & reset** to zero the counters after reading them.
@@ -412,6 +414,7 @@ What you’ll see:
 
 - As you discuss future work (“We need to X, Y, Z”), new tasks appear in the Tasks tab automatically.
 - As you report progress (“We finished X”, “Y is done”, “we merged the change for Z”), corresponding tasks flip to `done` automatically, when the wording is similar enough.
+- When automation adds, closes, or dedupes a task, a short audit note appears under the task (e.g., “Closed automatically on 2025-12-08 14:20 UTC after: 'login page task is done'”).
 
 ### 6.3 Current Behavior & Best Practices
 
@@ -745,6 +748,10 @@ In the **Usage** tab:
 - **Routing & tasks telemetry** (shared with §5.3):
   - Shows auto-mode routing counts, fallback attempts/successes, and autonomous task stats.
   - “Refresh & reset” lets you zero the counters after capturing a snapshot.
+- **Task automation charts & exports**:
+  - Action/group/model filters and the time filter apply to charts, the recent actions list, and JSON/CSV exports.
+  - Charts cover task action types, calls per model, confidence buckets, and auto-mode routes.
+  - If clipboard copy fails, the export preview still appears inline; usage/telemetry fetch errors are shown inline without collapsing the tab.
 
 Backend:
 

@@ -217,8 +217,10 @@ Playwright specs currently cover:
 3. **Run backend smoke suite**:
    - `python -m qa.run_smoke`.
 
-4. **Run `make ci` in QA**:
-   - `make ci` from repo root.
+4. **Run `make ci` in QA (now available in repo root)**:
+   - `make ci` runs backend API tests (`python -m pytest ../qa/tests_api`, PYTHONPATH preset for root+backend) and frontend build (`npm run build`).
+   - Coverage is on by default (`--cov=app --cov-report=xml:../coverage-api.xml`). Override with `COVERAGE_ARGS=` to disable.
+   - Optional perf smoke: `make perf` (runs `tools/perf_smoke.py`; override with `PYTEST_TARGETS`/`PYTEST_OPTS`).
 
 5. **Run Playwright UI tests**:
    - As described above (`npm run test:e2e`).

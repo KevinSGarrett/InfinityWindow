@@ -1,0 +1,23 @@
+path: backend/app/api/main.py
+lines: 685-706
+
+def _safe_join(root: Path, relative_path: str) -> Path:
+    """
+    Resolve a subpath/file_path safely under root, preventing path traversal.
+
+    Rules:
+    - 'relative_path' must be relative (no drive, no leading slash).
+    - It may not contain '..' segments.
+    - Final resolved path must still live under 'root'.
+    """
+    if not relative_path:
+        return root
+
+    rel_obj = Path(relative_path)
+
+    # Disallow absolute paths like "C:\\Windows" or "/etc"
+    if rel_obj.is_absolute():
+        raise HTTPException(
+            status_code=400,
+            detail="Path must be relative to the project local_root_path.",
+        )

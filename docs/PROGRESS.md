@@ -32,6 +32,32 @@ _Updated from `Hydration_File_002.txt`, `To_Do_List_001.txt`, and `Cursor_Chat_L
 - Backend: intent guardrails (penalize vague “analysis” asks), expanded priority/blocked vocab, audit snippets include confidence/matched_text, telemetry lifts matched_text/priority/blocked into recent actions.
 - Playwright targeted (tasks-confidence, tasks-suggestions, ui-smoke, ui-chat-smoke, ui-extended) green on backend 8000 after suggestions test stabilization.
 - API suite: `PYTHONPATH='.;backend' pytest qa/tests_api` → 10 passed, 1 xfailed (expected), warnings only from upstream SQLAlchemy `datetime.utcnow()` internals.
+- Added repo-root `Makefile` with `ci` target (backend API tests + frontend build); run `make ci` from root or QA copy.
+- Playwright full suite (6/6) passing on backend 8000 (`npm run test:e2e`).
+- Tasks UI sanity (post group chip): targeted tasks-confidence + tasks-suggestions specs passing.
+- `make ci` now succeeds on Windows: backend API tests (PYTHONPATH set to root+backend) + frontend build.
+- Added optional coverage/perf hooks: `COVERAGE_ARGS="--cov=app --cov-report=xml:../coverage-api.xml"` for pytest; `make perf` runs lightweight perf smoke (`tools/perf_smoke.py`).
+- Tasks telemetry/UI update: Usage recent actions show group and matched_text; prompt includes blocked context; tasks-group chip still passes tasks-* Playwright specs.
+- Drafted usage/telemetry dashboard design (`docs/USAGE_TELEMETRY_DASHBOARD.md`) for phased rollout (read-only → charts/filters → optional persistence/exports).
+- Usage tab now shows summary cards (cost/calls/tokens + task auto-added/auto-completed); tasks-* Playwright specs remain green after the change.
+- Added Usage filters (action/group) for recent task actions per dashboard Phase 2; targeted tasks specs still green.
+- Added mini-bar visuals for model breakdown and recent task actions confidence; coverage threshold flag available via `COVERAGE_FAIL_UNDER`.
+- Full Playwright suite passing after dashboard/filter changes (6/6).
+- New E2E API test for chat/search/tasks (`qa/tests_e2e/test_chat_search_tasks.py`); TODO_CHECKLIST QA item marked done.
+
+## 2025‑12‑10 – Dashboard export, model override UI, dependency hints
+- Usage tab: model filter for recent task actions, JSON export (last 20 actions) for QA evidence, “Last chosen model”/“Next override” display; mini-bars retained.
+- Chat UI: model override dropdown (auto/fast/deep/budget/research/code/custom) plus optional model id; overrides applied to `/chat` payload.
+- Tasks automation: dependency hints captured from “depends on/after/waiting for” phrasing and appended to auto notes; dedupe tightened with first-token overlap; prompt context now includes dependency/blocked summary.
+- Docs updated (TODO_CHECKLIST, tasks/AUTOMATION.md, tasks/TEST_PLAN_TASKS.md, TEST_PLAN.md, TEST_REPORT_TEMPLATE.md, USAGE_TELEMETRY_DASHBOARD.md).
+- Outstanding to verify/fix: Usage tab filters/render (ISSUE-027/028/029), enforce `local_root_path` before fs/list (ISSUE-032), and tighten exception handling/raise-from warnings (ISSUE-041). Backend now emits model in task telemetry and accepts `auto_suggested` seeds.
+- 2025‑12‑11 follow-ups: Usage tab now refetches telemetry/usage on tab entry and conversation selection; fs/list validated with `local_root_path` set (`/projects/{id}/fs/list` 200 with entries). Pending: UI verification for Usage filters/list (ISSUE-042) and exception handler tightening (ISSUE-041).
+## 2025‑12‑08 – API coverage additions + CI attempt
+
+- Added pytest API coverage for previously untested endpoints (folders, decisions, docs, memory, tasks, conversation messages/usage, debug telemetry) under `qa/tests_api/test_*`; uses TestClient with stub LLM plus isolated SQLite/Chroma fixtures (1536-dim stub embeddings) and a Hypothesis tag-normalization property.
+- `python -m pytest ..\qa\tests_api --cov=app --cov-report=xml:../coverage-api.xml` (PYTHONPATH set to `..;.;backend`) now passes new tests but still fails `qa/tests_api/test_ingestion_e2e.py::test_basic_ingestion_happy_path` (ingestion job stayed `pending`); coverage xml still written.
+- `npm run build` from `frontend` succeeds (tsc + vite).
+- `make ci` from root failed in PowerShell (Python path eval/OSError); ran the backend+frontend steps above manually instead.
 ## Non‑ingestion coverage plan (2025‑12‑05)
 
 - Automated Playwright smokes to run: `ui-smoke.spec.ts`, `ui-chat-smoke.spec.ts`, `ui-extended.spec.ts` (covers notes reload, decision log, folders, files, terminal, search, suggestions).
@@ -338,5 +364,37 @@ These phases are intentionally high‑level. When we decide to start on one, we 
   - Blueprint-sized batching/resume support (multi-GB specs, multi-phase checkpoints).
   - Streaming progress + resume for blueprint ingestion jobs (similar to repo flow but with section summaries).
   - Blueprint-specific telemetry entries (Batch N/M, section anchors, token budgets) surfaced in UI + `/ingestion_jobs`.
+
+## 2025-12-11 – Usage telemetry UI verification
+
+- Usage telemetry now renders on tab entry and when project/usage conversation changes; errors surface inline.
+- Recent task actions list is scoped to the selected project; action/model filters reduce the list (seeded UI run: baseline 3 → auto_added 1, auto_completed 1, model filter 1).
+- Model filter falls back to task action models when no usage breakdown exists.
+- Docs: `API_REFERENCE_UPDATED.md` notes `local_root_path` must be an existing path on project create; fs/list validation remains enforced.
+
+## 2025-12-11 – Docs/Tests sync + next focus
+- Docs in `/docs` and `/docs/tasks` reviewed for current state; alignment logs maintained in `docs/alignment/`.
+- Test plans/templates (`docs/TEST_PLAN.md`, `docs/TEST_REPORT_TEMPLATE.md`, `docs/tasks/TEST_PLAN_TASKS.md`) refreshed for current features; upcoming coverage to extend when new work lands.
+- Next high-impact items to start:
+  1) Refine task-aware auto-mode routing + polish model override UI (doc touchpoints: CONFIG_ENV, USER_MANUAL, USAGE_TELEMETRY_DASHBOARD).
+  2) Usage/telemetry dashboard v2 (charts/exports/time filters) with a small Playwright check for charts/export.
+  3) Task automation polish: dependency tracking + audit snippets for auto-closes (update tasks/AUTOMATION.md, tasks/TEST_PLAN_TASKS.md with new cases).
+
+## 2025-12-12 – Usage telemetry v2 (partial) and routing reason
+- Auto-mode routing now records the routed submode + reason; surfaced in Usage summary.
+- Usage tab adds time filter (all/last5/last10), action/model counts, and JSON/CSV export for filtered recent actions.
+- USAGE_TELEMETRY_DASHBOARD updated to reflect partial Phase 2; remaining charts/time windows tracked for next iteration.
+- Open lint item: UI ARIA/inline-style warnings (ISSUE-045) to address for a clean lint run.
+
+## 2025‑12‑13 – Usage telemetry Phase 2 complete
+- Usage dashboard now renders lightweight charts for action types, models, confidence buckets, and auto-mode routes; all charts, lists, and exports share the same action/group/model filters and time window.
+- Exports explicitly mirror the filtered recent actions; Usage tab handles empty/error states without collapsing the panel.
+- Added API coverage for `/debug/telemetry` and `/conversations/{id}/usage` (`qa/tests_api/test_usage_telemetry_dashboard.py`) plus Playwright coverage for charts/filters/exports (`frontend/tests/usage-dashboard.spec.ts`); docs refreshed for Phase 2 status.
+- Phase 2 polish: Usage fetch failures now surface inline, and JSON/CSV exports show a preview even if clipboard copy fails; empty states remain visible so charts/tests keep running even with sparse usage data.
+
+## 2025-12-14 – Task automation audit trail
+- Task maintainer now writes short audit snippets for auto-added, auto-completed, and deduped tasks (stored in `Task.auto_notes` and shown in Tasks/Usage UI).
+- Task telemetry recent_actions include `task_auto_notes`, matched text, and model info for these automation events to keep audit trails and exports in sync.
+- Added API coverage for audit notes and telemetry consistency (`qa/tests_api/test_tasks_automation_audit.py`) and reset task telemetry between tests for deterministic counts.
 
 

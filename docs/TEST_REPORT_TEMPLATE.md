@@ -25,6 +25,10 @@ _Use this file as a template for recording results from `docs/TEST_PLAN.md`. Mak
 - **Overall result**: `PASS / FAIL / MIXED`
 - **High‑level notes**:
   - `e.g., All core v2 features passed; minor UI issues in Tasks tab.`
+- **Score (target ≥98/100)**:
+  - Tasks-specific rubric: see `docs/tasks/TEST_PLAN_TASKS.md` (≥98/100 target).
+  - Overall: note deductions and rationale; any critical failure blocks release.
+- **Tasks gate**: If any task-related test below fails (API, UI, chat automation, telemetry, suggestions, model override, export), score drops below 98/100 until fixed/retested.
 
 ---
 
@@ -40,7 +44,7 @@ _Use this file as a template for recording results from `docs/TEST_PLAN.md`. Mak
 
 ### Phase B – Core data model & CRUD
 
-| Test ID    | Description                         | Result (P/F/B) | Notes / Errors |
+| Test ID    | Description                         | Result (P/F/B) | Notes / Errors (include model/override, telemetry export refs, time filter) |
 |-----------|-------------------------------------|----------------|----------------|
 | B-Proj-01 | Project CRUD                        |                |                |
 | B-Conv-01 | Conversation create/rename (API/UI) |                |                |
@@ -49,6 +53,8 @@ _Use this file as a template for recording results from `docs/TEST_PLAN.md`. Mak
 | B-Tasks-02| Autonomous TODO maintenance loop    |                |                |
 | B-Tasks-03| Suggested-change queue & telemetry  |                |                |
 | B-Tasks-04| Task automation/UI exhaustive (see docs/tasks/TEST_PLAN_TASKS.md) |                | Use alongside main plan for ≥98/100 task coverage |
+| B-Tasks-05| Dependency hints + dedupe tightening (auto_notes, recent_actions, no dupes) | | |
+| B-Tasks-06| Model override + Usage export (override applied, recent actions filtered/exported) | | |
 | B-Docs-01 | Docs CRUD + ingestion happy path    |                |                |
 | B-Docs-02 | Ingestion reuse & hash skipping     |                |                |
 | B-Docs-03 | Progress metrics (files/bytes/time) |                |                |
@@ -80,6 +86,9 @@ _Use this file as a template for recording results from `docs/TEST_PLAN.md`. Mak
 | B-Mode-02 | auto adaptive (research) | deep-research model          |  |                |
 | B-Mode-02 | auto adaptive (lightweight) | nano/mini tier          |  |                |
 | B-Mode-02 | auto adaptive (planning/roadmap) | deep/pro tier     |  |                |
+| B-Mode-03 | Model override UI (chat) | Override applied to `/chat` payload; “Last chosen model”/“Next override” visible in Usage |  | |
+| B-Usage-01 | Usage tab export/filter | Action/group/model filters + JSON export (recent actions) | | |
+| B-Usage-02 | Telemetry reset + filtered export | Reset clears counts/actions; filters respected; exported JSON matches filtered recent actions | | |
 
 ### Phase C – Retrieval & vector store
 
@@ -119,7 +128,7 @@ _Use this file as a template for recording results from `docs/TEST_PLAN.md`. Mak
 | F-Fold-01 | Conversation folders (CRUD + usage)  |                |                |
 | F-Mem-01  | Memory items CRUD + retrieval        |                |                |
 
-### Phase G – Right‑column UI 2.0 regression
+### Phase G – Right‑column UI 2.0 regression (target ≥98/100 for tasks/UI coverage)
 
 For each tab, record at least one “visual sanity” test and any discovered issues:
 
@@ -131,7 +140,7 @@ For each tab, record at least one “visual sanity” test and any discovered is
 | G-Search-01| Search  | Messages/docs search                 |                |                |
 | G-Term-01 | Terminal | Manual + AI, last run, history       |                |                |
 | G-Usage-01| Usage    | Totals + recent records              |                |                |
-| G-Tasks-02| Tasks    | Suggestions drawer & priority UI     |                |                |
+| G-Tasks-02| Tasks    | Suggestions drawer & priority/group UI |              |                |
 | G-Notes-01| Notes    | Instructions + decisions             |                |                |
 | G-Mem-01  | Memory   | List, create, pin/unpin, delete      |                |                |
 

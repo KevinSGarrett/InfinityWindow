@@ -15,8 +15,8 @@ This file tracks issues focused on tasks/automation. Source of truth remains `do
 | ISSUE-025 | Deprecation warnings (`datetime.utcnow()` in SQLAlchemy/main) during tests_api run. | Replaced app usage with `datetime.now(timezone.utc)` in `app/api/main.py` and `ingestion/github_ingestor.py`; remaining warnings originate from SQLAlchemy internals (schema.py) and are upstream-only. | Accepted (Upstream) |
 | ISSUE-026 | None (Phase 1 + Phase 2 + Phase 3 1-4 checks)                                      | Playwright e2e (5/5) green on 8000; `qa/tests_api` green; usage cost non-zero; Phase 3 so far clean.    | No issues |
 | ISSUE-027 | Telemetry reset response echoes pre-reset counts                                   | Adjusted reset to clear before snapshot; response now shows cleared counters after reset.               | Resolved |
-
-Notes:
-- General issue history (including non-task items) lives in `docs/ISSUES_LOG.md`.
-- Task automation telemetry and endpoints are documented in `docs/tasks/AUTOMATION.md`.
+| ISSUE-028 | Usage tab action/model filters + render                                            | Backend now includes model in task actions and accepts `auto_suggested` seeds; UI refetches telemetry/usage on tab enter and conversation selection. Filters verified; list renders. | Resolved |
+| ISSUE-029 | fs/list 400 without `local_root_path`                                              | Projects created without a valid `local_root_path` cause `/fs/list` 400. Enforce/set path before calling fs APIs; validated via new project + `/fs/list` → 200 with entries. | Resolved |
+| ISSUE-045 | UI lint/accessibility warnings                                                     | App.tsx flagged for ARIA/labels/inline styles; cleanup pending. | Open |
+Notes: General issue history (including non-task items) lives in `docs/ISSUES_LOG.md`. Task automation telemetry and endpoints are documented in `docs/tasks/AUTOMATION.md`.
 

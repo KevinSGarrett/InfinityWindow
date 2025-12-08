@@ -19,6 +19,9 @@ This version reflects the latest backend behavior after 2025-12-06 fixes. Base U
     "description": "Optional description"
   }
   ```
+  Notes:
+  - `local_root_path` is required and must point to an existing path; invalid or missing paths return 400.
+  - `name` must be unique; duplicate names return 409.
 
 - **GET `/projects/{project_id}`**  
   Get project details.
