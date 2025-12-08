@@ -1,7 +1,7 @@
 # InfinityWindow – System Overview (Current System)
 
 This document describes **what InfinityWindow actually does today**: its architecture, core features, automation, and QA/operations story.  
-For detailed setup and usage steps, see `docs/USER_MANUAL.md`. For a feature‑to‑code map, see `docs/SYSTEM_MATRIX.md`.
+For detailed setup and usage steps, see `docs/USER_MANUAL.md`. For a feature‑to‑code map, see `docs/SYSTEM_MATRIX.md`. For developer workflow and Git/GitHub steps, see `docs/DEVELOPMENT_WORKFLOW.md`.
 
 ---
 
@@ -308,6 +308,7 @@ Additional behaviors:
 - A “Refresh all” control refreshes data for all right‑hand panels.
 - Search tab provides filters (conversation, folder, document), grouped results, and “open in” shortcuts to jump into conversations or the Docs tab.
 - Usage tab includes a conversation selector, aggregate metrics (tokens/cost/calls), per-model breakdown, recent call list, and the shared routing/tasks telemetry drawer (task suggestion confidence, etc.).
+- Usage tab charts cover task action types, model usage, confidence buckets, and auto-mode routes; charts, list, and JSON/CSV exports all share the same filters/time window for recent actions, with inline error/empty states and clipboard fallbacks for exports.
 - Notes tab adds pinned notes, an instructions diff preview, decision status/tag filters, inline editing, follow-up task hooks, and memory/clipboard exports for each decision card.
 
 Playwright tests (`right-column.spec.ts`, `files-tab.spec.ts`, `notes-memory.spec.ts`) guard against regressions in this layout.
