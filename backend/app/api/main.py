@@ -1446,7 +1446,7 @@ def auto_update_tasks_from_conversation(
     ]
     completion_segments: List[str] = []
     for text in completion_lines:
-        normalized = text.replace(" and ", ". ").replace(";", ".")
+        normalized = text.replace(" and ", ". ").replace(";", ".").replace(",", ".")
         for fragment in normalized.split("."):
             clause = fragment.strip()
             if not clause:
@@ -1459,6 +1459,22 @@ def auto_update_tasks_from_conversation(
             if any(hint in lowered_clause for hint in _TASK_INCOMPLETE_HINTS):
                 continue
             completion_segments.append(clause)
+
+    incomplete_segments: List[str] = []
+    for line in convo_text_lines[-8:]:
+        if ":" not in line:
+            continue
+        body = line.split(":", 1)[1].strip()
+        if not body:
+            continue
+        lowered_body = body.lower()
+        if not any(hint in lowered_body for hint in _TASK_INCOMPLETE_HINTS):
+            continue
+        normalized_body = body.replace(" and ", ". ").replace(";", ".").replace(",", ".")
+        for fragment in normalized_body.split("."):
+            clause = fragment.strip()
+            if clause:
+                incomplete_segments.append(clause)
 
     if completion_segments:
         for text in completion_segments:
@@ -1474,6 +1490,29 @@ def auto_update_tasks_from_conversation(
                     continue
                 normalized_task = str(info.get("normalized") or "")
                 if not normalized_task:
+                    continue
+                conflict_with_incomplete = False
+                for incomplete in incomplete_segments:
+                    normalized_incomplete = _normalize_task_text(str(incomplete or ""))
+                    if not normalized_incomplete:
+                        continue
+                    inc_ratio = difflib.SequenceMatcher(
+                        None, normalized_task, normalized_incomplete
+                    ).ratio()
+                    inc_overlap = _token_overlap(normalized_task, normalized_incomplete)
+                    inc_short = _token_overlap_shortest(
+                        normalized_task, normalized_incomplete
+                    )
+                    if (
+                        normalized_task in normalized_incomplete
+                        or normalized_incomplete in normalized_task
+                        or inc_ratio >= 0.65
+                        or inc_overlap >= 0.5
+                        or inc_short >= 0.55
+                    ):
+                        conflict_with_incomplete = True
+                        break
+                if conflict_with_incomplete:
                     continue
                 normalized_line = str(normalized_line)
                 core_phrase = " ".join(normalized_task.split()[:6])

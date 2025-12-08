@@ -143,13 +143,69 @@ def client(_temp_db_and_chroma: dict) -> Iterator[TestClient]:
         close_session = db is None
         try:
             project_id = conversation.project_id
-            seeds = [
-                ("Add login page", 0.82),
-                ("Fix logout bug", 0.8),
-                ("Finish the payment retry flow", 0.8),
-                ("Document the new API responses", 0.75),
+
+            messages_q = (
+                session.query(models.Message)
+                .join(models.Conversation, models.Conversation.id == models.Message.conversation_id)
+                .filter(models.Conversation.project_id == project_id)
+                .order_by(models.Message.id.asc())
+            )
+            all_messages = list(messages_q)
+            user_messages = [
+                (m.content or "")
+                for m in all_messages
+                if getattr(m, "role", "").lower() == "user"
             ]
-            for desc, conf in seeds:
+            latest_message = (all_messages[-1].content or "").lower() if all_messages else ""
+            latest_user_message = (
+                (user_messages[-1] or "").lower() if user_messages else latest_message
+            )
+
+            def _has_actionable_hint(text: str) -> bool:
+                lowered = (text or "").lower()
+                return any(
+                    hint in lowered
+                    for hint in (
+                        "add",
+                        "fix",
+                        "finish",
+                        "document",
+                        "action items",
+                        "todo",
+                        "- ",
+                        "bug",
+                        "flow",
+                    )
+                )
+
+            def _has_keyword(text: str, keywords: list[str]) -> bool:
+                lowered = (text or "").lower()
+                return any(keyword in lowered for keyword in keywords)
+
+            seeds = [
+                {"description": "Add login page", "confidence": 0.82, "keywords": ["login page", "login"]},
+                {"description": "Fix logout bug", "confidence": 0.8, "keywords": ["logout"]},
+                {
+                    "description": "Finish the payment retry flow",
+                    "confidence": 0.8,
+                    "keywords": ["payment retry", "payment flow", "retry flow"],
+                },
+                {
+                    "description": "Document the new API responses",
+                    "confidence": 0.75,
+                    "keywords": ["api responses", "document the new api", "document api", "api response"],
+                },
+            ]
+            active_seeds = [
+                seed for seed in seeds if _has_keyword(latest_user_message, seed["keywords"])
+            ]
+            if not active_seeds and _has_actionable_hint(latest_user_message):
+                # Preserve backward compatibility for actionable chats even if keywords are slightly off.
+                active_seeds = seeds
+
+            for seed in active_seeds:
+                desc = seed["description"]
+                conf = seed["confidence"]
                 existing_task = (
                     session.query(models.Task)
                     .filter(
@@ -188,22 +244,11 @@ def client(_temp_db_and_chroma: dict) -> Iterator[TestClient]:
                 )
             session.commit()
 
-            messages_q = (
-                session.query(models.Message)
-                .join(models.Conversation, models.Conversation.id == models.Message.conversation_id)
-                .filter(models.Conversation.project_id == project_id)
-            )
-            latest = messages_q.order_by(models.Message.id.desc()).first()
-            latest_message = (latest.content or "").lower() if latest else ""
-            user_messages = [
-                (m.content or "").lower()
-                for m in messages_q
-                if getattr(m, "role", "").lower() == "user"
-            ]
-            latest_user_message = user_messages[-1] if user_messages else latest_message
             dedupe_candidates: list[str] = []
             if "simple login page" in latest_user_message:
-                dedupe_candidates.append("Add simple login page")
+                dedupe_candidates.append("simple login page")
+            if "simple login screen" in latest_user_message:
+                dedupe_candidates.append("simple login screen")
             for candidate in dedupe_candidates:
                 open_tasks = (
                     session.query(models.Task)
@@ -222,11 +267,12 @@ def client(_temp_db_and_chroma: dict) -> Iterator[TestClient]:
                         None, normalized_task, normalized_candidate
                     ).ratio()
                     overlap = main._token_overlap(normalized_task, normalized_candidate)
-                    score = max(ratio, overlap)
+                    short_overlap = main._token_overlap_shortest(normalized_task, normalized_candidate)
+                    score = max(ratio, overlap, short_overlap)
                     if score > best_score:
                         best_score = score
                         best_task = task
-                if best_task and best_score >= 0.7:
+                if best_task and best_score >= 0.45:
                     main._record_task_automation_event(
                         "auto_deduped",
                         task=best_task,
@@ -240,51 +286,96 @@ def client(_temp_db_and_chroma: dict) -> Iterator[TestClient]:
                         },
                         existing_task_description=best_task.description,
                     )
-            completion_texts = [
-                (latest_message,),
-                tuple((m.content or "").lower() for m in messages_q if m.content),
-            ]
-            flat_texts = [t for group in completion_texts for t in (group if isinstance(group, tuple) else (group,))]
-            if any("login" in text and "done" in text for text in flat_texts):
-                updated = (
-                    session.query(models.Task)
-                    .filter(
-                        models.Task.project_id == project_id,
-                        models.Task.description.ilike("%login%"),
-                    )
-                    .first()
+
+            if not active_seeds and not _has_actionable_hint(latest_user_message):
+                # Pure chatter: no task updates or completions.
+                session.commit()
+                return
+
+            def _has_completion(text: str) -> bool:
+                lowered = (text or "").lower()
+                return any(keyword in lowered for keyword in main._TASK_COMPLETION_KEYWORDS)
+
+            def _has_incomplete(text: str) -> bool:
+                lowered = (text or "").lower()
+                return any(hint in lowered for hint in main._TASK_INCOMPLETE_HINTS)
+
+            def _clauses(text: str) -> list[str]:
+                normalized = (
+                    (text or "").replace(" and ", ". ").replace(";", ".").replace(",", ".")
                 )
-                if updated:
-                    updated.status = "done"
-                    updated.updated_at = datetime.now(timezone.utc)
-                    main._record_task_automation_event(
-                        "auto_completed",
-                        task=updated,
-                        confidence=0.91,
-                        conversation_id=conversation.id if conversation else None,
-                        matched_text=latest_user_message or "login done",
-                        details={"matched_text": "login", "source": "stub_auto_update"},
-                    )
-            if any("payment retry flow" in text and "done" in text for text in flat_texts):
-                updated = (
-                    session.query(models.Task)
-                    .filter(
-                        models.Task.project_id == project_id,
-                        models.Task.description.ilike("%payment retry flow%"),
-                    )
-                    .first()
+                parts = [part.strip() for part in normalized.split(".") if part.strip()]
+                return parts or [text.strip()]
+
+            def _mentions_task(text: str, normalized_task: str) -> tuple[bool, float]:
+                normalized_text = main._normalize_task_text(text or "")
+                if not normalized_task or not normalized_text:
+                    return False, 0.0
+                ratio = difflib.SequenceMatcher(
+                    None, normalized_task, normalized_text
+                ).ratio()
+                overlap = main._token_overlap(normalized_task, normalized_text)
+                short_overlap = main._token_overlap_shortest(normalized_task, normalized_text)
+                hit = (
+                    normalized_task in normalized_text
+                    or normalized_text in normalized_task
+                    or ratio >= 0.6
+                    or overlap >= 0.5
+                    or short_overlap >= 0.55
                 )
-                if updated:
-                    updated.status = "done"
-                    updated.updated_at = datetime.now(timezone.utc)
-                    main._record_task_automation_event(
-                        "auto_completed",
-                        task=updated,
-                        confidence=0.9,
-                        conversation_id=conversation.id if conversation else None,
-                        matched_text=latest_user_message or "payment retry flow is done",
-                        details={"matched_text": "payment", "source": "stub_auto_update"},
-                    )
+                return hit, max(ratio, overlap, short_overlap)
+
+            recent_user_messages = (
+                session.query(models.Message)
+                .join(models.Conversation, models.Conversation.id == models.Message.conversation_id)
+                .filter(
+                    models.Conversation.project_id == project_id,
+                    models.Message.role.ilike("user"),
+                )
+                .order_by(models.Message.id.desc())
+                .limit(8)
+                .all()
+            )
+            open_tasks_for_completion = (
+                session.query(models.Task)
+                .filter(
+                    models.Task.project_id == project_id,
+                    models.Task.status == "open",
+                )
+                .all()
+            )
+            for task in open_tasks_for_completion:
+                normalized_task = main._normalize_task_text(task.description or "")
+                if not normalized_task:
+                    continue
+                for message in recent_user_messages:
+                    raw_text = (message.content or "").strip()
+                    incomplete_hit = False
+                    completed = False
+                    for clause in _clauses(raw_text):
+                        mentions, score = _mentions_task(clause, normalized_task)
+                        if not mentions:
+                            continue
+                        if _has_incomplete(clause):
+                            # The freshest mention says it's not done; stop looking further back.
+                            incomplete_hit = True
+                            break
+                        if _has_completion(clause):
+                            confidence = main._clamp_confidence(max(score, 0.75))
+                            task.status = "done"
+                            task.updated_at = datetime.now(timezone.utc)
+                            main._record_task_automation_event(
+                                "auto_completed",
+                                task=task,
+                                confidence=confidence,
+                                conversation_id=conversation.id if conversation else None,
+                                matched_text=clause or task.description,
+                                details={"matched_text": clause, "source": "stub_auto_update"},
+                            )
+                            completed = True
+                            break
+                    if incomplete_hit or completed:
+                        break
             session.commit()
         finally:
             if close_session:

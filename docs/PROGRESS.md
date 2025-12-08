@@ -403,3 +403,10 @@ These phases are intentionally high‑level. When we decide to start on one, we 
 - Added API coverage for audit notes and telemetry consistency (`qa/tests_api/test_tasks_automation_audit.py`) and reset task telemetry between tests for deterministic counts.
 
 
+## 2025-12-08 – Noisy history hardening
+- Added API QA for noisy/long conversations: mixed completion vs pending signals, chatter-only no-op, and near-duplicate “login screen” dedupe telemetry.
+- Stubbed auto-update now requires actionable hints before adding tasks, ignores pure chatter, and uses the freshest user mention when auto-closing; dedupe covers “login screen/page” variants.
+- Core auto_update completion path checks recent “pending/not done/blocked” clauses before closing tasks so new contradictory lines keep tasks open.
+
+
+

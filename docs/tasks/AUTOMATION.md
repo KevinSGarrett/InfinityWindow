@@ -21,20 +21,21 @@ This document captures the live task surface (APIs, automation behavior, telemet
 - Intent guardrails: vague/analysis-only asks are penalized into suggestions unless action verbs are present.
 - Grouping heuristic: tasks expose `group` (critical/blocked/ready) derived from priority/blocked_reason; surfaced in API and Usage telemetry.
 - Context-aware prompt: injects goals/instructions/pinned notes/top open tasks plus blocked/dependency context.
-- Completion detection: fuzzy phrase + token-overlap with recent messages; stale completion suggestions are auto-dismissed.
+- Completion detection: fuzzy phrase + token-overlap with recent messages; stale completion suggestions are auto-dismissed. Completions are skipped when the latest matching clause includes “pending / not done / blocked / in progress” hints so noisy updates don’t auto-close open work.
+- Noisy/long histories: the stubbed auto-update (CI) skips adding tasks when messages are pure chatter, and only closes tasks when the freshest matching user message is a clear completion (later “still pending” lines keep tasks open).
 - Aliases/ergonomics:
   - Filesystem read accepts `file_path` or `subpath`.
   - AI edit accepts `instruction` or `instructions`.
   - Terminal scoped run injects `project_id` from path; body `project_id` optional.
 
--## Telemetry & usage
+## Telemetry & usage
 - Task counters: auto-added / auto-completed / auto-deduped; confidence stats + buckets; recent actions list (with status/priority/blocked/auto_notes/confidence/action/timestamp/matched_text/task_group and `dependency_hint` when present).
 - Cost: pricing table includes `gpt-5-nano`, `gpt-5-pro`, `gpt-5.1-codex`; Usage tab now shows non-zero totals.
 - Usage tab surfaces confidence buckets (lt_0_4, 0_4_0_7, gte_0_7) and per-action confidence; added filters (action/group/model) and JSON export for recent task actions.
 - Dev/test seed helper: `/debug/seed_task_action` can create a task and record an automation action with confidence/notes for UI/QA.
 
 ## Tests (current)
-- API: `qa/tests_api/test_chat_tasks_autopilot.py` (auto-add + complete) and `qa/tests_api/test_chat_tasks_noisy.py` (noisy convo add/complete).
+- API: `qa/tests_api/test_chat_tasks_autopilot.py` (auto-add + complete) and `qa/tests_api/test_chat_tasks_noisy.py` (noisy convo add/complete, long-history completion guard, chatter no-op).
 - E2E: `qa/tests_e2e/test_chat_search_tasks.py` (chat → tasks auto-add + message search).
 - Smoke: `qa/run_smoke.py` includes tasks auto-loop probe.
 - UI: Playwright suite on backend 8000 now green — `frontend/tests/tasks-suggestions.spec.ts` (suggestion drawer approve/dismiss; priority/blocked chips), `frontend/tests/tasks-confidence.spec.ts` (confidence chip + Usage buckets), `frontend/tests/ui-smoke.spec.ts` (instructions meta tightened), `frontend/tests/ui-chat-smoke.spec.ts`, `frontend/tests/ui-extended.spec.ts`.

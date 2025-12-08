@@ -398,6 +398,7 @@ Behavior:
     - Fuzzy similarity (`difflib.SequenceMatcher`).
     - Token overlap.
   - Marks tasks `done` when there is a strong match and increments `auto_completed`.
+- Completion detection prefers the freshest user statements and skips clauses that include “pending / not done / blocked / in progress” so noisy updates do not close the wrong tasks.
 - For each new TODO‑like line:
   - Normalizes the description.
   - Compares against existing open tasks.
@@ -409,11 +410,13 @@ Behavior:
   - The backend sorts so that:
     - All `open` tasks come first.
     - Within each status, most recently updated tasks appear first.
+- Pure chatter without actionable verbs or task hints is ignored; no tasks are created and telemetry stays empty for that chat.
 
 What you’ll see:
 
 - As you discuss future work (“We need to X, Y, Z”), new tasks appear in the Tasks tab automatically.
 - As you report progress (“We finished X”, “Y is done”, “we merged the change for Z”), corresponding tasks flip to `done` automatically, when the wording is similar enough.
+- If you mention that something is still pending/not done/blocked, the maintainer leaves it open; only the latest clear completion will close a task.
 - When automation adds, closes, or dedupes a task, a short audit note appears under the task (e.g., “Closed automatically on 2025-12-08 14:20 UTC after: 'login page task is done'”).
 
 ### 6.3 Current Behavior & Best Practices
@@ -750,6 +753,7 @@ In the **Usage** tab:
   - “Refresh & reset” lets you zero the counters after capturing a snapshot.
 - **Task automation charts & exports**:
   - Action/group/model filters and the time filter apply to charts, the recent actions list, and JSON/CSV exports.
+  - Filters are keyboard/screen-reader friendly (action/group/model/time plus “Usage time range” and “Usage records window” selectors).
   - Charts cover task action types, calls per model, confidence buckets, and auto-mode routes.
   - If clipboard copy fails, the export preview still appears inline; usage/telemetry fetch errors are shown inline without collapsing the tab.
 
@@ -778,6 +782,7 @@ Use this panel to:
 - Alt+6: Usage
 - Alt+7: Notes
 - Alt+8: Memory
+- Tabs expose ARIA tab roles with visible focus rings; screen readers announce the active tab while Alt+1–8 jumps directly.
 
 ### 12.2 Command Palette
 

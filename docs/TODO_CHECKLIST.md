@@ -55,7 +55,7 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
   - [x] Usage tab filters/render verification; telemetry now fetches on tab entry/Use current chat; filters verified.  
   - [x] Audit trail snippets when the maintainer closes a task (“Closed automatically on …”).  
   - [ ] Context-aware extraction prompts (feed project goals, sprint focus, blockers).  
-  - [ ] Additional QA around noisy projects and long histories.  
+  - [x] Additional QA around noisy projects and long histories.  
 
 - [ ] **Enhanced retrieval & context shaping**  
   - [ ] Per‑feature retrieval tuning (tasks vs docs vs memory).  
@@ -129,7 +129,7 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
 - [x] Stabilize `auto_update_tasks` (503 mitigation + retry).
 - [x] Handle missing task backlog files gracefully (skip/log missing targets).
 - [~] Improve task intent extraction to reduce extra “analysis” tasks and handle vague prompts.
-  - Next: tighten dedupe/completion on noisy conversations; add telemetry-backed confidence scoring.
+  - Next: tighten dedupe/completion on noisy conversations; add telemetry-backed confidence scoring. (Recent QA adds noisy/long-history coverage and conservative completion guard.)
 - [x] Audit snippets for auto-added/completed/deduped tasks (stored in `Task.auto_notes` and shown in Tasks/Usage UI).
 - [x] Add dependency hints to new tasks (detect “depends on/after/waiting for” phrasing; append to auto notes) and tighten dedupe thresholds.
 

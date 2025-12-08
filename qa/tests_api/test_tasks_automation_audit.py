@@ -195,6 +195,52 @@ def test_auto_update_tasks_adds_deduped_audit_note_for_similar_description(
     assert matching.get("task_description") == login_task["description"]
 
 
+def test_auto_update_tasks_dedupes_login_screen_with_noise(client, project):
+    convo_resp = client.post(
+        "/chat",
+        json={
+            "project_id": project["id"],
+            "message": "We need to add a login page and fix logout soon.",
+        },
+    )
+    assert convo_resp.status_code == 200, convo_resp.text
+    convo_id = convo_resp.json()["conversation_id"]
+
+    noisy_followup = client.post(
+        "/chat",
+        json={
+            "conversation_id": convo_id,
+            "project_id": project["id"],
+            "message": (
+                "Side chatter about priorities. Also the simple login screen variant "
+                "is mentioned again; it's not done, just noted."
+            ),
+        },
+    )
+    assert noisy_followup.status_code == 200, noisy_followup.text
+
+    refreshed = client.get(f"/projects/{project['id']}/tasks").json()
+    login_task = _find_task(refreshed, "login page")
+    assert login_task is not None
+    assert login_task["status"] == "open"
+    notes = (login_task.get("auto_notes") or "").lower()
+    assert notes.startswith("duplicate automatically ignored")
+    assert "login screen" in notes
+
+    telemetry = _get_recent_actions(client)
+    dedup_event = next(
+        (
+            action
+            for action in telemetry
+            if action.get("task_id") == login_task["id"]
+            and action.get("action") == "auto_deduped"
+            and "login screen" in (action.get("matched_text") or "").lower()
+        ),
+        None,
+    )
+    assert dedup_event is not None
+
+
 def test_auto_update_tasks_handles_noisy_conversation_without_wrong_completions(
     client, project
 ):
