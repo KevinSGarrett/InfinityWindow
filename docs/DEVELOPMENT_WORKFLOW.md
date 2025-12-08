@@ -48,17 +48,19 @@ python -m pytest qa/tests_api
 # $env:COVERAGE_ARGS="--cov=app --cov-report=xml:coverage-api.xml"
 # python -m pytest qa/tests_api $env:COVERAGE_ARGS
 ```
-- CI/stub mode (matches GitHub Actions): run backend tests and `make ci` with
-  `LLM_MODE=stub` and `VECTORSTORE_MODE=stub` to use in-memory LLM + vectorstore
-  stubs and avoid on-disk Chroma writes. Example:
+- CI command (same as GitHub Actions): `make ci` runs backend API tests plus the frontend build. GitHub Actions runs this on every push/PR to `main` with `LLM_MODE=stub` and `VECTORSTORE_MODE=stub`.
+- Stubbed CI/dev mode:
+  - No `OPENAI_API_KEY` required; `openai_client` uses the stub LLM and the vector store runs in memory.
+  - Match CI locally with:
 
 ```powershell
 $env:LLM_MODE="stub"; $env:VECTORSTORE_MODE="stub"; make ci
 ```
 
-- The Makefile sets `VECTORSTORE_MODE=stub` for backend tests by default; set
-  `VECTORSTORE_MODE=persistent` when you want to exercise the on-disk Chroma
-  store (clear `backend/chroma_data` if you want a fresh store).
+- Persistent / live modes for local experiments:
+  - Drop the stub env vars and set `VECTORSTORE_MODE=persistent` when you want the on-disk Chroma store under `backend/chroma_data` (clear it for a clean run).
+  - Provide `OPENAI_API_KEY` (and optional `OPENAI_MODEL_*` overrides) when you want live LLM calls.
+  - Makefile defaults `VECTORSTORE_MODE` to `stub` for backend tests; override per run when you need persistence.
 
 - Frontend checks:
 
@@ -71,7 +73,7 @@ npm run test:e2e
 
 ## Git & GitHub workflow
 - Remote: `origin` → `https://github.com/KevinSGarrett/InfinityWindow` (primary branch `main`).
-- CI: GitHub Actions runs `make ci` (backend API tests + frontend build) on every push/PR to `main`; keep branches green by running `make ci` locally first (equivalent to `PYTHONPATH=".;backend" python -m pytest qa/tests_api` plus `npm run build --prefix frontend`). Coverage is off by default; supply `COVERAGE_ARGS` if you want pytest-cov metrics.
+- CI: GitHub Actions runs `make ci` (backend API tests + frontend build) on every push/PR to `main` with `LLM_MODE=stub` and `VECTORSTORE_MODE=stub`; keep branches green by running `make ci` locally first (equivalent to `PYTHONPATH=".;backend" python -m pytest qa/tests_api` plus `npm run build --prefix frontend`). Coverage is off by default; supply `COVERAGE_ARGS` if you want pytest-cov metrics.
 - Keep `main` green: run the API tests (and UI build/Playwright if you changed the UI) before pushing.
 - Branching:
   - Prefer short-lived branches like `feature/<topic>` or `bugfix/<topic>` merged into `main` after tests.

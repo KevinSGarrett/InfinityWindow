@@ -9,6 +9,11 @@ This repo contains:
 - A **React + TypeScript frontend** (`frontend/`) with a 3‑column UI (Projects / Chat / Right‑hand workbench tabs).
 - An evolving **documentation and QA library** under `docs/` and `qa/`.
 
+## Build / CI status
+[![CI](https://github.com/KevinSGarrett/InfinityWindow/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/KevinSGarrett/InfinityWindow/actions/workflows/ci.yml)
+
+CI runs `make ci` (backend API tests + frontend build) on `main` using stubbed LLM + vector store dependencies, so no external API keys are required in CI.
+
 ---
 
 ## 1. Quick start

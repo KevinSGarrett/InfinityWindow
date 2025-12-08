@@ -271,7 +271,9 @@ This batching infrastructure is also the foundation for future blueprint ingesti
 
 **CI vs dev vector store**:
 - Dev/prod use a persistent Chroma store under `backend/chroma_data` (configurable via `_CHROMA_PATH` in `chroma_store.py`).
+- CI/QA runs set `LLM_MODE=stub` so `openai_client` returns stubbed embeddings and chat responses; no `OPENAI_API_KEY` is required in CI.
 - CI/QA runs set `VECTORSTORE_MODE=stub` to use an in-memory vector store that mirrors the API surface without writing to disk; ingestion/tests stay deterministic even on read-only filesystems.
+- For local parity, set both env vars; drop them and set `VECTORSTORE_MODE=persistent` when you need real LLM calls and on-disk Chroma.
 
 ---
 
