@@ -18,6 +18,11 @@ _Updated from `Hydration_File_002.txt`, `To_Do_List_001.txt`, and `Cursor_Chat_L
 - **Right‑column UI 2.0**: partially implemented; layout is currently under active iteration based on UX feedback.
 - **CI attempt (2025‑12‑05)**: `make ci` currently fails with “No rule to make target 'ci'.” – add/restore a CI target or document the correct command.
 
+## 2025‑12‑08 – CI & telemetry alignment
+- CI stabilized with stubbed dependencies: `LLM_MODE=stub` and `VECTORSTORE_MODE=stub` now drive `make ci` locally and in GitHub Actions (badge on README stays green).
+- Usage dashboard Phase 2 confirmed complete: shared action/group/model filters + time window across charts/exports, JSON/CSV exports scoped to filters, and inline empty/error/export-fallback states.
+- Task automation audit trail shipped: Task.auto_notes recorded for auto-add/complete/dedupe; telemetry recent_actions include notes/matched_text/model, covered by `qa/tests_api/test_tasks_automation_audit.py`.
+
 ## 2025‑12‑08 – QA updates (port-aligned to 8000)
 
 - Playwright e2e suite green on backend `http://127.0.0.1:8000` after aligning API base in helpers/specs (`ui-smoke`, `ui-chat-smoke`, `ui-extended`, `tasks-suggestions`, `tasks-confidence`); stabilized with seeded data and less brittle waits.

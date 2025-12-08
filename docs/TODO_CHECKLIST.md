@@ -39,20 +39,21 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
   - [x] Heuristic `_infer_auto_submode` for `auto` (`code`/`research`/`fast`/`deep`).  
   - [x] Telemetry counters for routes + fallbacks.  
   - [ ] Refine heuristics using real telemetry data.  
-  - [ ] Add UI surface to inspect chosen model and override if needed.  
+  - [x] Add UI surface to inspect chosen model and override if needed (model override dropdown + last chosen model display).  
 
 - [~] **Autonomous TODO intelligence**  
   - [x] Completion detection (“X is done” → mark tasks done).  
   - [x] Semantic dedupe when adding new tasks.  
   - [x] Basic ordering heuristics (open first, then by `updated_at`).  
   - [x] Confidence scores + telemetry for auto actions (add/complete).  
+  - [x] Audit trail snippets for auto-added/completed/deduped tasks (Task.auto_notes shown in Tasks/Usage; telemetry recent_actions include notes + matched_text).  
   - [~] Suggested-change queue / Approve–Dismiss flow for low-confidence additions or completions (initial version shipped; refine heuristics/UX over time).  
   - [~] Priority & grouping heuristics (Critical / Blocked / Ready) instead of pure recency.  
-  - [ ] Dependency tracking and smarter duplicate detection beyond simple similarity.  
+  - [~] Dependency tracking and smarter duplicate detection beyond simple similarity (dependency hints appended to auto notes; full graph still future).  
   - [x] Core telemetry: counters + `/debug/telemetry` endpoint + Usage tab telemetry drawer for task automation.  
-- [~] Full usage/telemetry dashboard UI (graphs, filters, long‑term analytics).  (Phase 2 shipped: charts for action/model/confidence/mode with shared filters/time window, filtered exports, and inline empty/error states; Phase 3 long-term analytics/persistence still future.)  
-  - [x] Usage tab filters/render verification (ISSUE-027/028/029/042); telemetry now fetches on tab entry/Use current chat; filters verified.  
-  - [ ] Audit trail snippets when the maintainer closes a task (“Closed automatically on …”).  
+- [~] Full usage/telemetry dashboard UI (graphs, filters, long‑term analytics).  (Phase 2 shipped: charts for action/model/confidence/mode with shared filters/time window, filtered JSON/CSV exports, inline empty/error states, and export error fallbacks; Phase 3 long-term analytics/persistence still future.)  
+  - [x] Usage tab filters/render verification; telemetry now fetches on tab entry/Use current chat; filters verified.  
+  - [x] Audit trail snippets when the maintainer closes a task (“Closed automatically on …”).  
   - [ ] Context-aware extraction prompts (feed project goals, sprint focus, blockers).  
   - [ ] Additional QA around noisy projects and long histories.  
 
@@ -113,7 +114,7 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
 - [x] `Makefile` in QA copy with `make ci` target (backend tests + frontend build).  
 - [~] Port CI configuration back into primary repo once test suite is richer. (Repo-root `Makefile` now includes `ci` for backend API tests + frontend build.)  
 - [x] Add coverage reporting and basic performance checks. (Coverage defaults on via `COVERAGE_ARGS`; `make perf` runs perf smoke.)
-- [ ] Usage/telemetry dashboard (graphs/filters/long-term analytics) – design drafted (`docs/USAGE_TELEMETRY_DASHBOARD.md`); implement in phases.
+- [~] Usage/telemetry dashboard (graphs/filters/long-term analytics) – Phase 1/2 shipped (charts, shared filters/time window, filtered exports, inline error/empty states); Phase 3 (persistence/long windows) still future. See `docs/USAGE_TELEMETRY_DASHBOARD.md`.
 
 ### QA & E2E
 
