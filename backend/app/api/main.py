@@ -702,9 +702,22 @@ def _safe_join(root: Path, relative_path: str) -> Path:
     - 'relative_path' must be relative (no drive, no leading slash).
     - It may not contain '..' segments.
     - Final resolved path must still live under 'root'.
+    - Disallow UNC-style paths or backslash separators to avoid bypasses.
     """
     if not relative_path:
         return root
+
+    # Block UNC or backslash-based paths (e.g., \\server\share or C:\)
+    if relative_path.startswith("\\\\") or relative_path.startswith("//"):
+        raise HTTPException(
+            status_code=400,
+            detail="UNC or network paths are not allowed.",
+        )
+    if "\\" in relative_path:
+        raise HTTPException(
+            status_code=400,
+            detail="Backslashes are not allowed; use forward slashes.",
+        )
 
     rel_obj = Path(relative_path)
 

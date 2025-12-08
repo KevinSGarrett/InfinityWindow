@@ -12,12 +12,77 @@ load_dotenv()
 
 # Singleton OpenAI client
 _client: Optional[OpenAI] = None
+_stub_client: Optional[object] = None
+
+
+def _make_stub_client() -> object:
+    """
+    Lightweight stub for CI/LLM_MODE=stub so tests don't require real API keys.
+    Provides minimal embeddings + chat/responses surfaces used in this codebase.
+    """
+
+    class _StubEmbeddingItem:
+        def __init__(self, value: List[float]) -> None:
+            self.embedding = value
+
+    class _StubEmbeddings:
+        def create(self, model: str, input):
+            texts = input if isinstance(input, list) else [input]
+            data = [
+                _StubEmbeddingItem([float(len(str(t))) % 7, 0.0, 1.0])
+                for t in texts
+            ]
+            return type("Resp", (), {"data": data})
+
+    class _StubChatCompletions:
+        def create(self, **kwargs):
+            choice = type(
+                "Choice",
+                (),
+                {"message": type("Msg", (), {"content": "stubbed reply"})()},
+            )
+            usage = type(
+                "Usage",
+                (),
+                {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            )()
+            return type("Resp", (), {"choices": [choice], "usage": usage})
+
+    class _StubChat:
+        def __init__(self):
+            self.completions = _StubChatCompletions()
+
+    class _StubResponses:
+        def create(self, **kwargs):
+            text_obj = type("Text", (), {"value": "stubbed reply"})()
+            content = type("Content", (), {"text": text_obj})()
+            output_item = type("Output", (), {"content": [content]})()
+            usage = type(
+                "Usage",
+                (),
+                {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+            )()
+            return type("Resp", (), {"output": [output_item], "usage": usage})
+
+    class _StubClient:
+        def __init__(self):
+            self.embeddings = _StubEmbeddings()
+            self.chat = _StubChat()
+            self.responses = _StubResponses()
+
+    return _StubClient()
 
 
 def get_client() -> OpenAI:
     """
     Lazily create and return a singleton OpenAI client.
     """
+    global _client, _stub_client
+    if os.getenv("LLM_MODE", "").lower() == "stub":
+        if _stub_client is None:
+            _stub_client = _make_stub_client()
+        return _stub_client  # type: ignore[return-value]
+
     global _client
     if _client is None:
         api_key = os.getenv("OPENAI_API_KEY")
