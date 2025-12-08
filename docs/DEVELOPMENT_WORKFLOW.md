@@ -48,6 +48,17 @@ python -m pytest qa/tests_api
 # $env:COVERAGE_ARGS="--cov=app --cov-report=xml:coverage-api.xml"
 # python -m pytest qa/tests_api $env:COVERAGE_ARGS
 ```
+- CI/stub mode (matches GitHub Actions): run backend tests and `make ci` with
+  `LLM_MODE=stub` and `VECTORSTORE_MODE=stub` to use in-memory LLM + vectorstore
+  stubs and avoid on-disk Chroma writes. Example:
+
+```powershell
+$env:LLM_MODE="stub"; $env:VECTORSTORE_MODE="stub"; make ci
+```
+
+- The Makefile sets `VECTORSTORE_MODE=stub` for backend tests by default; set
+  `VECTORSTORE_MODE=persistent` when you want to exercise the on-disk Chroma
+  store (clear `backend/chroma_data` if you want a fresh store).
 
 - Frontend checks:
 

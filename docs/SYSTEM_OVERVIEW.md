@@ -269,6 +269,10 @@ Search has been explicitly tested and fixed so that message search behaves corre
 
 This batching infrastructure is also the foundation for future blueprint ingestion (Phase T); only repo ingestion is live today.
 
+**CI vs dev vector store**:
+- Dev/prod use a persistent Chroma store under `backend/chroma_data` (configurable via `_CHROMA_PATH` in `chroma_store.py`).
+- CI/QA runs set `VECTORSTORE_MODE=stub` to use an in-memory vector store that mirrors the API surface without writing to disk; ingestion/tests stay deterministic even on read-only filesystems.
+
 ---
 
 ### 3.8 Usage & Telemetry

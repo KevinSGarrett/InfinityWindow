@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       LLM_MODE: stub
+      VECTORSTORE_MODE: stub
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

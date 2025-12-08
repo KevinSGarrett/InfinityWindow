@@ -42,6 +42,7 @@ def _set_cwd() -> Iterator[None]:
     original = Path.cwd()
     os.chdir(BACKEND_DIR)
     os.environ.setdefault("LLM_MODE", "stub")
+    os.environ.setdefault("VECTORSTORE_MODE", "stub")
     try:
         yield
     finally:

@@ -6,12 +6,13 @@ import chromadb
 from chromadb.api.models.Collection import Collection
 from chromadb import errors as chroma_errors
 import logging
+import os
 import shutil
 from pathlib import Path
 
 # We'll store Chroma data in ./chroma_data relative to the backend folder.
 # This will create a "chroma_data" directory next to infinitywindow.db.
-_CHROMA_CLIENT: chromadb.PersistentClient | None = None
+_CHROMA_CLIENT: chromadb.PersistentClient | _StubClient | None = None
 _CHROMA_PATH = Path("chroma_data")
 
 # Collection names
@@ -23,14 +24,149 @@ _CHROMA_MAX_BATCH = 5000
 logger = logging.getLogger(__name__)
 
 
-def get_client() -> chromadb.PersistentClient:
+class _StubCollection:
     """
-    Lazily create a singleton Chroma PersistentClient.
+    Minimal in-memory stand-in for a Chroma collection.
+
+    Only implements the subset of the API that the app uses in tests:
+    - add
+    - query
+    - delete
+    """
+
+    def __init__(self, name: str):
+        self.name = name
+        self._records: List[Dict[str, Any]] = []
+
+    def reset(self) -> None:
+        self._records = []
+
+    def add(
+        self,
+        ids: List[str],
+        embeddings: List[List[float]],
+        documents: Optional[List[str]] = None,
+        metadatas: Optional[List[Dict[str, Any]]] = None,
+    ) -> None:
+        docs = documents or [""] * len(ids)
+        metas = metadatas or [{} for _ in ids]
+        for rid, embedding, doc, meta in zip(ids, embeddings, docs, metas):
+            rid_str = str(rid)
+            # Replace existing record with same id to mimic upsert-like behavior
+            self._records = [rec for rec in self._records if rec["id"] != rid_str]
+            self._records.append(
+                {
+                    "id": rid_str,
+                    "embedding": embedding or [],
+                    "document": doc or "",
+                    "metadata": dict(meta or {}),
+                }
+            )
+
+    def delete(self, ids: Optional[List[str]] = None, **_: Any) -> None:
+        if not ids:
+            return
+        target_ids = {str(_id) for _id in ids}
+        self._records = [rec for rec in self._records if rec["id"] not in target_ids]
+
+    def _matches_where(self, meta: Dict[str, Any], where: Optional[Dict[str, Any]]) -> bool:
+        if not where:
+            return True
+        if "$and" in where:
+            return all(self._matches_where(meta, clause) for clause in where.get("$and", []))
+        for key, cond in where.items():
+            if isinstance(cond, dict) and "$eq" in cond:
+                if meta.get(key) != cond["$eq"]:
+                    return False
+            else:
+                if meta.get(key) != cond:
+                    return False
+        return True
+
+    def _simple_distance(self, query_embedding: List[float], stored_embedding: List[float]) -> float:
+        if not query_embedding or not stored_embedding:
+            return 0.0
+        size = min(len(query_embedding), len(stored_embedding))
+        if size == 0:
+            return 0.0
+        # Lightweight average absolute difference; enough for deterministic ordering
+        return float(
+            sum(abs(query_embedding[i] - stored_embedding[i]) for i in range(size)) / size
+        )
+
+    def query(
+        self,
+        query_embeddings: Optional[List[List[float]]] = None,
+        query_texts: Optional[List[str]] = None,
+        n_results: int = 5,
+        where: Optional[Dict[str, Any]] = None,
+        where_document: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        # Filter by metadata
+        filtered = [rec for rec in self._records if self._matches_where(rec["metadata"], where)]
+
+        # Optional simple where_document substring filter
+        if where_document:
+            needle = where_document.get("$contains")
+            if isinstance(needle, str):
+                filtered = [rec for rec in filtered if needle in rec.get("document", "")]
+
+        max_results = n_results or len(filtered)
+        trimmed = filtered[:max_results]
+        query_vec = query_embeddings[0] if query_embeddings else []
+
+        ids = [rec["id"] for rec in trimmed]
+        docs = [rec["document"] for rec in trimmed]
+        metas = [rec["metadata"] for rec in trimmed]
+        dists = [self._simple_distance(query_vec, rec["embedding"]) for rec in trimmed]
+
+        return {
+            "ids": [ids],
+            "documents": [docs],
+            "metadatas": [metas],
+            "distances": [dists],
+        }
+
+
+class _StubClient:
+    def __init__(self):
+        self._collections: Dict[str, _StubCollection] = {}
+
+    def get_or_create_collection(self, name: str, metadata: Optional[Dict[str, Any]] = None):
+        del metadata  # not used in stub, but accepted for API parity
+        if name not in self._collections:
+            self._collections[name] = _StubCollection(name)
+        return self._collections[name]
+
+    def reset(self) -> None:
+        for collection in self._collections.values():
+            collection.reset()
+        self._collections = {}
+
+
+def _vectorstore_mode() -> str:
+    mode = os.getenv("VECTORSTORE_MODE", "persistent").lower()
+    return mode if mode in {"persistent", "stub"} else "persistent"
+
+
+def _is_stub_mode() -> bool:
+    return _vectorstore_mode() == "stub"
+
+
+def _create_client() -> chromadb.PersistentClient | _StubClient:
+    if _is_stub_mode():
+        return _StubClient()
+    _CHROMA_PATH.mkdir(parents=True, exist_ok=True)
+    return chromadb.PersistentClient(path=str(_CHROMA_PATH))
+
+
+def get_client() -> chromadb.PersistentClient | _StubClient:
+    """
+    Lazily create a singleton Chroma client (persistent or in-memory stub).
     """
     global _CHROMA_CLIENT
     if _CHROMA_CLIENT is None:
-        _CHROMA_PATH.mkdir(parents=True, exist_ok=True)
-        _CHROMA_CLIENT = chromadb.PersistentClient(path=str(_CHROMA_PATH))
+        _CHROMA_CLIENT = _create_client()
     return _CHROMA_CLIENT
 
 
@@ -40,6 +176,15 @@ def _reset_chroma_persistence(clear_data: bool = False) -> None:
     compaction/database errors.
     """
     global _CHROMA_CLIENT
+    if isinstance(_CHROMA_CLIENT, _StubClient):
+        if clear_data:
+            _CHROMA_CLIENT.reset()
+            try:
+                shutil.rmtree(_CHROMA_PATH, ignore_errors=True)
+            except Exception:  # noqa: BLE001
+                logger.exception("Failed to remove chroma_data during stub reset")
+        _CHROMA_CLIENT = None
+        return
     _CHROMA_CLIENT = None
     if clear_data:
         try:
@@ -56,6 +201,9 @@ def _with_chroma_retry(action: str, func, attempts: int = 2):
     store for the compaction case) and try again. This keeps the API responsive even if
     Chroma's metadata segment becomes inconsistent.
     """
+    if _is_stub_mode():
+        return func()
+
     last_exc: Exception | None = None
     for i in range(attempts):
         try:
