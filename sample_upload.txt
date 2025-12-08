@@ -1,2 +1,0 @@
-This file was uploaded through /docs/upload_text_file.
-InfinityWindow should be able to find this later via /search/docs.
