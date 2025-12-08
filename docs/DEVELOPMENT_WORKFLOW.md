@@ -44,13 +44,15 @@ $env:PYTHONPATH=".;backend"
 python -m pytest qa/tests_api/test_tasks_automation_audit.py
 # or full suite
 python -m pytest qa/tests_api
+# optional coverage:
+# $env:COVERAGE_ARGS="--cov=app --cov-report=xml:coverage-api.xml"
+# python -m pytest qa/tests_api $env:COVERAGE_ARGS
 ```
 
 - Frontend checks:
 
 ```powershell
-cd frontend
-npm run build              # typecheck + build
+npm run build --prefix frontend   # typecheck + build
 # Playwright (optional; keep dev server up in another terminal)
 npm run dev -- --host 127.0.0.1 --port 5173
 npm run test:e2e
@@ -58,6 +60,7 @@ npm run test:e2e
 
 ## Git & GitHub workflow
 - Remote: `origin` → `https://github.com/KevinSGarrett/InfinityWindow` (primary branch `main`).
+- CI: GitHub Actions runs `make ci` (backend API tests + frontend build) on every push/PR to `main`; keep branches green by running `make ci` locally first (equivalent to `PYTHONPATH=".;backend" python -m pytest qa/tests_api` plus `npm run build --prefix frontend`). Coverage is off by default; supply `COVERAGE_ARGS` if you want pytest-cov metrics.
 - Keep `main` green: run the API tests (and UI build/Playwright if you changed the UI) before pushing.
 - Branching:
   - Prefer short-lived branches like `feature/<topic>` or `bugfix/<topic>` merged into `main` after tests.

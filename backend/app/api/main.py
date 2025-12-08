@@ -6,10 +6,11 @@ import subprocess
 import difflib
 import re
 import time
+import threading
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, List, Dict, Deque, Any, Literal, cast, TYPE_CHECKING
+from typing import Optional, List, Dict, Deque, Any, Literal, cast, TYPE_CHECKING, Generator
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -59,6 +60,17 @@ app.add_middleware(
 app.include_router(search_router)
 app.include_router(docs_router)
 app.include_router(github_router)
+
+# Ensure DB dependency uses the current SessionLocal (patched in tests)
+def _get_db_session_override() -> Generator[Session, None, None]:
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+app.dependency_overrides[get_db] = _get_db_session_override
 
 
 # ---------- Pydantic Schemas ----------
@@ -3687,6 +3699,11 @@ def _run_ingestion_job(
         job = session.get(models.IngestionJob, job_id)
         if job is None:
             return
+        if job.status not in {"failed", "completed"}:
+            job.status = "running"
+            job.started_at = datetime.now(timezone.utc)
+            job.error_message = None
+            _commit_with_retry(session)
         try:
             ingest_repo_job(
                 db=session,
@@ -3694,7 +3711,21 @@ def _run_ingestion_job(
                 include_globs=include_globs,
                 name_prefix=name_prefix,
             )
+            session.refresh(job)
+            if job.status in {None, "pending", "running"}:
+                job.status = "completed"
+                job.finished_at = datetime.now(timezone.utc)
+                _commit_with_retry(session)
         except Exception as exc:  # noqa: BLE001
+            try:
+                session.refresh(job)
+            except Exception:
+                pass
+            if job is not None and job.status not in {"failed", "completed"}:
+                job.status = "failed"
+                job.error_message = str(exc)
+                job.finished_at = datetime.now(timezone.utc)
+                _commit_with_retry(session)
             print(f"[INGEST] Job {job_id} failed: {exc!r}")
     except Exception as exc:  # noqa: BLE001
         print(f"[INGEST] Unable to run job {job_id}: {exc!r}")
@@ -3708,12 +3739,12 @@ def _schedule_ingestion_job(
     include_globs: Optional[List[str]],
     name_prefix: Optional[str],
 ) -> None:
-    background_tasks.add_task(
-        _run_ingestion_job,
-        job.id,
-        include_globs,
-        name_prefix,
+    thread = threading.Thread(
+        target=_run_ingestion_job,
+        args=(job.id, include_globs, name_prefix),
+        daemon=True,
     )
+    thread.start()
 
 
 @app.post(

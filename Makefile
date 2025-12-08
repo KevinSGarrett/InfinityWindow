@@ -1,24 +1,35 @@
 PYTHON ?= python
 PYTHONPATH_ROOT ?= .
-# Windows cmd.exe style env set; include repo root (..) when running from backend
-SET_PYTHONPATH := set PYTHONPATH=..;.;backend;$(PYTHONPATH)
-COVERAGE_ARGS ?= --cov=app --cov-report=xml:../coverage-api.xml
+
+ifeq ($(OS),Windows_NT)
+PATH_SEP := ;
+else
+PATH_SEP := :
+endif
+
+PYTHONPATH_VALUE := $(PYTHONPATH_ROOT)$(PATH_SEP)backend$(if $(PYTHONPATH),$(PATH_SEP)$(PYTHONPATH),)
+
+COVERAGE_REPORT ?= coverage-api.xml
+# Leave coverage disabled by default so pytest-cov is optional; set
+# COVERAGE_ARGS="--cov=app --cov-report=xml:$(COVERAGE_REPORT)" if desired.
+COVERAGE_ARGS ?=
 COVERAGE_FAIL_UNDER ?=
 
-.PHONY: ci backend-tests frontend-build smoke
+.PHONY: ci backend-tests frontend-build smoke perf
 
 ci: backend-tests frontend-build
 
+backend-tests: export PYTHONPATH := $(PYTHONPATH_VALUE)
 backend-tests:
-	cd backend && $(SET_PYTHONPATH) && $(PYTHON) -m pytest ..\qa\tests_api $(COVERAGE_ARGS) $(if $(COVERAGE_FAIL_UNDER),--cov-fail-under=$(COVERAGE_FAIL_UNDER),)
+	$(PYTHON) -m pytest qa/tests_api $(COVERAGE_ARGS) $(if $(COVERAGE_FAIL_UNDER),--cov-fail-under=$(COVERAGE_FAIL_UNDER),)
 
 frontend-build:
-	cd frontend && npm run build
+	npm run build --prefix frontend
 
+smoke: export PYTHONPATH := $(PYTHONPATH_VALUE)
 smoke:
-	cd backend && $(SET_PYTHONPATH) && $(PYTHON) -m qa.run_smoke
+	$(PYTHON) -m qa.run_smoke
 
-.PHONY: perf
+perf: export PYTHONPATH := $(PYTHONPATH_VALUE)
 perf:
-	cd backend && $(SET_PYTHONPATH) && $(PYTHON) ..\tools\perf_smoke.py
-
+	$(PYTHON) tools/perf_smoke.py
