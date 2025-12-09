@@ -24,6 +24,7 @@ test('usage filters and exports', async ({ page, request }) => {
     { description: 'Complete task', action: 'auto_completed', confidence: 0.85, model: 'gpt-4o-mini' },
     { description: 'Suggest task', action: 'auto_suggested', confidence: 0.65, model: 'gpt-5.1-pro' },
     { description: 'Dismiss suggestion', action: 'auto_dismissed', confidence: 0.55, model: 'gpt-4o-mini' },
+    { description: 'Manual close', action: 'manual_completed', confidence: 0.7, model: 'gpt-5.1-pro', source: 'manual_update' },
   ];
   for (const seed of seeds) {
     const seedResp = await request.post(`${API}/debug/seed_task_action`, {
@@ -68,6 +69,13 @@ test('usage filters and exports', async ({ page, request }) => {
   const modelFilteredCount = await actionsList.count();
   expect(modelFilteredCount).toBeGreaterThan(0);
   expect(modelFilteredCount).toBeLessThanOrEqual(autoAddedCount);
+
+  // Action source filter isolates manual actions
+  await page.getByLabel('Action source filter').selectOption('manual');
+  await expect(actionsList).toContainText('manual_completed');
+  await page.getByLabel('Action source filter').selectOption('auto');
+  await expect(actionsList).not.toContainText('manual_completed');
+  await page.getByLabel('Action source filter').selectOption('all');
 
   // Usage time window (records) should not throw and keeps list visible
   await page.getByLabel('Usage records window').selectOption('24h');

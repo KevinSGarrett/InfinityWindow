@@ -132,6 +132,7 @@ type TaskTelemetryAction = {
   action: string;
   confidence: number;
   model?: string | null;
+  source?: string | null;
   task_id?: number | null;
   task_description?: string | null;
   task_status?: string | null;
@@ -445,6 +446,7 @@ function App() {
   const [usageRangeFilter, setUsageRangeFilter] = useState<string>("recent");
   const [usageRecordsWindow, setUsageRecordsWindow] =
     useState<string>("all");
+  const [usageSourceFilter, setUsageSourceFilter] = useState<string>("all");
   const [usageError, setUsageError] = useState<string | null>(null);
   const [usageExportJson, setUsageExportJson] = useState<string | null>(null);
   const [usageExportFormat, setUsageExportFormat] = useState<"json" | "csv" | null>(null);
@@ -714,8 +716,14 @@ function App() {
     );
   }, [commandPaletteActions, commandPaletteQuery]);
   const visibleTasks = showAllTasks ? tasks : tasks.slice(0, 5);
+  const REVIEW_QUEUE_CONFIDENCE_THRESHOLD = 0.7;
   const pendingTaskSuggestions = useMemo(
-    () => taskSuggestions.filter((s) => s.status === "pending"),
+    () =>
+      taskSuggestions.filter(
+        (s) =>
+          s.status === "pending" &&
+          ((s.confidence ?? 0) < REVIEW_QUEUE_CONFIDENCE_THRESHOLD)
+      ),
     [taskSuggestions]
   );
   const pendingSuggestionCount = pendingTaskSuggestions.length;
@@ -938,6 +946,13 @@ function App() {
     return usage.records[usage.records.length - 1]?.model ?? null;
   }, [usage]);
 
+  const getActionSource = (action: TaskTelemetryAction): "auto" | "manual" => {
+    const explicit = (action.source || action.details?.source || "").toLowerCase();
+    if (explicit === "manual_update") return "manual";
+    if ((action.action || "").startsWith("manual")) return "manual";
+    return "auto";
+  };
+
   const filteredRecentActions = useMemo(() => {
     if (!telemetry?.tasks.recent_actions) return [];
     const suggestedActions = new Set(["auto_suggested", "auto_dismissed", "auto_deduped"]);
@@ -962,13 +977,18 @@ function App() {
       const matchesModel =
         usageModelFilter === "all" || actionModel === usageModelFilter;
 
-      return matchesAction && matchesGroup && matchesModel;
+      const sourceKind = getActionSource(a);
+      const matchesSource =
+        usageSourceFilter === "all" || sourceKind === usageSourceFilter;
+
+      return matchesAction && matchesGroup && matchesModel && matchesSource;
     });
   }, [
     telemetry,
     usageActionFilter,
     usageGroupFilter,
     usageModelFilter,
+    usageSourceFilter,
     lastUsageModel,
     selectedProjectId,
   ]);
@@ -1519,20 +1539,25 @@ function App() {
                 className="usage-telemetry-list"
                 data-testid="recent-actions-list"
               >
-                {timeFilteredRecentActions.map((a, idx) => (
-                  <li key={`${a.timestamp}-${idx}`}>
-                    <div className="usage-label">
-                      {a.action} · conf {(a.confidence ?? 0).toFixed(2)}
-                      {(() => {
-                        const actionModel =
-                          a.details?.model ?? a.model ?? lastUsageModel;
-                        return actionModel ? (
-                          <span className="usage-subtext">
-                            (model: {actionModel})
-                          </span>
-                        ) : null;
-                      })()}
-                    </div>
+                {timeFilteredRecentActions.map((a, idx) => {
+                  const sourceKind = getActionSource(a);
+                  return (
+                    <li key={`${a.timestamp}-${idx}`}>
+                      <div className="usage-label">
+                        <span className="usage-source-badge">
+                          {sourceKind === "manual" ? "Manual" : "Auto"}
+                        </span>
+                        {a.action} · conf {(a.confidence ?? 0).toFixed(2)}
+                        {(() => {
+                          const actionModel =
+                            a.details?.model ?? a.model ?? lastUsageModel;
+                          return actionModel ? (
+                            <span className="usage-subtext">
+                              (model: {actionModel})
+                            </span>
+                          ) : null;
+                        })()}
+                      </div>
                     <div className="usage-telemetry-sub">
                       {a.task_description ?? "—"}
                     </div>
@@ -1567,7 +1592,8 @@ function App() {
                       </div>
                     ) : null}
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             ) : (
               <div className="usage-telemetry-empty">
@@ -4661,7 +4687,7 @@ function App() {
                         setShowSuggestionsPanel((prev) => !prev)
                       }
                     >
-                      Suggested changes
+                      Review queue
                       <span className="tab-pill">
                         {pendingSuggestionCount}
                       </span>
@@ -4759,7 +4785,14 @@ function App() {
                             </div>
                             {task.auto_notes && (
                               <div className="task-notes">
-                                {task.auto_notes}
+                                <span className="task-notes-label">Audit:</span>
+                                <div className="task-notes-body">
+                                  {task.auto_notes.split("\n").map((line, idx) => (
+                                    <div key={idx} className="task-notes-line">
+                                      {line}
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
                             )}
                         </div>
@@ -4776,11 +4809,14 @@ function App() {
                   <div className="tab-section-header">
                     <div>
                       <span className="tab-section-title">
-                        Suggested changes
+                        Review queue
                       </span>
                       <span className="tab-pill">
                         {pendingSuggestionCount}
                       </span>
+                      <div className="tab-section-subtext">
+                        Low-confidence suggestions to approve or dismiss
+                      </div>
                     </div>
                     <div className="tab-toolbar">
                       {selectedProjectId && (
@@ -6749,6 +6785,19 @@ function App() {
                         ))}
                       </select>
                     </label>
+                <label className="usage-filter">
+                  <span>Action source</span>
+                  <select
+                    value={usageSourceFilter}
+                    onChange={(e) => setUsageSourceFilter(e.target.value)}
+                    aria-label="Action source filter"
+                    title="Action source filter"
+                  >
+                    <option value="all">All sources</option>
+                    <option value="auto">Automatic</option>
+                    <option value="manual">Manual</option>
+                  </select>
+                </label>
                     <label className="usage-filter">
                       <span>Time filter</span>
                       <select
