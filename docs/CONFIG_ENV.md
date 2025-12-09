@@ -39,14 +39,14 @@ You can override the defaults via:
 - **`OPENAI_MODEL_RESEARCH`**
 - **`OPENAI_MODEL_CODE`**
 
-If unset, `_DEFAULT_MODELS` in `openai_client.py` are used:
+If unset, `_DEFAULT_MODELS` in `openai_client.py` are used (see `docs/MODEL_MATRIX.md`):
 
-- `auto` → `gpt-4.1`
-- `fast` → `gpt-4.1-mini`
+- `auto` → `gpt-4.1-mini`
+- `fast` → `gpt-4.1-nano`
 - `deep` → `gpt-5.1`
 - `budget` → `gpt-4.1-nano`
 - `research` → `o3-deep-research`
-- `code` → `gpt-5.1-codex`
+- `code` → `gpt-5.1` (or `gpt-5.1-codex`)
 
 Examples of explicit overrides you might set in `backend/.env`:
 

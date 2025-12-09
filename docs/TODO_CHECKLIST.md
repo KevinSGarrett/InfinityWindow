@@ -1,7 +1,8 @@
 # InfinityWindow TODO / Roadmap Checklist
 
 This document is a **checklist view** of the roadmap described in `docs/PROGRESS.md`.  
-It is intentionally redundant, but more actionable: use it to track what remains, in what order.
+It is intentionally redundant, but more actionable: use it to track what remains, in what order.  
+See `docs/REQUIREMENTS_CRM.md` for the canonical requirements/status map.
 
 > Status here should always be consistent with `PROGRESS.md`.  
 > When in doubt, treat `PROGRESS.md` as the single source of truth and update this file to match.
@@ -28,6 +29,7 @@ Legend:
   - `embed_texts_batched` (with `MAX_EMBED_*` caps) now powers doc/repo ingestion.
   - `IngestionJob` + `FileIngestionState` tables track job progress and skip unchanged files.
   - Docs tab shows live status via `GET /projects/{id}/ingestion_jobs/{job_id}`.
+- [x] **Filesystem & terminal safety guardrails** enforced (scoped `local_root_path`, command allowlist); Autopilot safety remains design-only.
 
 ---
 

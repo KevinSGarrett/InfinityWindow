@@ -1,7 +1,7 @@
 # InfinityWindow – System Overview (Current System)
 
 This document describes **what InfinityWindow actually does today**: its architecture, core features, automation, and QA/operations story.  
-For detailed setup and usage steps, see `docs/USER_MANUAL.md`. For a feature‑to‑code map, see `docs/SYSTEM_MATRIX.md`. For developer workflow and Git/GitHub steps, see `docs/DEVELOPMENT_WORKFLOW.md`.
+For detailed setup and usage steps, see `docs/USER_MANUAL.md`. For a feature‑to‑code map, see `docs/SYSTEM_MATRIX.md`. For developer workflow and Git/GitHub steps, see `docs/DEVELOPMENT_WORKFLOW.md`. For the canonical requirements/status map, see `docs/REQUIREMENTS_CRM.md`.
 
 ---
 
@@ -342,14 +342,14 @@ Supported modes:
       - Everything else → route to `deep`.
     - Telemetry is updated with the chosen sub‑mode.
 
-The built‑in defaults in `_DEFAULT_MODELS` (when env overrides are not set) are:
+The built‑in defaults in `_DEFAULT_MODELS` (when env overrides are not set) are (see `docs/MODEL_MATRIX.md`):
 
-- `auto` → `gpt-4.1`
-- `fast` → `gpt-4.1-mini`
+- `auto` → `gpt-4.1-mini`
+- `fast` → `gpt-4.1-nano`
 - `deep` → `gpt-5.1`
 - `budget` → `gpt-4.1-nano`
 - `research` → `o3-deep-research`
-- `code` → `gpt-5.1-codex`
+- `code` → `gpt-5.1` (or `gpt-5.1-codex`)
 
 **Fallbacks**:
 

@@ -5,8 +5,8 @@ _Updated from `Hydration_File_002.txt`, `To_Do_List_001.txt`, and `Cursor_Chat_L
 ## High‑level status
 
 - **Core backend & chat**: complete per `To_Do_List_001` (health, projects, conversations, /chat with retrieval, usage logging).
-- **Docs & local repo ingestion + search**: complete (text docs, repo ingest, /search endpoints, UI panel) plus **batched ingestion jobs + progress UI (2025‑12‑04)**. Recent fixes: Chroma metadata TypeError resolved; backend expected on `http://127.0.0.1:8000`; Job History UI occasionally slow/flake under load (allow up to 60s).
-- **Tasks / TODO system**: complete (DB, API, sidebar UI, auto‑extraction from conversations).
+- **Docs & local repo ingestion + search**: complete (text docs, repo ingest, /search endpoints, UI panel) plus **batched ingestion jobs + progress UI (2025‑12‑04)**. Advanced context-builder retrieval remains design-only (tracked in `docs/REQUIREMENTS_CRM.md`). Recent fixes: Chroma metadata TypeError resolved; backend expected on `http://127.0.0.1:8000`; Job History UI occasionally slow/flake under load (allow up to 60s).
+- **Tasks / TODO system**: complete (DB, API, sidebar UI, auto‑extraction from conversations); autonomous heuristics continue to evolve (tracked in `docs/TODO_CHECKLIST.md` / `docs/REQUIREMENTS_CRM.md`).
 - **Usage / cost tracking**: complete (UsageRecord logging and per‑conversation usage panel).
 - **Filesystem integration**: complete (local_root_path, `/projects/{id}/fs/list`, `/projects/{id}/fs/read`, `/projects/{id}/fs/write`, editor with “Show original”).  
 - **AI file edits**: complete + **diff/preview UX added** in this window.
@@ -17,6 +17,7 @@ _Updated from `Hydration_File_002.txt`, `To_Do_List_001.txt`, and `Cursor_Chat_L
 - **Stability focus (2025‑12‑05)**: Chat, tasks/backlog, instructions/memory save paths under active verification; large ingestion suite runs are long, so we’re prioritizing non‑ingestion issues first. Added Chroma retry/reset for compaction errors (`/docs/text`, memory embeddings), added SQLite flush retry on memory creation, and landed extended UI smokes (Files, Terminal, Folders, Decision log, Notes reload). Recommend migrating QA to Postgres to remove SQLite lock risk entirely.
 - **Right‑column UI 2.0**: partially implemented; layout is currently under active iteration based on UX feedback.
 - **CI attempt (2025‑12‑05)**: `make ci` currently fails with “No rule to make target 'ci'.” – add/restore a CI target or document the correct command.
+- **Canonical requirements/status map**: `docs/REQUIREMENTS_CRM.md` tracks retrieval, safety, usage dashboard, autonomous TODO, and Autopilot (design-only) states.
 
 ## 2025‑12‑08 – CI & telemetry alignment
 - CI stabilized with stubbed dependencies: `LLM_MODE=stub` and `VECTORSTORE_MODE=stub` now drive `make ci` locally and in GitHub Actions (badge on README stays green).

@@ -83,7 +83,7 @@ When adding a new feature, try to:
 
 ### 2.1 Planned Autopilot modules (design)
 
-The Autopilot design introduces several new backend modules that **do not exist yet** but are referenced in `AUTOPILOT_PLAN.md`:
+The Autopilot design introduces several new backend modules that **do not exist yet** but are referenced in `AUTOPILOT_PLAN.md` (model routing for these modules is defined in `docs/MODEL_MATRIX.md`; role aliases are design-only until implemented):
 
 - `backend/app/services/blueprints.py` – Blueprint & PlanNode ingestion/generation helpers.
 - `backend/app/services/conversation_summaries.py` – rolling conversation summaries.

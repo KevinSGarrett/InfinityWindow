@@ -6,6 +6,7 @@ This is a skim-friendly entry point for alignment and requirement tracking. For 
 - Start here to see which clusters are Complete vs Partial vs Not started.
 - Follow the pointers to the canonical docs (`TODO_CHECKLIST`, `PROGRESS`, design notes) and the code/tests that enforce each area.
 - For deeper audits or requirement IDs, open `docs/alignment_002/alignment_summary.md` and `docs/alignment_002/requirements_index.json`.
+- For the canonical requirements/status map across areas, see `docs/REQUIREMENTS_CRM.md` (Autopilot remains design-only there).
 
 ## Clusters
 

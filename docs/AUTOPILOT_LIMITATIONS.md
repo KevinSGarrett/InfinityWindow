@@ -214,7 +214,16 @@ Autopilot is a **force multiplier**, not a replacement for engineering judgment.
 
 ---
 
-## 6. Non‑Goals
+## 6. Risks & gating (rollout plan)
+
+- Autopilot remains **off by default** until phases ship; start in `suggest`/`semi_auto` with explicit approvals.
+- Respect the command allowlist and filesystem guardrails before enabling any auto-execution; extend the allowlist only with targeted tests and QA evidence.
+- Keep `/projects/{id}/autopilot_tick` behind visible UI controls and surface “waiting for approval” states clearly before any writes or unsafe commands run.
+- Align every rollout step with `docs/AUTOPILOT_PLAN.md`, `docs/AUTOPILOT_LEARNING.md`, and `docs/MODEL_MATRIX.md` so model choices, safety gates, and learning hooks stay consistent.
+
+---
+
+## 7. Non‑Goals
 
 Autopilot is **not** intended to:
 
@@ -229,7 +238,7 @@ If you want any of these, treat them as **separate projects** layered on top of 
 
 ---
 
-## 7. Keeping Limitations Up to Date
+## 8. Keeping Limitations Up to Date
 
 Whenever Autopilot’s capabilities change, update:
 
