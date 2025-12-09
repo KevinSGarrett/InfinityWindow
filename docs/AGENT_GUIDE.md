@@ -130,6 +130,12 @@ You should:
    - Log the issue and resolution in `docs/ISSUES_LOG.md`.
    - Keep `docs/API_REFERENCE_UPDATED.md` fully aligned with the backend so QA can rely on it for request shapes and new endpoints (e.g., task delete/overview, ingestion jobs).
 
+### Issue logging discipline
+
+- When a Cursor agent fixes a non-trivial bug, changes requirements semantics, or resolves a CI failure, add or update an entry in `docs/ISSUES_LOG.md` using an ID such as `DOC-xxx`, `CI-xxx`, `BE-xxx`, or `FE-xxx`.
+- Include date, short summary, affected area, environment (local vs CI), fix/PR reference, and tests/verification run.
+- Reference the issue IDs in PR descriptions so reviewers can trace the log entry.
+
 Documentation and code should tell the same story; avoid leaving them out of sync.
 
 ---

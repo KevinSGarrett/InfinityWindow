@@ -2,13 +2,29 @@
 
 This log captures the significant issues encountered during development and QA, along with the fixes, verification steps, and documentation references. Use it as a quick index before diving into the dated test reports or `docs/PROGRESS.md`.
 
-## How to use this file
+## How to use this log
 
-- When a new issue is discovered, add a row with the detection date, a concise description, and the affected area.
-- When the fix is merged and verified, update the **Status** column and link to the test report or doc section that proves the resolution.
+- Log every significant bug, documentation/CRM misalignment, or CI break as an issue entry.
+- Use prefixed IDs such as `DOC-xxx` (docs), `CI-xxx` (CI/build), `BE-xxx` (backend), and `FE-xxx` (frontend).
+- Each entry should include: date found, short summary, affected area, environment (local vs CI), fix/PR/branch reference, and tests/verification that ran. Update an existing entry instead of duplicating it.
+- PR descriptions should reference the relevant issue IDs from this log.
 - Keep IDs in sync with the `TEST_REPORT_*` documents so they can be cross‑referenced easily.
 
-## Issue history
+## Current issues (structured)
+
+| ID | Date | Area | Environment | Summary | Status | Fix/PR/Branch | Tests/Verification |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| CI-DOCS-001 | 2025-12-09 | Docs/CI | CI | Canonical docs guardrail drift: canonical list and QA tests did not match on-disk docs (REQUIREMENTS_CRM missing). | Resolved | PR: https://github.com/KevinSGarrett/InfinityWindow/pull/3 (fix/agent-a-ci-docs-guardrails) | `python -m pytest qa/tests_docs/test_docs_existence.py qa/tests_api/test_docs_status.py`; `LLM_MODE=stub VECTORSTORE_MODE=stub make ci` |
+| DOC-CRM-001 | 2025-12-09 | Process/Docs | Docs | CRM entries conflict with project plans; source-of-truth unclear and agents risk following the wrong roadmap. | Open | Pending alignment (define source and sync CRM vs plans) | N/A (process) |
+| DOC-PLAN-001 | 2025-12-09 | Docs | Docs | Updated project plans were labeled “archived,” making active work look deprecated. | Open | Pending correction (fix plan labels and PROGRESS notes) | N/A (docs) |
+| DOC-001 | 2025-12-15 | Docs | Docs | `docs/SYSTEM_MATRIX.md` missing/out of date; rebuilt to map current features (no Autopilot). | Resolved | docs-alignment | Manual doc review |
+| DOC-002 | 2025-12-15 | Docs | Docs | `docs/ISSUES_LOG.md` missing; created and seeded with doc issues. | Resolved | docs-alignment | Manual doc review |
+| DOC-003 | 2025-12-15 | Docs | Docs | `docs/HYDRATION_2025-12-02.md` missing; rewritten with roles + plan/CRM/TODO/PROGRESS flow. | Resolved | docs-alignment | Manual doc review |
+| DOC-004 | 2025-12-15 | Docs | Docs | API reference docs incomplete; `API_REFERENCE.md` provides v1 high-level map, changelog started in `API_REFERENCE_UPDATED.md`. | Partial (v1) | docs-alignment | Doc audit (v1) |
+
+## Legacy issue history (prior format)
+
+The original issue log is retained below for traceability. Prefer the structured table above for new entries.
 
 | ID        | Date Detected | Area / Feature                        | Symptoms / Impact                                                                 | Resolution & References                                                                                                 | Status |
 |-----------|---------------|----------------------------------------|-----------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|--------|

@@ -48,6 +48,27 @@ app = FastAPI(
     version="0.3.0",
 )
 
+# Canonical docs guardrails (used by /debug/docs_status and QA tests)
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+CANONICAL_DOC_PATHS: List[str] = [
+    "docs/AGENT_GUIDE.md",
+    "docs/API_REFERENCE.md",
+    "docs/API_REFERENCE_UPDATED.md",
+    "docs/AUTOPILOT_IMPLEMENTATION_CHECKLIST.md",
+    "docs/AUTOPILOT_LIMITATIONS.md",
+    "docs/AUTOPILOT_PLAN.md",
+    "docs/CHANGELOG.md",
+    "docs/DECISIONS_LOG.md",
+    "docs/HYDRATION_2025-12-02.md",
+    "docs/ISSUES_LOG.md",
+    "docs/MODEL_MATRIX.md",
+    "docs/OPERATIONS_RUNBOOK.md",
+    "docs/RELEASE_PROCESS.md",
+    "docs/REQUIREMENTS_CRM.md",
+    "docs/SECURITY_PRIVACY.md",
+    "docs/SYSTEM_MATRIX.md",
+]
+
 # QA: open CORS to unblock local dev ports (5175, 5173, etc.)
 app.add_middleware(
     CORSMiddleware,
@@ -3262,7 +3283,34 @@ def get_conversation_usage(
     )
 
 
+# ---------- Documentation guardrails ----------
+
+
+def _collect_canonical_docs_status() -> Dict[str, Any]:
+    """
+    Return existence/size info for the canonical docs list.
+    """
+    docs: List[Dict[str, Any]] = []
+    missing: List[str] = []
+    for rel_path in CANONICAL_DOC_PATHS:
+        abs_path = PROJECT_ROOT / rel_path
+        exists = abs_path.exists()
+        size = abs_path.stat().st_size if exists else 0
+        docs.append({"path": rel_path, "exists": exists, "size": size})
+        if not exists:
+            missing.append(rel_path)
+    return {"docs": docs, "missing": missing}
+
+
 # ---------- Telemetry & diagnostics ----------
+
+
+@app.get("/debug/docs_status")
+def docs_status() -> Dict[str, Any]:
+    """
+    Report on the presence of canonical docs for CI/QA guardrails.
+    """
+    return _collect_canonical_docs_status()
 
 
 @app.get("/debug/telemetry")
