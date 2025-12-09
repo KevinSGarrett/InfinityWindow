@@ -14,7 +14,7 @@ This log captures the significant issues encountered during development and QA, 
 
 | ID | Date | Area | Environment | Summary | Status | Fix/PR/Branch | Tests/Verification |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| CI-DOCS-001 | 2025-12-09 | Docs/CI | CI | Canonical docs check failed because the repo doc set diverged from the expected canonical list, blocking CI. | Open | Pending (align canonical docs set + update tests) | CI failure seen in `make ci` (stub) |
+| CI-DOCS-001 | 2025-12-09 | Docs/CI | CI | Canonical docs guardrail drift: canonical list and QA tests did not match on-disk docs (REQUIREMENTS_CRM missing). | Resolved | PR: <PR_URL> (fix/agent-a-ci-docs-guardrails) | `python -m pytest qa/tests_docs/test_docs_existence.py qa/tests_api/test_docs_status.py`; `LLM_MODE=stub VECTORSTORE_MODE=stub make ci` |
 | DOC-CRM-001 | 2025-12-09 | Process/Docs | Docs | CRM entries conflict with project plans; source-of-truth unclear and agents risk following the wrong roadmap. | Open | Pending alignment (define source and sync CRM vs plans) | N/A (process) |
 | DOC-PLAN-001 | 2025-12-09 | Docs | Docs | Updated project plans were labeled “archived,” making active work look deprecated. | Open | Pending correction (fix plan labels and PROGRESS notes) | N/A (docs) |
 | DOC-001 | 2025-12-15 | Docs | Docs | `docs/SYSTEM_MATRIX.md` missing/out of date; rebuilt to map current features (no Autopilot). | Resolved | docs-alignment | Manual doc review |
