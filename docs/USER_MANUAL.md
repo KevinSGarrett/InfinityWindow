@@ -438,6 +438,11 @@ Best practices:
   - Merge or delete any tasks that feel redundant.
   - Confirm that high‑priority items are near the top; you can always reorder or rephrase tasks for clarity.
 
+### 6.4 Dependencies
+- The Tasks tab shows dependency chips (e.g., “Blocked by #12”) on tasks with prerequisites; click a chip to open the dependency editor.
+- Use **Add dependency** to link tasks or remove dependencies inline; blocked tasks display a “Blocked” badge with the dependent task list so you can see what to unblock first.
+- Dependencies inform automation: auto-complete is skipped when a task has open prerequisites, and audit notes include dependency context so you understand why an item stayed open.
+
 ---
 
 ## 7. Documents, Search & Memory
@@ -756,6 +761,7 @@ In the **Usage** tab:
   - Filters are keyboard/screen-reader friendly (action/group/model/time plus “Usage time range” and “Usage records window” selectors).
   - Charts cover task action types, calls per model, confidence buckets, and auto-mode routes.
   - If clipboard copy fails, the export preview still appears inline; usage/telemetry fetch errors are shown inline without collapsing the tab.
+  - Dependency-related actions (e.g., dependency added/removed/blocked auto-complete) appear in the recent actions list and in JSON/CSV exports alongside notes and task IDs.
 
 Backend:
 

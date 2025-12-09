@@ -28,6 +28,11 @@ This document captures the live task surface (APIs, automation behavior, telemet
   - AI edit accepts `instruction` or `instructions`.
   - Terminal scoped run injects `project_id` from path; body `project_id` optional.
 
+### Dependency-aware behavior
+- `TaskDependency` links tasks; dependency-aware automation blocks auto-complete when prerequisites are still open and carries dependency context into audit notes.
+- Auto-update records dependency actions (add/remove/blocked) in telemetry and recent actions; exports and the Usage tab include dependency-related fields so reviewers can see why a task stayed open.
+- Tasks marked `Blocked` list their dependencies in API/UI, and dependency chips in the Tasks tab can be edited to add/remove relationships without leaving the task list.
+
 ## Telemetry & usage
 - Task counters: auto-added / auto-completed / auto-deduped; confidence stats + buckets; recent actions list (with status/priority/blocked/auto_notes/confidence/action/timestamp/matched_text/task_group and `dependency_hint` when present).
 - Cost: pricing table includes `gpt-5-nano`, `gpt-5-pro`, `gpt-5.1-codex`; Usage tab now shows non-zero totals.

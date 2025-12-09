@@ -5,6 +5,7 @@ This is a skim-friendly entry point for alignment and requirement tracking. For 
 ## How to use this doc
 - Start here to see which clusters are Complete vs Partial vs Not started.
 - Follow the pointers to the canonical docs (`TODO_CHECKLIST`, `PROGRESS`, design notes) and the code/tests that enforce each area.
+- Source-of-truth chain: latest plans (`Project_Plan_003_UPDATED.txt` + `Updated_Project_Plan_2_*.txt`) → `docs/REQUIREMENTS_CRM.md` → `docs/TODO_CHECKLIST.md` / `docs/PROGRESS.md` → implementation/tests. Treat any mismatch as an alignment bug to log and fix.
 - For deeper audits or requirement IDs, open `docs/alignment_002/alignment_summary.md` and `docs/alignment_002/requirements_index.json`.
 
 ## Clusters
@@ -16,7 +17,7 @@ This is a skim-friendly entry point for alignment and requirement tracking. For 
 - Tests: `qa/mode_routing_probe.py`; `docs/TEST_PLAN.md` B-Mode-01/02; UI exercised indirectly in `frontend/tests/usage-dashboard.spec.ts` via routing charts.
 
 ### Autonomous TODO intelligence — Status: Partial
-- Scope: Auto add/complete/dedupe with confidence scoring, audit notes, and telemetry are live; dependency graphing and richer approval flows remain.
+- Scope: Auto add/complete/dedupe with confidence scoring, audit notes, and telemetry are live; TaskDependency + dependency-aware automation (blocked auto-complete, dependency actions in telemetry/UI) shipped; richer approval flows and full graph-driven Autopilot remain.
 - Docs: `docs/TODO_CHECKLIST.md` (§2, §6), `docs/PROGRESS.md` (2025-12-14 audit trail), `docs/USER_MANUAL.md` (§6.2–6.3).
 - Code: `backend/app/api/main.py` (task maintainer + telemetry), `backend/app/db/models.py` (`Task.auto_notes`), `frontend/src/App.tsx` (Tasks tab + audit note display).
 - Tests: `qa/tests_api/test_tasks_automation_audit.py`, `qa/tests_api` task telemetry cases; Playwright coverage in `frontend/tests/tasks-confidence.spec.ts` and `tasks-suggestions.spec.ts`.

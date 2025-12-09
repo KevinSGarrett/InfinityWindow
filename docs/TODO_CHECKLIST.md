@@ -1,10 +1,12 @@
 # InfinityWindow TODO / Roadmap Checklist
 
-This document is a **checklist view** of the roadmap described in `docs/PROGRESS.md`.  
+This document is a **checklist view** of the roadmap described in `docs/PROGRESS.md` and derived from `docs/REQUIREMENTS_CRM.md`.  
 It is intentionally redundant, but more actionable: use it to track what remains, in what order.
 
+Source-of-truth chain: latest plans (`Project_Plan_003_UPDATED.txt` + `Updated_Project_Plan_2_*.txt`) → `docs/REQUIREMENTS_CRM.md` → this checklist + `docs/PROGRESS.md` → implementation/tests. Keep statuses aligned; treat any drift as a docs alignment bug and fix CRM/TODO/PROGRESS (and the plan, if the spec needs to change).
+
 > Status here should always be consistent with `PROGRESS.md`.  
-> When in doubt, treat `PROGRESS.md` as the single source of truth and update this file to match.
+> When in doubt, treat `REQUIREMENTS_CRM.md` (fed by the latest plans) as the source for status and plans and update this file (and `PROGRESS.md`) to stay aligned.
 
 Legend:
 
@@ -49,7 +51,8 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
   - [x] Audit trail snippets for auto-added/completed/deduped tasks (Task.auto_notes shown in Tasks/Usage; telemetry recent_actions include notes + matched_text).  
   - [~] Suggested-change queue / Approve–Dismiss flow for low-confidence additions or completions (initial version shipped; refine heuristics/UX over time).  
   - [~] Priority & grouping heuristics (Critical / Blocked / Ready) instead of pure recency.  
-  - [~] Dependency tracking and smarter duplicate detection beyond simple similarity (dependency hints appended to auto notes; full graph still future).  
+  - [x] Dependency tracking via `TaskDependency` and dependency-aware automation (blocks auto-complete when prerequisites are open, smarter dedupe beyond similarity, dependency actions recorded in telemetry; full graph-driven Autopilot planner still future).  
+  - [~] Remaining: refine review-queue heuristics and, longer term, use the dependency graph in Autopilot-style manager/worker phases.  
   - [x] Core telemetry: counters + `/debug/telemetry` endpoint + Usage tab telemetry drawer for task automation.  
 - [~] Full usage/telemetry dashboard UI (graphs, filters, long‑term analytics).  (Phase 2 shipped: charts for action/model/confidence/mode with shared filters/time window, filtered JSON/CSV exports, inline empty/error states, and export error fallbacks; Phase 3 long-term analytics/persistence still future.)  
   - [x] Usage tab filters/render verification; telemetry now fetches on tab entry/Use current chat; filters verified.  

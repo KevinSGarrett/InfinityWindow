@@ -2,6 +2,8 @@
 
 _Updated from `Hydration_File_002.txt`, `To_Do_List_001.txt`, and `Cursor_Chat_Log_002.md` on 2025‑12‑02._
 
+Source-of-truth chain: latest plans (`Project_Plan_003_UPDATED.txt` + `Updated_Project_Plan_2_*.txt`) → `docs/REQUIREMENTS_CRM.md` → this log + `docs/TODO_CHECKLIST.md` → implementation/tests. If shipped behavior diverges from the latest plans, treat it as a docs alignment bug: update the plan (if the spec needs to change) and sync CRM/TODO/PROGRESS accordingly.
+
 ## High‑level status
 
 - **Core backend & chat**: complete per `To_Do_List_001` (health, projects, conversations, /chat with retrieval, usage logging).
@@ -405,6 +407,12 @@ These phases are intentionally high‑level. When we decide to start on one, we 
 ## 2025-12-15 – Frontend ARIA polish
 - Closed ISSUE-045 by adding ARIA tab roles/aria-controls to the right-column tabs (with focus outlines) and clearing inline-style/lint noise.
 - Usage dashboard filters are explicitly labeled (“Usage time range”, “Usage records window”) with slightly looser padding for filters/cards; manual updated for accessibility cues.
+
+## 2025-12-16 – Autonomous TODO intelligence: dependency graph v1
+- Backend: added `TaskDependency` model and dependency APIs; automation now blocks unsafe auto-completions when prerequisites remain open and propagates dependency context into audit notes.
+- Telemetry/automation: dependency actions and blocked-by relationships are recorded in recent action telemetry and exports; dependency-aware auto-update avoids closing tasks with unresolved prerequisites.
+- Frontend: Tasks tab shows dependency chips/edit controls; review queue + Usage dashboard surface dependency actions and blocked status alongside existing confidence/route data.
+- Tests: new API coverage for dependencies (`qa/tests_api/test_tasks_dependencies.py`) and updated Playwright coverage for tasks dependency UI and Usage telemetry. Autopilot manager/runs remain design-only.
 
 
 ## 2025-12-08 – Noisy history hardening
