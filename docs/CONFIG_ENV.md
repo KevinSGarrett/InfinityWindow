@@ -198,6 +198,18 @@ Repo/document ingestion now uses `embed_texts_batched`, which reads the followin
 - **`AUTOPILOT_MAX_TOKENS_PER_RUN`**  
   Planned cap on total tokens a single `ExecutionRun` may consume before the Manager pauses for human approval.
 
+### 5.2 Retrieval profiles (Phase 0)
+
+Retrieval now uses named profiles for messages/docs/memory with centralized defaults. You can optionally override the `top_k` (number of results) and a score threshold (currently unused but accepted) via:
+
+- `RETRIEVAL_MESSAGES_TOP_K` (default: 5)
+- `RETRIEVAL_DOCS_TOP_K` (default: 5)
+- `RETRIEVAL_MEMORY_TOP_K` (default: 5)
+- `RETRIEVAL_TASKS_TOP_K` (reserved; default: 5)
+- `RETRIEVAL_<KIND>_SCORE_THRESHOLD` (float; currently informational)
+
+If unset, the legacy defaults (5 results for each profile) remain unchanged.
+
 ---
 
 ## 6. Extending configuration

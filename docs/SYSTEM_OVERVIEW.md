@@ -33,6 +33,7 @@ The assistant is meant to be a **project co‑pilot**:
 - **Framework**: FastAPI application in `backend/app/api/main.py`.
 - **Database**: SQLite (`backend/infinitywindow.db`) via SQLAlchemy models in `backend/app/db/models.py`.
 - **Vector store**: Chroma collections under `backend/chroma_data/`, managed by helpers in `backend/app/vectorstore/chroma_store.py`.
+- **Retrieval profiles (Phase 0)**: messages/docs/memory retrieval now share centralized profiles in `backend/app/context/retrieval_strategies.py` with `top_k` defaults (5) and optional env overrides; defaults preserve prior behavior.
 - **LLM client**: `backend/app/llm/openai_client.py` wraps model selection and calls to the OpenAI API (or compatible provider).
 
 Main backend responsibilities:

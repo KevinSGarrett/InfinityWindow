@@ -14,6 +14,10 @@ from app.vectorstore.chroma_store import (
     query_similar_document_chunks,
     query_similar_memory_items,
 )
+from app.context.retrieval_strategies import (
+    get_retrieval_profile,
+    RetrievalKind,
+)
 
 router = APIRouter(
     prefix="/search",
@@ -92,12 +96,15 @@ def search_messages(
     query_emb = get_embedding(payload.query)
 
     # 4) Query Chroma
+    profile = get_retrieval_profile(RetrievalKind.MESSAGES)
+    effective_limit = payload.limit or profile.top_k
+
     results = query_similar_messages(
         project_id=payload.project_id,
         query_embedding=query_emb,
         conversation_id=payload.conversation_id,
         folder_id=payload.folder_id,
-        n_results=payload.limit,
+        n_results=effective_limit,
     )
 
     # Chroma response structure:
@@ -234,11 +241,14 @@ def search_docs(
     query_emb = get_embedding(payload.query)
 
     # 4) Query Chroma
+    profile = get_retrieval_profile(RetrievalKind.DOCS)
+    effective_limit = payload.limit or profile.top_k
+
     results = query_similar_document_chunks(
         project_id=payload.project_id,
         query_embedding=query_emb,
         document_id=payload.document_id,
-        n_results=payload.limit,
+        n_results=effective_limit,
     )
 
     ids_nested = results.get("ids", [[]])
@@ -328,10 +338,12 @@ def search_memory(
         raise HTTPException(status_code=404, detail="Project not found.")
 
     query_emb = get_embedding(payload.query)
+    profile = get_retrieval_profile(RetrievalKind.MEMORY)
+    effective_limit = payload.limit or profile.top_k
     results = query_similar_memory_items(
         project_id=payload.project_id,
         query_embedding=query_emb,
-        n_results=payload.limit,
+        n_results=effective_limit,
     )
 
     ids_nested = results.get("ids", [[]])
