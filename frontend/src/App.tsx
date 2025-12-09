@@ -77,12 +77,14 @@ type ProjectDocument = {
   description?: string | null;
 };
 
+type TaskPriority = "critical" | "high" | "normal" | "low";
+
 type Task = {
   id: number;
   project_id: number;
   description: string;
   status: string; // "open" | "done"
-  priority: string;
+  priority?: TaskPriority | string | null;
   blocked_reason?: string | null;
   auto_notes?: string | null;
   auto_confidence?: number | null;
@@ -92,6 +94,8 @@ type Task = {
   created_at: string;
   updated_at: string;
 };
+
+type TaskPriorityFilter = "all" | "ready_only" | "blocked_only" | "high_first";
 
 type TaskSuggestionPayload = {
   description?: string | null;
@@ -341,6 +345,32 @@ const formatDateTime = (value?: string | null): string | null => {
   return d.toLocaleString();
 };
 
+const normalizePriority = (value?: string | null): TaskPriority => {
+  const normalized = (value || "").toString().toLowerCase();
+  if (normalized === "critical") return "critical";
+  if (normalized === "high") return "high";
+  if (normalized === "low") return "low";
+  return "normal";
+};
+
+const formatPriorityLabel = (value?: string | null): string => {
+  const normalized = normalizePriority(value);
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+};
+
+const priorityWeights: Record<TaskPriority, number> = {
+  critical: 3,
+  high: 2,
+  normal: 1,
+  low: 0,
+};
+
+const normalizeBlockedReason = (value?: string | null): string =>
+  (value ?? "").toString().trim();
+
+const hasBlockedReason = (value?: string | null): boolean =>
+  normalizeBlockedReason(value).length > 0;
+
 // Allow overriding backend base via Vite env; default to localhost:8000.
 // For QA runs we set VITE_API_BASE; fallback remains 8000.
 const BACKEND_BASE =
@@ -403,6 +433,8 @@ function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTaskDescription, setNewTaskDescription] = useState("");
   const [isSavingTask, setIsSavingTask] = useState(false);
+  const [tasksPriorityFilter, setTasksPriorityFilter] =
+    useState<TaskPriorityFilter>("all");
   const [taskSuggestions, setTaskSuggestions] = useState<TaskSuggestion[]>([]);
   const [isLoadingTaskSuggestions, setIsLoadingTaskSuggestions] =
     useState(false);
@@ -713,7 +745,55 @@ function App() {
       action.label.toLowerCase().includes(query)
     );
   }, [commandPaletteActions, commandPaletteQuery]);
-  const visibleTasks = showAllTasks ? tasks : tasks.slice(0, 5);
+  const filteredTasks = useMemo(() => {
+    const indexedTasks = tasks.map((task, index) => ({ task, index }));
+
+    if (tasksPriorityFilter === "ready_only") {
+      return indexedTasks
+        .filter(({ task }) => !hasBlockedReason(task.blocked_reason))
+        .map(({ task }) => task);
+    }
+
+    if (tasksPriorityFilter === "blocked_only") {
+      return indexedTasks
+        .filter(({ task }) => hasBlockedReason(task.blocked_reason))
+        .map(({ task }) => task);
+    }
+
+    if (tasksPriorityFilter === "high_first") {
+      return [...indexedTasks]
+        .sort((a, b) => {
+          const aStatusWeight = a.task.status === "done" ? 0 : 1;
+          const bStatusWeight = b.task.status === "done" ? 0 : 1;
+          if (aStatusWeight !== bStatusWeight) {
+            return bStatusWeight - aStatusWeight;
+          }
+          const priorityDiff =
+            priorityWeights[normalizePriority(b.task.priority)] -
+            priorityWeights[normalizePriority(a.task.priority)];
+          if (priorityDiff !== 0) {
+            return priorityDiff;
+          }
+          const aUpdated = Date.parse(a.task.updated_at);
+          const bUpdated = Date.parse(b.task.updated_at);
+          if (
+            !Number.isNaN(aUpdated) &&
+            !Number.isNaN(bUpdated) &&
+            aUpdated !== bUpdated
+          ) {
+            return bUpdated - aUpdated;
+          }
+          return a.index - b.index;
+        })
+        .map(({ task }) => task);
+    }
+
+    return indexedTasks.map(({ task }) => task);
+  }, [tasks, tasksPriorityFilter]);
+
+  const visibleTasks = showAllTasks
+    ? filteredTasks
+    : filteredTasks.slice(0, 5);
   const pendingTaskSuggestions = useMemo(
     () => taskSuggestions.filter((s) => s.status === "pending"),
     [taskSuggestions]
@@ -4633,6 +4713,24 @@ function App() {
                     <span className="tab-pill">{tasks.length}</span>
                   </div>
                   <div className="tab-toolbar">
+                    <div className="tasks-filter">
+                      <label htmlFor="tasks-priority-filter">Task view</label>
+                      <select
+                        id="tasks-priority-filter"
+                        aria-label="Task view filter"
+                        value={tasksPriorityFilter}
+                        onChange={(e) =>
+                          setTasksPriorityFilter(
+                            e.target.value as TaskPriorityFilter
+                          )
+                        }
+                      >
+                        <option value="all">All</option>
+                        <option value="ready_only">Ready</option>
+                        <option value="blocked_only">Blocked</option>
+                        <option value="high_first">High first</option>
+                      </select>
+                    </div>
                     {selectedProjectId && (
                       <button
                         type="button"
@@ -4642,7 +4740,7 @@ function App() {
                         Refresh
                       </button>
                     )}
-                    {tasks.length > 5 && (
+                    {filteredTasks.length > 5 && (
                       <button
                         type="button"
                         className="btn-link tiny"
@@ -4709,16 +4807,28 @@ function App() {
                   <div className="tasks-list compact">
                 {selectedProjectId == null ? (
                   <div className="tasks-empty">No project selected.</div>
-                ) : tasks.length === 0 ? (
+                ) : filteredTasks.length === 0 ? (
                   <div className="tasks-empty">
-                    No tasks yet. Add one above.
+                    {tasks.length === 0
+                      ? "No tasks yet. Add one above."
+                      : "No tasks match this view."}
                   </div>
                 ) : (
                   <ul>
                     {visibleTasks.map((task) => {
-                      const priority = (task.priority || "normal").toLowerCase();
+                      const normalizedPriority = normalizePriority(
+                        task.priority
+                      );
+                      const priorityLabel = formatPriorityLabel(task.priority);
+                      const blockedReason = normalizeBlockedReason(
+                        task.blocked_reason
+                      );
+                      const isBlocked = blockedReason.length > 0;
                       return (
-                      <li key={task.id} className="task-item">
+                      <li
+                        key={task.id}
+                        className={`task-item${isBlocked ? " is-blocked" : ""}`}
+                      >
                         <input
                           type="checkbox"
                           checked={task.status === "done"}
@@ -4736,9 +4846,11 @@ function App() {
                             </div>
                         <div className="task-meta">
                               <span
-                                className={`task-priority-chip priority-${priority}`}
+                                className={`task-priority-chip priority-${normalizedPriority}`}
+                                aria-label={`Priority ${priorityLabel}`}
+                                title={`Priority ${priorityLabel}`}
                               >
-                                {task.priority || "normal"}
+                                {priorityLabel}
                               </span>
                               {task.group && (
                                 <span className={`task-group-chip group-${task.group}`}>
@@ -4751,9 +4863,13 @@ function App() {
                               {task.auto_confidence.toFixed(2)}
                             </span>
                           )}
-                              {task.blocked_reason && (
-                                <span className="task-blocked-chip">
-                                  Blocked: {task.blocked_reason}
+                              {isBlocked && (
+                                <span
+                                  className="task-blocked-chip"
+                                  aria-label={`Blocked: ${blockedReason}`}
+                                  title={blockedReason}
+                                >
+                                  Blocked
                                 </span>
                               )}
                             </div>
@@ -4852,14 +4968,21 @@ function App() {
                           const confidencePercent = Math.round(
                             suggestion.confidence * 100
                           );
-                          const derivedPriority =
+                          const derivedPriorityValue = normalizePriority(
                             suggestion.payload?.priority ||
-                            suggestion.task_priority ||
-                            "normal";
-                          const blockedReason =
+                              suggestion.task_priority ||
+                              undefined
+                          );
+                          const derivedPriorityLabel = formatPriorityLabel(
+                            suggestion.payload?.priority ||
+                              suggestion.task_priority ||
+                              undefined
+                          );
+                          const blockedReason = normalizeBlockedReason(
                             suggestion.payload?.blocked_reason ||
-                            suggestion.task_blocked_reason ||
-                            null;
+                              suggestion.task_blocked_reason
+                          );
+                          const isBlocked = blockedReason.length > 0;
                           return (
                             <li
                               key={suggestion.id}
@@ -4882,13 +5005,18 @@ function App() {
                               </div>
                               <div className="task-meta suggestion-meta">
                                 <span
-                                  className={`task-priority-chip priority-${derivedPriority.toLowerCase()}`}
+                                  className={`task-priority-chip priority-${derivedPriorityValue}`}
+                                  aria-label={`Priority ${derivedPriorityLabel}`}
                                 >
-                                  {derivedPriority}
+                                  {derivedPriorityLabel}
                                 </span>
-                              {blockedReason && (
-                                  <span className="task-blocked-chip">
-                                  Blocked: {blockedReason}
+                              {isBlocked && (
+                                  <span
+                                    className="task-blocked-chip"
+                                    aria-label={`Blocked: ${blockedReason}`}
+                                    title={blockedReason}
+                                  >
+                                  Blocked
                                   </span>
                                 )}
                               </div>
