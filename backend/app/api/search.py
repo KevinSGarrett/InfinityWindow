@@ -14,6 +14,11 @@ from app.vectorstore.chroma_store import (
     query_similar_document_chunks,
     query_similar_memory_items,
 )
+from app.context.retrieval_strategies import (
+    get_retrieval_profile,
+    RetrievalKind,
+    apply_profile_to_chroma_results,
+)
 
 router = APIRouter(
     prefix="/search",
@@ -91,14 +96,15 @@ def search_messages(
     # 3) Create embedding for the query
     query_emb = get_embedding(payload.query)
 
-    # 4) Query Chroma
+    profile = get_retrieval_profile(RetrievalKind.MESSAGES)
     results = query_similar_messages(
         project_id=payload.project_id,
         query_embedding=query_emb,
         conversation_id=payload.conversation_id,
         folder_id=payload.folder_id,
-        n_results=payload.limit,
+        n_results=payload.limit or profile.top_k,
     )
+    results = apply_profile_to_chroma_results(profile, results)
 
     # Chroma response structure:
     # {
@@ -233,13 +239,14 @@ def search_docs(
     # 3) Create embedding for the query
     query_emb = get_embedding(payload.query)
 
-    # 4) Query Chroma
+    profile = get_retrieval_profile(RetrievalKind.DOCS)
     results = query_similar_document_chunks(
         project_id=payload.project_id,
         query_embedding=query_emb,
         document_id=payload.document_id,
-        n_results=payload.limit,
+        n_results=payload.limit or profile.top_k,
     )
+    results = apply_profile_to_chroma_results(profile, results)
 
     ids_nested = results.get("ids", [[]])
     docs_nested = results.get("documents", [[]])
@@ -328,11 +335,13 @@ def search_memory(
         raise HTTPException(status_code=404, detail="Project not found.")
 
     query_emb = get_embedding(payload.query)
+    profile = get_retrieval_profile(RetrievalKind.MEMORY)
     results = query_similar_memory_items(
         project_id=payload.project_id,
         query_embedding=query_emb,
-        n_results=payload.limit,
+        n_results=payload.limit or profile.top_k,
     )
+    results = apply_profile_to_chroma_results(profile, results)
 
     ids_nested = results.get("ids", [[]])
     docs_nested = results.get("documents", [[]])

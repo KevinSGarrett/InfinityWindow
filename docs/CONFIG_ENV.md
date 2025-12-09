@@ -198,6 +198,18 @@ Repo/document ingestion now uses `embed_texts_batched`, which reads the followin
 - **`AUTOPILOT_MAX_TOKENS_PER_RUN`**  
   Planned cap on total tokens a single `ExecutionRun` may consume before the Manager pauses for human approval.
 
+### 5.2 Retrieval profiles
+
+Retrieval (chat context + search) uses named profiles with env overrides:
+
+- `RETRIEVAL_MESSAGES_TOP_K` (default: 5)
+- `RETRIEVAL_DOCS_TOP_K` (default: 5)
+- `RETRIEVAL_MEMORY_TOP_K` (default: 5)
+- `RETRIEVAL_TASKS_TOP_K` (default: 5; reserved for task search)
+- `RETRIEVAL_<KIND>_SCORE_THRESHOLD` (float; optional distance threshold, lower is closer)
+
+If unset, defaults match prior behavior (5 results, no threshold).
+
 ---
 
 ## 6. Extending configuration

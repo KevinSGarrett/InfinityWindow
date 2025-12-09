@@ -8,12 +8,8 @@ def test_fs_list_requires_local_root_path(client):
             "name": "NoRootProject",
         },
     )
-    assert resp.status_code == 200, resp.text
-    project_id = resp.json()["id"]
-
-    list_resp = client.get(f"/projects/{project_id}/fs/list")
-    assert list_resp.status_code == 400
-    body = list_resp.json()
+    assert resp.status_code == 400, resp.text
+    body = resp.json()
     assert "local_root_path" in (body.get("detail") or "").lower()
 
 
@@ -26,12 +22,8 @@ def test_fs_list_invalid_local_root_path(client, tmp_path):
             "local_root_path": str(missing_dir),
         },
     )
-    assert resp.status_code == 200, resp.text
-    project_id = resp.json()["id"]
-
-    list_resp = client.get(f"/projects/{project_id}/fs/list")
-    assert list_resp.status_code == 400
-    body = list_resp.json()
+    assert resp.status_code == 400, resp.text
+    body = resp.json()
     detail = (body.get("detail") or "").lower()
     assert "local_root_path" in detail
     assert "exist" in detail

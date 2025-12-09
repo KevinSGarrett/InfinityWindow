@@ -26,6 +26,11 @@ from app.llm import openai_client as openai_module
 from app.llm.openai_client import generate_reply_from_history
 from app.llm.embeddings import get_embedding
 from app.llm.pricing import estimate_call_cost
+from app.context.retrieval_strategies import (
+    get_retrieval_profile,
+    RetrievalKind,
+    apply_profile_to_chroma_results,
+)
 from app.vectorstore.chroma_store import (
     add_message_embedding,
     query_similar_messages,
@@ -4169,14 +4174,19 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
     try:
         user_embedding = get_embedding(payload.message)
 
+        msg_profile = get_retrieval_profile(RetrievalKind.MESSAGES)
+        doc_profile = get_retrieval_profile(RetrievalKind.DOCS)
+        mem_profile = get_retrieval_profile(RetrievalKind.MEMORY)
+
         # 4a) Similar messages in this project's conversation
         msg_results = query_similar_messages(
             project_id=conversation.project_id,
             query_embedding=user_embedding,
             conversation_id=conversation.id,
             folder_id=conversation.folder_id,
-            n_results=5,
+            n_results=msg_profile.top_k,
         )
+        msg_results = apply_profile_to_chroma_results(msg_profile, msg_results)
 
         msg_docs_nested = msg_results.get("documents", [[]])
         msg_metas_nested = msg_results.get("metadatas", [[]])
@@ -4193,8 +4203,9 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
             project_id=conversation.project_id,
             query_embedding=user_embedding,
             document_id=None,
-            n_results=5,
+            n_results=doc_profile.top_k,
         )
+        doc_results = apply_profile_to_chroma_results(doc_profile, doc_results)
 
         doc_docs_nested = doc_results.get("documents", [[]])
         doc_metas_nested = doc_results.get("metadatas", [[]])
@@ -4240,8 +4251,9 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
         memory_results = query_similar_memory_items(
             project_id=conversation.project_id,
             query_embedding=user_embedding,
-            n_results=5,
+            n_results=mem_profile.top_k,
         )
+        memory_results = apply_profile_to_chroma_results(mem_profile, memory_results)
         mem_ids_nested = memory_results.get("ids", [[]])
         mem_docs_nested = memory_results.get("documents", [[]])
         mem_metas_nested = memory_results.get("metadatas", [[]])
