@@ -1,0 +1,635 @@
+Current design spec for Autopilot / Blueprint / Learning & ingestion phases as of 2025-12-09.
+Implementation status is tracked in docs/REQUIREMENTS_CRM.md, docs/TODO_CHECKLIST.md, and docs/PROGRESS.md. Autopilot remains design-only; these documents are roadmap/spec, not shipped behavior.
+
+PLAN: Scalable Ingestion & Token/Cost Control
+
+This sits alongside your existing phases. Think of it as Phase T – Scalable Ingestion & Cost‑Aware Retrieval, which supports all the autopilot/manager features.
+
+T0. Goals & Constraints
+
+Goals
+
+Ingest huge repos and 500k‑word blueprints without hitting:
+
+OpenAI embedding token caps (~300k tokens/request in your log).
+
+Chat context length caps on every call.
+
+Keep costs sane by:
+
+Only embedding what’s valuable.
+
+Re‑using embeddings when files don’t change.
+
+Passing small, highly relevant slices of context into each LLM call.
+
+Make ingestion resumable and observable (progress bar, batch status).
+
+Non‑goals (for now)
+
+Realtime incremental ingestion on every keystroke.
+
+Fancy semantic diffing of repo versions (we’ll start with hash‑based “file changed → re‑embed”).
+
+T1. Embedding Pipeline: Batching, Streaming, Progress
+
+We’ll rework ingestion to never send >X tokens per embeddings request and to stream progress.
+
+T1.1 Centralized batched embeddings helper
+
+Files to touch
+
+backend/app/vectorstore/chroma_store.py – central embeddings abstraction. 
+
+DEV_GUIDE
+
+backend/app/llm/openai_client.py – actual client.embeddings.create wrapper. 
+
+DEV_GUIDE
+
+Add a helper:
+
+# in chroma_store.py or a new app/services/embeddings.py
+from typing import Iterable, List, Tuple
+
+MAX_EMBED_TOKENS_PER_BATCH = 50_000  # configurable via env
+MAX_EMBED_ITEMS_PER_BATCH = 256      # also configurable
+
+def embed_texts_batched(
+    texts: List[str],
+    model: str | None = None,
+) -> List[List[float]]:
+    """
+    Takes an arbitrary list of texts, chunks them into batches that respect
+    token limits, calls openai_client.embed() multiple times, and flattens
+    the result back into original order.
+    """
+    # pseudo:
+    # 1) estimate tokens for each text
+    # 2) accumulate into batches until hitting MAX_EMBED_TOKENS_PER_BATCH
+    # 3) call openai_client.embed_batch(batch_texts, model=model)
+    # 4) extend global results
+
+
+Changes in openai_client.py
+
+Add a dedicated embed_batch(texts: list[str], model: str | None) method that:
+
+Picks a default embedding model (e.g. text-embedding-3-small).
+
+Handles API call + basic retry/backoff (on rate limit errors).
+
+All embedding callers go through this (docs, memory, repo ingestion).
+
+T1.2 IngestionJob model for resumable ingestion
+
+File: backend/app/db/models.py 
+
+SYSTEM_MATRIX
+
+Add:
+
+class IngestionJob(Base):
+    __tablename__ = "ingestion_jobs"
+
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+    kind = Column(String, nullable=False)  # "repo", "docs", "blueprint", etc.
+    source = Column(String, nullable=False)  # e.g. "local_repo", "folder_path"
+    status = Column(String, default="pending")  # pending, running, completed, failed
+    total_items = Column(Integer, default=0)
+    processed_items = Column(Integer, default=0)
+    error_message = Column(Text, nullable=True)
+    meta = Column(JSON, nullable=True)  # { "root_path": "...", "include_globs": [...] }
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    project = relationship("Project")
+
+
+Endpoints (FastAPI) – in app/api/main.py 
+
+DEV_GUIDE
+
+POST /projects/{project_id}/ingestion_jobs
+
+Body: { "kind": "repo" | "docs", "source": "local_repo", "meta": {...} }
+
+Creates job with status="pending".
+
+GET /projects/{project_id}/ingestion_jobs/{job_id}
+
+Returns job + progress (total_items, processed_items, status, error_message).
+
+Later we can extend with “cancel job” etc., but for v1 these two are enough.
+
+T1.3 Repo ingestion: from all‑at‑once → batched
+
+Right now POST /github/ingest_local_repo walks the repo, makes chunks, and calls embeddings once, causing the “3,403,861 tokens requested; max 300,000” error.
+
+Plan
+
+Refactor the existing ingestion code (currently referenced in USER_MANUAL under “Ingest local repo” 
+
+USER_MANUAL
+
+) into two layers:
+
+Collector layer – gathers a list of (doc_id, text_chunk) for all files under a root path, respecting include/exclude globs.
+
+Embedding layer – calls embed_texts_batched on those chunks.
+
+Collector pseudocode (in e.g. backend/app/services/repo_ingestor.py):
+
+def collect_repo_chunks(project_id: int, root_path: Path, include_globs: list[str], exclude_globs: list[str]) -> list[Chunk]:
+    # 1) Walk filesystem under root_path
+    # 2) Filter files using globs and a mimetype/extension allowlist (see T2)
+    # 3) For each file, read text and split into chunks (reusing existing doc chunking logic)
+    # 4) For each chunk, create a Chunk object:
+    #    Chunk(doc_id, content, metadata = { path, start_line, end_line, ... })
+    # 5) Return full list of chunks
+
+
+Embedding layer:
+
+def ingest_repo_batched(job_id: int, chunks: list[Chunk]):
+    # 1) Update IngestionJob.total_items = len(chunks)
+    # 2) For each batch of chunks:
+    #    - embed_texts_batched([c.content for c in batch])
+    #    - insert into Chroma via chroma_store.add_docs(...)
+    #    - increment processed_items
+    # 3) On success: set status="completed".
+    # 4) On error: set status="failed", error_message=traceback.
+
+
+Important: DO NOT call embeddings with all chunks at once; always go via embed_texts_batched.
+
+Frontend integration
+
+In the existing “Ingest local repo” dialog:
+
+On submit, call POST /projects/{id}/ingestion_jobs (kind="repo", meta with path/globs).
+
+Poll GET /projects/{id}/ingestion_jobs/{job_id} every few seconds.
+
+Show progress (“Ingesting repo: 3/12 batches”).
+
+T2. Smart Filtering & Incremental Re‑Ingestion (Cost Control)
+
+We stop embedding garbage and we avoid re‑embedding unchanged files.
+
+T2.1 File allow/deny lists
+
+In the repo ingestor:
+
+Include by default:
+
+.py, .ts, .tsx, .js, .jsx, .md, .rst, .txt, .yaml, .yml, .toml, .json etc.
+
+Exclude by default:
+
+node_modules, .git, dist, build, coverage, .venv, .pytest_cache, etc.
+
+Binary files by extension: .png, .jpg, .gif, .exe, .dll, .zip, etc.
+
+Expose optional overrides in the Ingest dialog, but have sane defaults so the “just ingest the repo” button doesn’t try to embed 100s of MB of binary/out‑of‑scope stuff.
+
+T2.2 Hash‑based incremental ingestion
+
+Add a small table to track file digests:
+
+class FileIngestionState(Base):
+    __tablename__ = "file_ingestion_state"
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+    relative_path = Column(String, nullable=False)
+    sha256 = Column(String, nullable=False)
+    last_ingested_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "relative_path", name="uq_project_file"),
+    )
+
+
+When ingesting:
+
+Compute sha256 for each file.
+
+If file path + hash matches existing row, skip re‑chunking + re‑embedding.
+
+Only create new chunks + embeddings for changed/new files.
+
+This alone slashes embedding cost on repeated ingests or autopilot “refresh repo” actions.
+
+T3. Huge Blueprints & Long Docs: Hierarchical Summaries
+
+Your blueprint/plan system already wants to chunk & outline a 500k‑word doc. We’ll add multi‑resolution summaries so we never need to feed the entire blueprint into a single LLM call.
+
+This complements your Blueprint/PlanNode work.
+
+T3.1 BlueprintSection summaries
+
+Model addition
+
+Extend PlanNode (or add a sibling BlueprintSectionSummary table):
+
+class BlueprintSectionSummary(Base):
+    __tablename__ = "blueprint_section_summaries"
+
+    id = Column(Integer, primary_key=True)
+    plan_node_id = Column(Integer, ForeignKey("plan_nodes.id"), unique=True)
+    short_summary = Column(Text, nullable=False)
+    detailed_summary = Column(Text, nullable=True)
+
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+    plan_node = relationship("PlanNode")
+
+
+Ingestion step (tied to POST /blueprints/{id}/generate_plan)
+
+For each PlanNode representing a significant section (phase, epic, feature, story):
+
+Grab the underlying blueprint text for that section (using start_offset/end_offset you already planned).
+
+Call an LLM in deep mode with a prompt like:
+
+“Produce: (a) a 3–5 sentence summary, and (b) a more detailed bullet list capturing key requirements.”
+
+Store:
+
+short_summary – used in almost every context.
+
+detailed_summary – used when manager/worker needs more detail.
+
+Usage at runtime
+
+The manager and context builder primarily use short_summary for many PlanNodes, and only fetch detailed_summary for the few it cares about.
+
+When a worker needs the actual spec text for implementation, you fetch just that section’s original text chunk(s), not the whole 500k‑word document.
+
+T3.2 Document‑level summary docs
+
+For very big docs (especially blueprint), create a special Document row of kind "summary":
+
+A 2–3 page textual summary of the entire blueprint, with links (plan node IDs or section IDs).
+
+This doc is always injected into context for high‑level reasoning (manager planning) instead of the entire raw doc.
+
+You can generate/update it whenever:
+
+Blueprint PlanNodes are generated or updated.
+
+The blueprint document changes version.
+
+T4. Query‑Time Context: Only Pull What You Need
+
+We now make the context builder and workers cheap and token‑bounded.
+
+This plugs into the existing context builder plan you already have.
+
+T4.1 Multi‑stage retrieval in build_context_for_chat
+
+In backend/app/llm/context_builder.py:
+
+Step 1 – Identify topic
+
+Use the latest user message + intent classification (you already plan that) to infer:
+
+Is this about a particular feature/phase?
+
+Is it about code (code mode) or planning (deep/research mode)?
+
+Step 2 – Get high‑level context first
+
+Always pull:
+
+Project instructions.
+
+ProjectSnapshot.short summary + key metrics. 
+
+SYSTEM_OVERVIEW
+
+Active phase’s PlanNode + its BlueprintSectionSummary.short_summary.
+
+Step 3 – Narrow down further
+
+Use embeddings search over:
+
+PlanNode short summaries.
+
+BlueprintSectionSummary.detailed_summary.
+
+Document chunks (from Chroma).
+
+Memory items.
+
+Take only the top K items per category (e.g., 5–10), subject to token budget.
+
+Step 4 – Apply a hard token budget
+
+Implement a simple estimator:
+
+def estimate_tokens(text: str) -> int:
+    # rough heuristic, e.g. len(text) / 4
+
+
+Then:
+
+Reserve e.g. 50–60% of your max context for:
+
+The user’s message.
+
+The model’s reasoning.
+
+Fill the remaining budget with high‑scored context slices:
+
+Prioritize snapshot + active phase + direct PlanNode/task context.
+
+Only include raw doc chunks for 1–3 sections that have the highest similarity score.
+
+This ensures that no single chat call ever tries to shove the entire blueprint or repo into context—and that’s what keeps you under token limits and costs.
+
+T4.2 Code workers: windowed file reads
+
+For worker agents (code_worker, test_worker):
+
+Never send full giant files unless absolutely necessary.
+
+Instead:
+
+read_file tool should support:
+
+path
+
+Optional start_line, end_line
+
+For search-like needs:
+
+Use search_docs / search_messages to locate files/sections.
+
+Then only read windows (e.g., ±200 lines) around matches.
+
+Implementation:
+
+Extend your existing Files API /projects/{id}/files/content to accept optional line range parameters.
+
+Worker prompts should explicitly say:
+
+“When reading code, prefer reading only relevant parts (near functions/classes that match your target). Avoid loading the entire file unless necessary.”
+
+This massively cuts token usage for code refactors.
+
+T5. Budget Controls & Telemetry
+
+We want “don’t blow my budget” as a first‑class constraint, especially when autopilot is running.
+
+T5.1 Budget knobs in config
+
+File: docs/CONFIG_ENV.md – add new env vars 
+
+CONFIG_ENV
+
+MAX_EMBED_TOKENS_PER_BATCH (default 50k).
+
+MAX_EMBED_ITEMS_PER_BATCH (default 256).
+
+MAX_CONTEXT_TOKENS_PER_CALL (e.g. 24k for a 32k model).
+
+AUTOPILOT_MAX_TOKENS_PER_RUN – cap on tokens a single ExecutionRun can burn before pausing.
+
+Backend reads these env vars in openai_client.py and context builder.
+
+T5.2 Usage integration for ingestion and runs
+
+You already track model usage per chat in UsageRecord (see SYSTEM_MATRIX & Usage tab). 
+
+SYSTEM_MATRIX
+
+Extend:
+
+Add optional ingestion_job_id and execution_run_id to UsageRecord.
+
+For each embeddings call, record:
+
+Number of texts.
+
+Token estimate.
+
+Model name.
+
+Usage tab:
+
+Add a small “Ingestion” view showing:
+
+Ingestion job, tokens, and approximate $ cost.
+
+For autopilot runs:
+
+Show tokens/cost per ExecutionRun, so you see when something is “too expensive”.
+
+T5.3 Autopilot cost guardrails
+
+ManagerAgent should respect a per‑run budget:
+
+Before each LLM call within a run:
+
+Check cumulative tokens used so far (via UsageRecord linkage).
+
+If approaching AUTOPILOT_MAX_TOKENS_PER_RUN, manager:
+
+Marks the run as awaiting_approval with message “Budget limit reached; continue?”.
+
+This is how you avoid a runaway run on a weird bug or enormous file.
+
+Model Recommendations per Task
+
+Given your current model routing defaults (_DEFAULT_MODELS in openai_client.py), and the ability to override via OPENAI_MODEL_* or the UI override, here’s how I’d map tasks to models. 
+
+SYSTEM_OVERVIEW
+
+I’ll give both OpenAI‑style IDs (matching your docs) and Anthropic parallels if you ever plug those in.
+
+1. Embeddings (repo/docs/blueprint)
+
+OpenAI:
+
+text-embedding-3-small (fast, cheap, good enough for search).
+
+You can configure this once in the embedding helper instead of using a chat model.
+
+Anthropic (if/when they expose stable embeddings): use their smallest embedding model; but today, OpenAI’s embedding models are the safer bet.
+
+2. Blueprint ingestion & hierarchical summaries
+
+Tasks:
+
+Chunking 500k‑word doc.
+
+Outline extraction (phases/epics/features/stories).
+
+Section summaries.
+
+OpenAI
+
+Use your deep mode default: gpt-5.1 for:
+
+Global outline merge.
+
+Key section summary generation.
+
+Use fast (gpt-4.1-mini) for:
+
+Per‑chunk outline extraction where cost matters.
+
+Anthropic
+
+Primary: Claude 3.5 Sonnet for:
+
+Outline design and hierarchical structuring.
+
+Cheaper: Claude 3 Haiku for:
+
+Chunk‑level extraction and short summaries.
+
+3. ProjectSnapshot + ConversationSummary
+
+Tasks:
+
+Short + detailed conversation summaries.
+
+Project snapshot doc refreshing.
+
+These are summary/analysis tasks, not heavy reasoning.
+
+OpenAI
+
+Default to fast (gpt-4.1-mini), which your auto‑router already uses for short/simple. 
+
+SYSTEM_OVERVIEW
+
+For snapshots when you want more nuance (e.g. once daily), use deep (gpt-5.1).
+
+Anthropic
+
+Claude 3 Sonnet is ideal (good quality, moderate cost).
+
+Haiku if you want dirt‑cheap, frequent updates.
+
+4. ManagerAgent & Autopilot Planning
+
+Tasks:
+
+Understanding multi‑phase blueprint.
+
+Deciding build order.
+
+Choosing next tasks across the plan.
+
+Explaining its own plan.
+
+This is where you want the highest reliability.
+
+OpenAI
+
+Use deep mode → gpt-5.1 or a slightly more expensive gpt-5-pro if you override it. 
+
+CONFIG_ENV
+
+Keep auto mode disabled for manager internals; explicitly choose the stronger model.
+
+Anthropic
+
+Claude 3.5 Sonnet is excellent here:
+
+Strong reasoning, good at long‑horizon projects.
+
+For extremely hard architectural reasoning, you could occasionally escalate to Claude 3 Opus if cost is acceptable.
+
+5. Worker agents (code_worker, test_worker, doc_worker)
+
+Code worker
+
+OpenAI: use code mode → gpt-5.1-codex as per your defaults. 
+
+SYSTEM_OVERVIEW
+
+For smaller or quick edits, you can let auto route to code as well.
+
+Anthropic:
+
+Claude 3.5 Sonnet is your workhorse for:
+
+Multi‑file refactors.
+
+Test‑driven feature work.
+
+For extremely complex code synthesis, optionally escalate to Opus.
+
+Test worker
+
+Often fine with a slightly cheaper model:
+
+OpenAI: fast (gpt-4.1-mini) for parsing test results & suggesting fixes.
+
+Anthropic: Haiku or Sonnet depending on how tricky the tests are.
+
+Doc worker (keeping internal docs & blueprints in sync)
+
+OpenAI: fast (gpt-4.1-mini) or deep for more important docs.
+
+Anthropic: Haiku for simple doc rewrites, Sonnet for spec‑heavy rewriting.
+
+6. Tiny tasks: intent classification, alignment labels
+
+Tasks:
+
+Intent detection (“START_BUILD”, “PAUSE_AUTOPILOT”, etc.).
+
+Alignment checks that just score a candidate action (not full code synthesis).
+
+OpenAI
+
+fast (gpt-4.1-mini) or even budget (gpt-4.1-nano) for:
+
+Intent classifier.
+
+Alignment labeler (since we’re passing small snapshots & summary text).
+
+Anthropic
+
+Claude 3 Haiku is perfect:
+
+Very cheap.
+
+Good enough for discrete classification tasks.
+
+How to Use This Plan with Cursor
+
+Add a new section to docs/AUTOPILOT_PLAN.md, e.g.
+
+## Phase T – Scalable Ingestion & Token/Cost Control
+Paste the plan above (T0–T5).
+
+In Cursor, work this in layers:
+
+First pass:
+
+Implement embed_texts_batched + IngestionJob model + basic repo ingestion batching.
+
+Second pass:
+
+Add FileIngestionState + hash logic + smart filtering.
+
+Third pass:
+
+Add BlueprintSectionSummary + multi‑level summaries + context builder changes.
+
+Fourth pass:
+
+Add budget/env knobs + usage linkage + simple cost guardrails.
+
+For each chunk of work, you can say to Cursor something like:
+
+“Open docs/AUTOPILOT_PLAN.md and implement everything in the section Phase T – Scalable Ingestion & Token/Cost Control → T1.1–T1.3, touching only chroma_store.py, openai_client.py, models.py, and app/api/main.py as needed. Then show me the diffs and suggest minimal QA steps.”

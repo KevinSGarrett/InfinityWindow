@@ -1,0 +1,525 @@
+Current design spec for Autopilot / Blueprint / Learning & ingestion phases as of 2025-12-09.
+Implementation status is tracked in docs/REQUIREMENTS_CRM.md, docs/TODO_CHECKLIST.md, and docs/PROGRESS.md. Autopilot remains design-only; these documents are roadmap/spec, not shipped behavior.
+
+1. Updated High-Level Outline (InfinityWindow v2)
+Already basically done (for context)
+
+You don’t need to do anything here unless you want polish:
+
+Backend foundations
+
+FastAPI app with /health, /chat, /docs, /search, /github/ingest_local_repo, etc.
+
+Local DB (projects, conversations, messages, documents).
+
+Chroma-based vector store.
+
+Env + model config via .env.
+
+Core chat + memory
+
+Multi‑mode chat (auto / fast / deep / budget / research / code) wired to high‑end OpenAI models.
+
+Messages stored in DB.
+
+Embeddings via text-embedding-3-*.
+
+Retrieval from:
+
+Past messages.
+
+Ingested docs & repos.
+
+Retrieval integrated into /chat.
+
+Docs & repo ingestion
+
+Ingest text docs via /docs/text.
+
+Ingest local repo via /github/ingest_local_repo.
+
+Docs indexed and searchable with /search/docs.
+
+Custom web UI (InfinityWindow UI)
+
+Projects dropdown.
+
+Conversations list.
+
+Chat pane with modes.
+
+Right column: search memory + docs list + ingestion.
+
+Slack + LibreChat are removed from plan. ✅
+
+Remaining big themes
+
+Now, what’s left / new:
+
+Project & conversation organization
+
+Conversation titles (auto + manual).
+
+Conversation folders.
+
+Per‑project instructions + notes/decision log.
+
+Tasks / TODO system
+
+Tasks table + right‑side “Tasks” tab.
+
+AI‑assisted task extraction and continuous updating.
+
+Usage / cost tracking
+
+Capture tokens + cost per message.
+
+Show per‑conversation totals + model used.
+
+Local project directory integration
+
+Backend knows the local root folder for each project.
+
+Browse files.
+
+Read file contents.
+
+(Later) apply file edits with diff + confirmation.
+
+Terminal integration
+
+Run commands from the UI in project’s working directory.
+
+AI can propose commands; you approve and run.
+
+View output inline.
+
+Memory upgrades (“never forget”)
+
+“Remember this” feature with pinned memories.
+
+Project decision log.
+
+Better per‑project instructions.
+
+UI 2.0 – Production-grade layout
+
+Full-width, responsive grid.
+
+Right column with tabs (Docs / Search / Tasks / Usage / Terminal).
+
+Better scrolling, tighter lists, cleaner look.
+
+2. Concrete To-Do Checklist (v2 Roadmap)
+
+I’ll break it into phases you can attack one by one.
+
+Phase 3 – Project & Conversation Organization
+
+Goal: Make it easy to find and organize conversations per project.
+
+3.1 Conversation titles
+
+ DB: Ensure conversations table has a title column (nullable string).
+
+ API: Add PATCH /conversations/{id} to update title.
+
+ Backend logic (optional auto-title):
+
+ After first assistant reply in a new conversation, call a small model to generate a short title and save it.
+
+ UI:
+
+ In left “Conversations” list, display title if present, else “Chat conversation #id”.
+
+ Add a ✏️ icon or context menu to rename a conversation.
+
+ On rename submit, call PATCH /conversations/{id} and update state.
+
+3.2 Conversation folders
+
+ DB:
+
+ Add conversation_folders table: id, project_id, name.
+
+ Add folder_id column to conversations.
+
+ API:
+
+ GET /projects/{id}/folders – list folders.
+
+ POST /projects/{id}/folders – create folder.
+
+ PATCH /folders/{id} – rename folder.
+
+ DELETE /folders/{id} – delete folder (and set conversations’ folder_id to null).
+
+ Extend PATCH /conversations/{id} to edit folder_id.
+
+ UI:
+
+ In left sidebar, group conversations by folder:
+
+Group “No folder”.
+
+One section per folder (collapsible).
+
+ Button “+ Folder” to create a new folder.
+
+ Allow moving a conversation to a folder (dropdown or drag‑and‑drop).
+
+3.3 Project instructions & notes/decisions (from original plan)
+
+ DB:
+
+ Add instruction_text column to projects (long text).
+
+ Add simple project_notes or decision_log table (e.g. id, project_id, content, created_at).
+
+ API:
+
+ GET/PUT /projects/{id}/instructions.
+
+ GET/POST /projects/{id}/decision_log.
+
+ Backend usage:
+
+ Inject instruction_text into system prompt when building messages for /chat for that project.
+
+ UI:
+
+ Add a “Project Settings / Notes” panel (either modal or a tab in right column) to edit instructions.
+
+ Show a simple list for decision log; allow adding entries.
+
+Phase 4 – Tasks / TODO Sidebar
+
+Goal: A continuously updated checklist for each project on the right side.
+
+4.1 Basic tasks model + API
+
+ DB: Create tasks table:
+
+id
+
+project_id
+
+conversation_id (nullable)
+
+source_message_id (nullable)
+
+description
+
+status (open, done, maybe blocked)
+
+priority (optional)
+
+created_at, updated_at
+
+ API:
+
+ GET /projects/{id}/tasks?status=open|all.
+
+ POST /projects/{id}/tasks – create task.
+
+ PATCH /tasks/{id} – update description, status, priority.
+
+ DELETE /tasks/{id} – optional.
+
+4.2 Tasks UI (manual first)
+
+ Add Tasks tab on the right side (so right column tabs become: Docs, Search, Tasks).
+
+ In Tasks tab:
+
+ List open tasks (checkbox + description).
+
+ Checkbox toggles status to done via PATCH /tasks/{id}.
+
+ “+ Task” button with a simple input to create a new task.
+
+4.3 AI-assisted task extraction (Stage 1, on demand)
+
+ Backend helper:
+
+ Implement a function that:
+
+Takes recent messages for a project (or conversation).
+
+Calls a cheap model to extract tasks in structured JSON (e.g. [{"description": "...", "status": "open"}]).
+
+Compares against existing tasks (by description) and:
+
+Adds new ones.
+
+Updates status of existing ones if mentioned as completed.
+
+ API:
+
+ POST /projects/{id}/tasks/refresh_from_chat – runs the helper, returns updated task list.
+
+ UI:
+
+ In Tasks tab, add a button:
+
+“Ask AI to update tasks from conversation”.
+
+ On click, call the endpoint and refresh task list.
+
+4.4 (Optional) Automatic task updates (Stage 2)
+
+ Hook tasks.refresh_from_chat into the chat pipeline:
+
+After each user+assistant turn, run a background extractor and update tasks.
+
+Phase 5 – Usage / Cost Tracking Box
+
+Goal: Show model, tokens, and cost per conversation + last message.
+
+5.1 Backend – capture usage
+
+ In openai_client.generate_reply_from_history:
+
+ After each API call, read response.usage for tokens.
+
+ Define a simple price map per model (config or code).
+
+ Compute:
+
+input_tokens
+
+output_tokens
+
+total_tokens
+
+cost_usd
+
+ Store usage:
+
+Option A (simple):
+
+ Add columns on assistant Message rows:
+
+model_used, input_tokens, output_tokens, cost_usd.
+
+Option B (more flexible):
+
+ Create usage_records table with:
+
+id, conversation_id, model, input_tokens, output_tokens, cost_usd, timestamp.
+
+5.2 Usage API
+
+ GET /conversations/{id}/usage returns:
+
+List of per-turn usage (or summarized).
+
+Aggregate totals for that conversation:
+
+total_input_tokens
+
+total_output_tokens
+
+total_cost_usd
+
+5.3 Frontend – “usage box”
+
+ Add a small panel (bottom-right or as a tab like Usage) that shows:
+
+“Current conversation:”
+
+Total tokens (in/out).
+
+Total cost.
+
+“Last reply:”
+
+Model name.
+
+Tokens in/out.
+
+Cost.
+
+ When:
+
+Selected conversation changes, fetch /conversations/{id}/usage.
+
+A new message arrives, refetch usage.
+
+Phase 6 – Local Project Directory Integration
+
+Goal: Let InfinityWindow see your actual local files and (later) edit them, so no more manual copy/paste hell.
+
+6.1 Project local root path
+
+ DB: Add local_root_path column to Project.
+
+ API:
+
+ PATCH /projects/{id}/local_root with { "local_root_path": "C:\\InfinityWindow" }.
+
+ Ensure all file operations are constrained to this path.
+
+6.2 Read-only file browser
+
+ API:
+
+ GET /projects/{id}/files?path=subdir – returns listing (folders + files, with relative paths).
+
+ GET /projects/{id}/file_content?path=relative\path – returns text content.
+
+ UI:
+
+ Add a “Files” tab in the right column.
+
+ Show a simple tree or list view of the project directory.
+
+ Clicking a file shows its contents (read-only for now).
+
+6.3 Safe file editing (Stage 1 – user-confirmed)
+
+ API:
+
+ POST /projects/{id}/write_file:
+
+Body: { path, content }.
+
+Validates that path is under local_root_path.
+
+ AI + UI flow:
+
+ LLM suggests edited content for a file.
+
+ UI shows:
+
+Original vs updated diff.
+
+ User clicks “Apply changes” → backend writes file.
+
+(Later we can make this more agentic, but this is the safe first step.)
+
+Phase 7 – Terminal Integration
+
+Goal: Run terminal commands from inside InfinityWindow and let the AI see the output, without manual copy/paste.
+
+7.1 Backend – simple command runner (Stage 1)
+
+ POST /terminal/run:
+
+Body: { "command": "git status", "cwd": "C:\\InfinityWindow\\backend" }.
+
+Runs subprocess.run (or equivalent).
+
+Returns { stdout, stderr, exit_code }.
+
+(Keep it explicit: it only runs when you or the UI call it.)
+
+7.2 UI – Terminal tab
+
+ Add a “Terminal” tab on the right.
+
+ Simple UI:
+
+Input box for command.
+
+Dropdown or preset for cwd (e.g. backend root).
+
+Output area (monospace, scrollable).
+
+ On submit, call /terminal/run and show result.
+
+7.3 AI-assisted commands (Stage 2, with approval)
+
+ In your orchestrator (or /chat logic), define a tool run_shell(command, cwd).
+
+ Allow the model to propose run_shell(...).
+
+ Before actually running:
+
+Show proposed command in the UI.
+
+Require you to click “Approve”.
+
+ Then call /terminal/run and send the output back as an assistant message.
+
+This preserves safety while removing copy/paste.
+
+Phase 8 – Memory upgrades (“Remember this”)
+
+This maps directly to your original “remember this” + decision logs.
+
+ DB: Create memory_items table:
+
+id, project_id, key (optional), content, tags, created_at.
+
+ API:
+
+ POST /projects/{id}/memory – add memory item.
+
+ GET /projects/{id}/memory – list items.
+
+ Vector store:
+
+ Index memory_items in a separate collection for retrieval.
+
+ Chat pipeline:
+
+ On each /chat, retrieve relevant memory_items for the project and prepend them to context.
+
+ UI:
+
+ New tab in right column: Memory or merge with Notes.
+
+ Button “Remember this” in the chat area that:
+
+Sends selected text or message(s) to backend as a new memory_item.
+
+Phase 9 – UI 2.0 / Visual Polish
+
+Goal: Make InfinityWindow look and feel like a modern, production-grade tool.
+
+Key layout changes:
+
+ Make app height = 100vh with header fixed at top.
+
+ Use CSS grid or flex for main content:
+
+Columns:
+
+Left: ~260px (projects + folders + conversations).
+
+Middle: main chat.
+
+Right: multi-tab utility panel.
+
+ Ensure each column uses:
+
+overflow-y: auto;
+
+so lists scroll inside the column, not the whole page.
+
+Panels/tabs on the right might now be:
+
+Docs – project documents list.
+
+Search – message/doc search.
+
+Tasks – project TODOs.
+
+Usage – cost/tokens info.
+
+Files – project file browser.
+
+Terminal – embedded terminal.
+
+Visual polish:
+
+ Modern dark/light theme choice.
+
+ Better typography, spacing, consistent card styles.
+
+ Scrollable lists with max heights instead of mega-tall elements.
+
+ Icons for modes, tasks, docs, etc.
+
+We can later go into actual CSS/TSX code for this, but this gives you the structure.

@@ -2,6 +2,8 @@
 
 This version reflects the latest backend behavior after 2025-12-06 fixes. Base URL (dev): `http://127.0.0.1:8000`.
 
+> 2025-12-09: Added `/debug/docs_status` to surface the canonical docs guardrail defined by `CANONICAL_DOC_PATHS` in `backend/app/api/main.py` and enforced by QA tests.
+
 ---
 
 ## 1. Projects & Conversations
@@ -285,6 +287,22 @@ Notes:
 
 - **GET `/debug/telemetry`**  
   Returns telemetry for LLM routing (`auto_routes`, `fallback_attempts`, `fallback_success`) and task automation. Task automation now includes confidence stats (`min/max/avg/count` with buckets) and the latest task suggestions (pending add/complete items with confidence and payload) to aid QA of low-confidence flows. Optional `reset=true` query param clears counters after returning the snapshot.
+
+- **GET `/debug/docs_status`**  
+  Diagnostics guardrail for canonical docs. Response shape:
+
+  ```json
+  {
+    "docs": [
+      {"path": "docs/REQUIREMENTS_CRM.md", "exists": true, "size_bytes": 1234}
+    ],
+    "missing": []
+  }
+  ```
+
+  - `docs` enumerates `CANONICAL_DOC_PATHS` from `backend/app/api/main.py` with `path`, `exists`, and `size_bytes`.
+  - `missing` lists any docs that are absent or zero bytes.
+  - Guarded by `qa/tests_docs/test_docs_existence.py` and `qa/tests_api/test_docs_status.py` to keep CI green.
 
 ### 8.1 Task suggestions & overview
 - **GET `/projects/{project_id}/task_suggestions`**  

@@ -120,13 +120,16 @@ You should:
 
 1. Update `docs/PROGRESS.md`:
    - Record what changed in the current window.
-2. Update `docs/TODO_CHECKLIST.md`:
+2. Keep plans/CRM/TODO/PROGRESS aligned:
+   - If shipped behavior diverges from `Project_Plan_003_UPDATED.txt` or `Updated_Project_Plan_2_*.txt`, update the relevant plan (when the spec needs to change) and sync `docs/REQUIREMENTS_CRM.md`, `docs/TODO_CHECKLIST.md`, and `docs/PROGRESS.md`.
+   - Log a doc issue in `docs/ISSUES_LOG.md` when you discover mismatches.
+3. Update `docs/TODO_CHECKLIST.md`:
    - Mark items `[x]` when complete or adjust status.
-3. Update `docs/SYSTEM_MATRIX.md`:
+4. Update `docs/SYSTEM_MATRIX.md`:
    - Add new endpoints/models/components to the relevant tables.
-4. If behavior touches configuration, API, or security:
+5. If behavior touches configuration, API, or security:
    - Update `docs/API_REFERENCE.md`, `docs/API_REFERENCE_UPDATED.md`, `docs/CONFIG_ENV.md`, and/or `docs/SECURITY_PRIVACY.md` as needed.
-5. When you add or change APIs or fix defects uncovered in QA:
+6. When you add or change APIs or fix defects uncovered in QA:
    - Log the issue and resolution in `docs/ISSUES_LOG.md`.
    - Keep `docs/API_REFERENCE_UPDATED.md` fully aligned with the backend so QA can rely on it for request shapes and new endpoints (e.g., task delete/overview, ingestion jobs).
 

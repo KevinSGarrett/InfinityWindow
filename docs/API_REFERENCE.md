@@ -234,6 +234,21 @@ Job metadata is stored in the `ingestion_jobs` table; per-file digests live in `
 
 Used by QA to verify that heuristics are behaving as expected.
 
+- **GET `/debug/docs_status`**
+
+  Diagnostics guardrail for canonical docs. Returns:
+
+  ```json
+  {
+    "docs": [
+      {"path": "docs/REQUIREMENTS_CRM.md", "exists": true, "size_bytes": 1234}
+    ],
+    "missing": []
+  }
+  ```
+
+  `docs` enumerates `CANONICAL_DOC_PATHS` from `backend/app/api/main.py` (path, exists, size_bytes). `missing` lists any docs that are absent or empty. QA/CI keep this green via `qa/tests_docs/test_docs_existence.py` and `qa/tests_api/test_docs_status.py`.
+
 ---
 
 ## 9. Health & misc

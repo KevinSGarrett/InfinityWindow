@@ -61,6 +61,29 @@ app.include_router(search_router)
 app.include_router(docs_router)
 app.include_router(github_router)
 
+# Canonical docs guardrail: shared by /debug/docs_status and QA tests
+REPO_ROOT = Path(__file__).resolve().parents[3]
+CANONICAL_DOC_PATHS: list[str] = [
+    "docs/REQUIREMENTS_CRM.md",
+    "docs/MODEL_MATRIX.md",
+    "docs/AUTOPILOT_PLAN.md",
+    "docs/AUTOPILOT_IMPLEMENTATION_CHECKLIST.md",
+    "docs/AUTOPILOT_EXAMPLES.md",
+    "docs/AUTOPILOT_LEARNING.md",
+    "docs/AUTOPILOT_LIMITATIONS.md",
+    "docs/SYSTEM_MATRIX.md",
+    "docs/HYDRATION_2025-12-02.md",
+    "docs/AGENT_GUIDE.md",
+    "docs/OPERATIONS_RUNBOOK.md",
+    "docs/API_REFERENCE.md",
+    "docs/API_REFERENCE_UPDATED.md",
+    "docs/SECURITY_PRIVACY.md",
+    "docs/DECISIONS_LOG.md",
+    "docs/RELEASE_PROCESS.md",
+    "docs/CHANGELOG.md",
+    "docs/ISSUES_LOG.md",
+]
+
 # Ensure DB dependency uses the current SessionLocal (patched in tests)
 def _get_db_session_override() -> Generator[Session, None, None]:
     db = SessionLocal()
@@ -3263,6 +3286,27 @@ def get_conversation_usage(
 
 
 # ---------- Telemetry & diagnostics ----------
+
+
+@app.get("/debug/docs_status")
+def get_docs_status() -> Dict[str, Any]:
+    """
+    Report canonical docs existence and size for CI/QA guardrails.
+    """
+    docs_status: list[dict[str, Any]] = []
+    missing: list[str] = []
+
+    for rel_path in CANONICAL_DOC_PATHS:
+        abs_path = REPO_ROOT / rel_path
+        exists = abs_path.exists()
+        size_bytes = abs_path.stat().st_size if exists else 0
+        docs_status.append(
+            {"path": rel_path, "exists": exists, "size_bytes": size_bytes}
+        )
+        if (not exists) or size_bytes == 0:
+            missing.append(rel_path)
+
+    return {"docs": docs_status, "missing": missing}
 
 
 @app.get("/debug/telemetry")

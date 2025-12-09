@@ -1,0 +1,590 @@
+Current design spec for Autopilot / Blueprint / Learning & ingestion phases as of 2025-12-09.
+Implementation status is tracked in docs/REQUIREMENTS_CRM.md, docs/TODO_CHECKLIST.md, and docs/PROGRESS.md. Autopilot remains design-only; these documents are roadmap/spec, not shipped behavior.
+
+# InfinityWindow – Model & Routing Matrix
+
+> This document defines **which LLM model** should be used for each subsystem  
+> (chat modes, autopilot manager, workers, ingestion, summaries, etc.) and  
+> **exactly where to wire those choices in the codebase**.
+
+The goals:
+
+- Use **strong models** where it matters (coding, planning, complex reasoning).
+- Use **cheap models** where we can (summaries, intent detection, light classification).
+- Keep everything configurable via environment variables, with **safe defaults**.
+- Give Cursor clear, file‑level targets for implementation.
+
+---
+
+## 0. Naming conventions
+
+We use two layers of naming:
+
+1. **Mode names** (existing):  
+   `auto`, `fast`, `deep`, `budget`, `research`, `code` – used in the chat UI and already wired into `openai_client`.
+
+2. **Role aliases** (new for Autopilot & ingestion):  
+   Logical names like `summary`, `blueprint`, `manager`, `worker_code`, etc.  
+   Each alias maps to an env var such as `OPENAI_MODEL_SUMMARY`.
+
+These aliases **do not change the UI**. They are internal to the backend’s orchestration code.
+
+---
+
+## 1. Global model config (env variables)
+
+### 1.1 Core env vars (existing + new)
+
+These live in `backend/.env` and are read by `backend/app/llm/openai_client.py`.
+
+**Chat modes (existing):**
+
+- `OPENAI_MODEL_AUTO`
+- `OPENAI_MODEL_FAST`
+- `OPENAI_MODEL_DEEP`
+- `OPENAI_MODEL_BUDGET`
+- `OPENAI_MODEL_RESEARCH`
+- `OPENAI_MODEL_CODE`
+
+If unset, `openai_client.py` should fall back to hardcoded defaults (see §2).
+
+**Subsystem / role aliases (new):**
+
+- `OPENAI_MODEL_SUMMARY` – conversation summaries, short docs summaries.
+- `OPENAI_MODEL_SNAPSHOT` – project snapshot generation.
+- `OPENAI_MODEL_BLUEPRINT` – blueprint outline extraction & merge.
+- `OPENAI_MODEL_PLAN_TASKS` – PlanNode → Task decomposition.
+- `OPENAI_MODEL_MANAGER` – ManagerAgent planning / autopilot decisions.
+- `OPENAI_MODEL_WORKER_CODE` – code_worker; code+tools, refactors, feature impl.
+- `OPENAI_MODEL_WORKER_TEST` – test_worker; test design & analysis.
+- `OPENAI_MODEL_WORKER_DOC` – doc_worker; docs sync & updates.
+- `OPENAI_MODEL_ALIGNMENT` – alignment checks (is this action consistent?).
+- `OPENAI_MODEL_INTENT` – intent classifier for chat messages.
+- `OPENAI_MODEL_RESEARCH_DEEP` – long‑form research (if different from `OPENAI_MODEL_RESEARCH`).
+
+**Embeddings (existing, but make explicit here):**
+
+- `OPENAI_EMBEDDING_MODEL`
+
+### 1.2 Recommended default values
+
+These are **recommendations** for a single‑user, cost‑aware InfinityWindow setup.  
+They should be implemented as the defaults inside `openai_client.py` if env vars are missing.
+
+#### Text models
+
+- `OPENAI_MODEL_AUTO` → `gpt-4.1-mini`
+- `OPENAI_MODEL_FAST` → `gpt-4.1-nano`
+- `OPENAI_MODEL_DEEP` → `gpt-5.1`
+- `OPENAI_MODEL_BUDGET` → `gpt-4.1-nano`
+- `OPENAI_MODEL_RESEARCH` → `o3-deep-research`
+- `OPENAI_MODEL_CODE` → `gpt-5.1`  (or `gpt-5.1-codex` if you prefer that variant)
+
+#### Role alias models
+
+- `OPENAI_MODEL_SUMMARY` → `gpt-4.1-nano`
+- `OPENAI_MODEL_SNAPSHOT` → `gpt-4.1-mini`
+- `OPENAI_MODEL_BLUEPRINT` → `gpt-4.1-mini`
+- `OPENAI_MODEL_PLAN_TASKS` → `gpt-5-mini`
+- `OPENAI_MODEL_MANAGER` → `gpt-5.1`
+- `OPENAI_MODEL_WORKER_CODE` → `gpt-5.1`
+- `OPENAI_MODEL_WORKER_TEST` → `gpt-4.1-mini` (or `gpt-5-mini` if you want test logic stronger)
+- `OPENAI_MODEL_WORKER_DOC` → `gpt-4.1-mini`
+- `OPENAI_MODEL_ALIGNMENT` → `gpt-5-nano` or `gpt-4.1-nano`
+- `OPENAI_MODEL_INTENT` → `gpt-4.1-nano`
+- `OPENAI_MODEL_RESEARCH_DEEP` → `o3-deep-research`
+
+#### Embeddings
+
+- `OPENAI_EMBEDDING_MODEL` → `text-embedding-3-small`
+
+> Note: All of these can be overridden per‑machine by editing `backend/.env`.  
+> The code should **never hard‑code** model IDs outside of `openai_client.py`.
+
+---
+
+## 2. Chat modes → models (existing surface)
+
+### 2.1 Current behavior
+
+The chat UI supports modes: `auto`, `fast`, `deep`, `budget`, `research`, `code`.
+
+The backend already:
+
+- maps these modes to model IDs in `_DEFAULT_MODELS` inside `backend/app/llm/openai_client.py`;
+- allows explicit `model` overrides from the UI;  
+- records usage and routing telemetry.
+
+### 2.2 Implementation targets
+
+**File:** `backend/app/llm/openai_client.py`
+
+**TODOs:**
+
+1. Ensure `_DEFAULT_MODELS` uses the recommended defaults from §1.2 (or keep your current ones, but keep them in sync with docs):
+
+   - `auto`  → default: `gpt-4.1-mini`
+   - `fast`  → default: `gpt-4.1-nano`
+   - `deep`  → default: `gpt-5.1`
+   - `budget`→ default: `gpt-4.1-nano`
+   - `research` → default: `o3-deep-research`
+   - `code` → default: `gpt-5.1` (or `gpt-5.1-codex`)
+
+2. Confirm that, for each mode, we first check the corresponding env var:
+
+   - `OPENAI_MODEL_AUTO`, `OPENAI_MODEL_FAST`, … etc.
+   - Fallback to `_DEFAULT_MODELS[mode]` if the env is unset.
+
+3. Document these defaults in:
+
+   - `docs/CONFIG_ENV.md`
+   - `docs/USER_MANUAL.md` (Chat modes section)
+   - `docs/SYSTEM_OVERVIEW.md` (model routing summary)
+
+---
+
+## 3. Subsystems → model aliases
+
+This is where we specify which model alias each autopilot / ingestion subsystem should use, and **exactly where to wire it**.
+
+### 3.1 Blueprint ingestion & Plan generation
+
+**Use cases**
+
+- Chunk‑level blueprint outline extraction.
+- Global outline merge into a PlanNode tree.
+- PlanNode → Task decomposition.
+
+**Recommended aliases:**
+
+- Outline extraction: `OPENAI_MODEL_BLUEPRINT` (`gpt-4.1-mini`)
+- Global outline merge: `OPENAI_MODEL_BLUEPRINT` (`gpt-4.1-mini`)
+- PlanNode → Task decomposition: `OPENAI_MODEL_PLAN_TASKS` (`gpt-5-mini`)
+
+**Implementation targets**
+
+- New module: `backend/app/services/blueprints.py` (if not already present).
+- Functions:
+  - `generate_plan_from_document(document_id: int, ...)`
+  - `generate_tasks_for_plan_node(plan_node_id: int, ...)`
+
+Each function should call a helper in `openai_client.py`, e.g.:
+
+- `call_model_for_role("blueprint", messages=[...])`
+- `call_model_for_role("plan_tasks", messages=[...])`
+
+(See §4 for `call_model_for_role`.)
+
+The embedding/token‑limit batching for repo ingestion uses **embeddings**, not these text models, so it should rely on `OPENAI_EMBEDDING_MODEL`.
+
+---
+
+### 3.2 Conversation summaries & project snapshot
+
+**Use cases**
+
+- Rolling conversation summaries (short + detailed).
+- Periodic “Project Snapshot” document.
+
+**Recommended aliases:**
+
+- Conversation summaries: `OPENAI_MODEL_SUMMARY` (`gpt-4.1-nano`)
+- Snapshot generation: `OPENAI_MODEL_SNAPSHOT` (`gpt-4.1-mini`)
+
+**Implementation targets**
+
+- New module: `backend/app/services/conversation_summaries.py`  
+  Functions:
+  - `update_conversation_summary(conversation_id: int)`
+
+- New module: `backend/app/services/snapshot.py`  
+  Functions:
+  - `refresh_project_snapshot(project_id: int)`
+
+Each should use:
+
+- `call_model_for_role("summary", ...)` for conversation summaries.
+- `call_model_for_role("snapshot", ...)` for snapshots.
+
+---
+
+### 3.3 Manager Agent (autopilot planning)
+
+**Use cases**
+
+- Selecting next tasks (phases, dependencies, priorities).
+- Starting / advancing `ExecutionRun`s.
+- Explaining current plan to the user.
+
+**Recommended alias:**
+
+- Manager planning: `OPENAI_MODEL_MANAGER` (`gpt-5.1`)
+
+**Implementation targets**
+
+- New module: `backend/app/services/manager.py`  
+  Class: `ManagerAgent`
+
+Methods that should call the LLM:
+
+- `choose_next_tasks(...)`
+- `start_run_for_next_task(...)`
+- `advance_run(...)` (when it needs to re‑plan or summarize).
+- `explain_plan(...)`
+
+Each method should call a helper such as:
+
+- `call_model_for_role("manager", messages=[...], tools=[...])`
+
+Manager should **not** use `mode="auto"`; it should explicitly use the manager alias so you can tune cost/performance independently of user chat.
+
+---
+
+### 3.4 Worker agents (code / test / docs)
+
+**Use cases**
+
+- `code_worker`:
+  - Implements features, refactors, uses Files + Terminal tools.
+- `test_worker`:
+  - Designs and runs tests, interprets failures.
+- `doc_worker`:
+  - Keeps docs consistent with blueprint + code.
+
+**Recommended aliases:**
+
+- `OPENAI_MODEL_WORKER_CODE` (`gpt-5.1`)
+- `OPENAI_MODEL_WORKER_TEST` (`gpt-4.1-mini` or `gpt-5-mini`)
+- `OPENAI_MODEL_WORKER_DOC` (`gpt-4.1-mini`)
+
+**Implementation targets**
+
+- New module: `backend/app/services/workers.py`
+
+Create wrapper functions:
+
+- `run_code_worker(context_bundle, tools)`
+
+  - Calls: `call_model_for_role("worker_code", messages, tools)`
+
+- `run_test_worker(context_bundle, tools)`
+
+  - Calls: `call_model_for_role("worker_test", messages, tools)`
+
+- `run_doc_worker(context_bundle, tools)`
+
+  - Calls: `call_model_for_role("worker_doc", messages, tools)`
+
+Tools should map onto existing filesystem/terminal/search endpoints. These workers **always use role‑specific aliases**, not chat modes.
+
+---
+
+### 3.5 Alignment checks
+
+**Use cases**
+
+- Evaluate “Is this file edit / terminal command aligned with the current plan and decisions?”
+- Provide “aligned / risky / conflicting” status and reasons.
+
+**Recommended alias:**
+
+- `OPENAI_MODEL_ALIGNMENT` (`gpt-5-nano` or `gpt-4.1-nano`)
+
+**Implementation targets**
+
+- New module: `backend/app/services/alignment.py`
+
+Function:
+
+- `check_alignment(project_id: int, action_type: str, action_payload: dict) -> AlignmentResult`
+
+Internally:
+
+- Build a mini context (snapshot, relevant PlanNodes/Decisions).
+- Call `call_model_for_role("alignment", messages=[...])`.
+
+The ExecutionRun step executor (Phase 3) should call this before applying risky writes or commands, and attach the result to `ExecutionStep.output_payload["alignment"]`.
+
+---
+
+### 3.6 Intent classification (no‑prompt operation)
+
+**Use cases**
+
+- Per‑message routing: detect if user is asking to:
+  - Start building (`START_BUILD`).
+  - Continue automation (`CONTINUE_BUILD`).
+  - Pause autopilot (`PAUSE_AUTOPILOT`).
+  - Adjust plan or requirements.
+  - Just ask a question.
+
+**Recommended alias:**
+
+- `OPENAI_MODEL_INTENT` (`gpt-4.1-nano`)
+
+**Implementation targets**
+
+- New module: `backend/app/llm/intent_classifier.py`
+
+Function:
+
+- `classify_intent(project_id: int, conversation_id: int, latest_user_message: str) -> IntentResult`
+
+Implementation:
+
+- Build a small prompt with snapshot + last 1–2 messages.
+- Call `call_model_for_role("intent", messages=[...])`.
+- Return a compact JSON with `{ intent, confidence, notes }`.
+
+The `/chat` endpoint should call this function *before* the main assistant reply and, if confidence is high and intent is not `QUESTION`, delegate to `ManagerAgent`.
+
+---
+
+### 3.7 Research / web search
+
+**Use cases**
+
+- Long‑context research tasks (e.g., deep architecture exploration).
+- Optional future integration with web search tools (if desired).
+
+**Recommended aliases:**
+
+- Regular research: `OPENAI_MODEL_RESEARCH` (`o3-deep-research`)
+- Extra‑deep research: `OPENAI_MODEL_RESEARCH_DEEP` (same or `o4-mini-deep-research` later, if used)
+
+**Implementation targets**
+
+- Reuse chat `mode="research"` for user‑initiated research calls.
+- For manager‑initiated deep research tasks, call:
+
+  - `call_model_for_role("research_deep", ...)`
+
+You likely won’t need this immediately for autopilot; it’s included so the design doesn’t box you in.
+
+---
+
+## 4. Backend helper: `call_model_for_role`
+
+To make all of this manageable, implement a single helper.
+
+**File:** `backend/app/llm/openai_client.py`
+
+### 4.1 Role → env → model resolution
+
+Add a top‑level mapping:
+
+```python
+_ROLE_ENV_VARS = {
+    "summary": "OPENAI_MODEL_SUMMARY",
+    "snapshot": "OPENAI_MODEL_SNAPSHOT",
+    "blueprint": "OPENAI_MODEL_BLUEPRINT",
+    "plan_tasks": "OPENAI_MODEL_PLAN_TASKS",
+    "manager": "OPENAI_MODEL_MANAGER",
+    "worker_code": "OPENAI_MODEL_WORKER_CODE",
+    "worker_test": "OPENAI_MODEL_WORKER_TEST",
+    "worker_doc": "OPENAI_MODEL_WORKER_DOC",
+    "alignment": "OPENAI_MODEL_ALIGNMENT",
+    "intent": "OPENAI_MODEL_INTENT",
+    "research_deep": "OPENAI_MODEL_RESEARCH_DEEP",
+}
+
+
+And a fallback mapping to chat modes or specific models, e.g.:
+
+_ROLE_DEFAULT_MODELS = {
+    "summary": "gpt-4.1-nano",
+    "snapshot": "gpt-4.1-mini",
+    "blueprint": "gpt-4.1-mini",
+    "plan_tasks": "gpt-5-mini",
+    "manager": "gpt-5.1",
+    "worker_code": "gpt-5.1",
+    "worker_test": "gpt-4.1-mini",
+    "worker_doc": "gpt-4.1-mini",
+    "alignment": "gpt-4.1-nano",
+    "intent": "gpt-4.1-nano",
+    "research_deep": "o3-deep-research",
+}
+
+
+Then implement:
+
+def get_model_for_role(role: str) -> str:
+    env_var = _ROLE_ENV_VARS.get(role)
+    if env_var:
+        override = os.getenv(env_var)
+        if override:
+            return override
+    # Fallback
+    return _ROLE_DEFAULT_MODELS[role]
+
+4.2 Calling helper
+
+Implement a helper wrapper:
+
+def call_model_for_role(role: str, messages: list, **kwargs):
+    model = get_model_for_role(role)
+    # Under the hood, reuse the main client call that generate_reply_from_history uses,
+    # but skip the "mode" routing and pass model directly.
+    return _call_model(
+        model=model,
+        messages=messages,
+        **kwargs,
+    )
+
+
+All subsystems in §3 should call this helper instead of hard‑coding model names or using mode="auto".
+
+5. Embeddings & ingestion batching
+5.1 Embedding model
+
+Use OPENAI_EMBEDDING_MODEL for all embeddings:
+
+Messages, docs, memory, blueprint chunks, repo files.
+
+Recommended default:
+
+text-embedding-3-small – cheap, strong enough for semantic search.
+
+5.2 Implementation targets
+
+File: backend/app/vectorstore/chroma_store.py
+
+File: your repo ingestion pipeline (e.g., backend/app/ingestion/github_ingestor.py or equivalent).
+
+TODOs:
+
+Centralize embedding model resolution:
+
+def get_embedding_model() -> str:
+    return os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+
+
+Ensure all embedding calls go through this helper.
+
+Implement batching for large ingests:
+
+When ingesting a huge repo or 500k‑word doc:
+
+Split text chunks into batches such that:
+
+Token count per embeddings request stays well under ~300k.
+
+For example, batches of ~50k–100k tokens.
+
+Call embeddings API for each batch.
+
+Consider logging per‑batch progress so the UI can show “Batch X/Y ingested”.
+
+6. Cost management patterns
+
+This section is guidance for future you when tuning env vars.
+
+6.1 Use small models for:
+
+Conversation summaries (summary).
+
+Intent classification (intent).
+
+Alignment checks (alignment) when context is short.
+
+Simple blueprint outlines (blueprint) if cost is tight.
+
+6.2 Use mid‑tier models for:
+
+Project snapshots (snapshot).
+
+PlanNode → Task decomposition (plan_tasks) if gpt-5-mini is too pricey.
+
+test_worker (worker_test) when test design isn’t extremely complex.
+
+6.3 Use strongest models for:
+
+Manager planning (manager) – this is where many downstream steps are decided.
+
+code_worker (worker_code) – editing real code & running tests is high‑impact.
+
+Deep research tasks (research_deep) when you genuinely need it.
+
+By separating chat modes from role aliases, you can:
+
+Keep the user‑facing chat on a cheaper model most of the time.
+
+Reserve expensive calls for autopilot and code where they pay off.
+
+7. (Optional) Anthropic or other providers
+
+InfinityWindow currently expects an OpenAI‑compatible client. If you later add Anthropic or other providers, update this matrix as follows:
+
+Add provider‑specific env vars, e.g.:
+
+ANTHROPIC_MODEL_MANAGER
+
+ANTHROPIC_MODEL_WORKER_CODE
+
+Extend get_model_for_role to:
+
+Check provider‑specific envs.
+
+Encode provider choice alongside model name (e.g., "anthropic:claude-3.7-sonnet").
+
+Teach openai_client (or a new llm_client) how to call non‑OpenAI models while preserving the same role names.
+
+For now, this section is just a placeholder for future evolution.
+
+8. Implementation checklist for Cursor
+
+When using this doc to drive Cursor:
+
+Add env support & role helpers
+
+ Update backend/app/llm/openai_client.py:
+
+Add _ROLE_ENV_VARS, _ROLE_DEFAULT_MODELS.
+
+Implement get_model_for_role and call_model_for_role.
+
+Ensure chat mode defaults (_DEFAULT_MODELS) match §2.2.
+
+Ensure OPENAI_EMBEDDING_MODEL fallback is text-embedding-3-small.
+
+Wire subsystems to role‑based calls
+
+ Blueprint ingestion (backend/app/services/blueprints.py):
+
+Use call_model_for_role("blueprint", ...) and call_model_for_role("plan_tasks", ...).
+
+ Conversation summaries (backend/app/services/conversation_summaries.py):
+
+Use call_model_for_role("summary", ...).
+
+ Snapshot (backend/app/services/snapshot.py):
+
+Use call_model_for_role("snapshot", ...).
+
+ Manager agent (backend/app/services/manager.py):
+
+Use call_model_for_role("manager", ...) for planning.
+
+ Workers (backend/app/services/workers.py):
+
+Use call_model_for_role("worker_code" / "worker_test" / "worker_doc", ...).
+
+ Alignment helper (backend/app/services/alignment.py):
+
+Use call_model_for_role("alignment", ...).
+
+ Intent classifier (backend/app/llm/intent_classifier.py):
+
+Use call_model_for_role("intent", ...).
+
+Centralize embeddings
+
+ Update backend/app/vectorstore/chroma_store.py and ingestion code to use get_embedding_model() and chunked batching.
+
+Docs
+
+ Add this file as docs/MODEL_MATRIX.md.
+
+ Cross‑link from docs/CONFIG_ENV.md, docs/SYSTEM_OVERVIEW.md, and docs/DEV_GUIDE.md.
+
+Once those boxes are ticked, InfinityWindow will have a clear, configurable model strategy for the manager, workers, blueprints, and ingestion, and Cursor will know exactly where to make changes.
