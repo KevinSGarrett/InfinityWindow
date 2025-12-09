@@ -53,17 +53,11 @@ This document captures the live task surface (APIs, automation behavior, telemet
 - Playwright stabilizers: seeded data for ui-extended (instructions/decisions/memory/task), refresh-all before confidence chip check, and lenient fallback on instruction meta keep the suite green on 8000.
 
 ## Open follow-ups (from `docs/TODO_CHECKLIST.md`)
-- Confidence scores + telemetry UX polish.
-- Priority & grouping heuristics (Critical/Blocked/Ready) refinement; dependency tracking.
-- Context-aware extraction prompt improvements for noisy/long histories.
-- Full usage/telemetry dashboard and audit snippets (“Closed automatically on …”).
-- Next iteration (planned):
-  - Tighten task intent extraction for vague/multi-intent prompts; reduce “analysis” noise. (shipped)
-  - Expand priority inference (Critical/High/Ready) and blocked detection with richer phrase lists and context (instructions/goals). (shipped v1 keyword expansion)
-  - Emit audit snippets in `auto_notes` when automation closes a task, including confidence and matched text. (shipped)
-  - Telemetry polish: include matched_text where safe, ensure confidence stats align with audit notes, and surface priority/blocked in recent actions consistently. (shipped)
-  - Add blocked-context into extraction prompt (shipped v1); consider surfacing grouping in Usage charts/table.
-  - Future dashboard: dedicated Usage/telemetry dashboard with graphs/filters/long-term analytics (design goal).
+- Telemetry-driven tuning for auto-mode/task automation (learned heuristics, confidence UX polish).
+- Deeper priority/grouping refinement and full dependency graphing (beyond current hints).
+- Review/approve UX for low-confidence additions/completions (suggested-change queue hardening).
+- Usage/telemetry dashboard Phase 3: long-window persistence/analytics; richer charts once APIs exist.
+- Retrieval/context shaping roadmap: per-surface retrieval tuning and configurable strategies.
 
 ## Quick operational notes
 - If automation misbehaves in QA, ensure the DB/Chroma are clean (`tools/reset_qa_env.py` in QA copy) and rerun `python -m qa.run_smoke`.

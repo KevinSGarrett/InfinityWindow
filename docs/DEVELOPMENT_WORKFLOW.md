@@ -86,3 +86,12 @@ npm run test:e2e
 
 Quick pointers: use `DEV_GUIDE.md` for code structure and conventions, `OPERATIONS_RUNBOOK.md` for QA/ops routines, and `TEST_PLAN.md` for detailed test cases.
 
+## Parallel development with multiple AI agents
+- We often run multiple Cursor agents (e.g., #A/#B/#C) in parallel; each agent works on its own branch and scope.
+- Standard branch flow per agent:
+  - `git checkout main` → `git pull --rebase origin main`
+  - `git checkout -b <branch>` (e.g., `docs/agent-c-crm-and-workflow`)
+  - Develop and test locally: `$env:LLM_MODE="stub"; $env:VECTORSTORE_MODE="stub"; make ci`
+  - `git push -u origin <branch>` and open a PR to `main`; wait for GitHub Actions `make ci` (stubbed) to pass before merge.
+- Live (non-stub) runs are documented separately; CI always uses stubbed LLM/vector store and needs no external API keys.
+

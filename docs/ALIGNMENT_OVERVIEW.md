@@ -1,6 +1,6 @@
 # Alignment Overview
 
-This is a skim-friendly entry point for alignment and requirement tracking. For the full matrices and evidence, see `docs/alignment/` (v1 dashboard) and `docs/alignment_002/` (current matrices, requirement index, and evidence files). Use this page to jump to the right docs, code, and tests per requirement cluster.
+This is a skim-friendly entry point for alignment and requirement tracking. For the full matrices and evidence, see `docs/alignment/` (v1 dashboard) and `docs/alignment_002/` (current matrices, requirement index, and evidence files). Use this page to jump to the right docs, code, and tests per requirement cluster. For a canonical requirements summary, see `docs/REQUIREMENTS_CRM.md`.
 
 ## How to use this doc
 - Start here to see which clusters are Complete vs Partial vs Not started.
@@ -16,8 +16,8 @@ This is a skim-friendly entry point for alignment and requirement tracking. For 
 - Tests: `qa/mode_routing_probe.py`; `docs/TEST_PLAN.md` B-Mode-01/02; UI exercised indirectly in `frontend/tests/usage-dashboard.spec.ts` via routing charts.
 
 ### Autonomous TODO intelligence — Status: Partial
-- Scope: Auto add/complete/dedupe with confidence scoring, audit notes, and telemetry are live; dependency graphing and richer approval flows remain.
-- Docs: `docs/TODO_CHECKLIST.md` (§2, §6), `docs/PROGRESS.md` (2025-12-14 audit trail), `docs/USER_MANUAL.md` (§6.2–6.3).
+- Scope: Auto add/complete/dedupe with confidence scoring, audit notes, context-aware prompts (goals/instructions/pinned notes + blocked/dependency context), and noisy/long-history guards are live; dependency graphing and richer approval flows remain.
+- Docs: `docs/TODO_CHECKLIST.md` (§2, §6), `docs/PROGRESS.md` (2025-12-14 audit trail), `docs/USER_MANUAL.md` (§6.2–6.3), `docs/tasks/AUTOMATION.md`.
 - Code: `backend/app/api/main.py` (task maintainer + telemetry), `backend/app/db/models.py` (`Task.auto_notes`), `frontend/src/App.tsx` (Tasks tab + audit note display).
 - Tests: `qa/tests_api/test_tasks_automation_audit.py`, `qa/tests_api` task telemetry cases; Playwright coverage in `frontend/tests/tasks-confidence.spec.ts` and `tasks-suggestions.spec.ts`.
 
@@ -26,6 +26,12 @@ This is a skim-friendly entry point for alignment and requirement tracking. For 
 - Docs: `docs/USAGE_TELEMETRY_DASHBOARD.md`, `docs/TODO_CHECKLIST.md` (§2, §5), `docs/PROGRESS.md` (2025-12-13/2025-12-08 entries), `docs/USER_MANUAL.md` (§11, §5.3).
 - Code: `frontend/src/App.tsx` (Usage tab charts/exports), `backend/app/api/main.py` (`/debug/telemetry`, `/conversations/{id}/usage`), `backend/app/llm/openai_client.py` (telemetry counters).
 - Tests: `qa/tests_api/test_usage_telemetry_dashboard.py`, `frontend/tests/usage-dashboard.spec.ts`, smoke `qa/run_smoke.py` (telemetry reset).
+
+### Enhanced retrieval & context shaping — Status: Partial (Phase 0 complete)
+- Scope: Centralized retrieval profiles for messages/docs/memory/tasks with env-configurable `top_k`/thresholds; defaults preserve prior behavior. Deeper per-feature tuning and scoring remain future.
+- Docs: `docs/TODO_CHECKLIST.md` (§2), `docs/CONFIG_ENV.md` (§5.2), `docs/SYSTEM_OVERVIEW.md` (§2.1), `docs/PROGRESS.md` (2025-12-15 entry).
+- Code: `backend/app/context/retrieval_strategies.py`, `backend/app/api/main.py` (chat retrieval), `backend/app/api/search.py` (search endpoints), `backend/app/vectorstore/chroma_store.py` (query helpers).
+- Tests: `qa/tests_api/test_retrieval_profiles.py` (env overrides + defaults).
 
 ### Ingestion & vector store (T-phase ingestion) — Status: Complete for repo ingestion; blueprint ingestion TBD
 - Scope: Repo ingestion batching, hash-skipping, and progress/audit endpoints are live with stubbed vector store support; blueprint/plan ingestion remains design-only.

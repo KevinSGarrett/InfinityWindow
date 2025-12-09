@@ -396,6 +396,7 @@ These phases are intentionally high‑level. When we decide to start on one, we 
 - Exports explicitly mirror the filtered recent actions; Usage tab handles empty/error states without collapsing the panel.
 - Added API coverage for `/debug/telemetry` and `/conversations/{id}/usage` (`qa/tests_api/test_usage_telemetry_dashboard.py`) plus Playwright coverage for charts/filters/exports (`frontend/tests/usage-dashboard.spec.ts`); docs refreshed for Phase 2 status.
 - Phase 2 polish: Usage fetch failures now surface inline, and JSON/CSV exports show a preview even if clipboard copy fails; empty states remain visible so charts/tests keep running even with sparse usage data.
+- Phase 3 (long-window persistence/analytics) is not started; tracked in `TODO_CHECKLIST` and `USAGE_TELEMETRY_DASHBOARD`.
 
 ## 2025-12-14 – Task automation audit trail
 - Task maintainer now writes short audit snippets for auto-added, auto-completed, and deduped tasks (stored in `Task.auto_notes` and shown in Tasks/Usage UI).
@@ -405,6 +406,11 @@ These phases are intentionally high‑level. When we decide to start on one, we 
 ## 2025-12-15 – Frontend ARIA polish
 - Closed ISSUE-045 by adding ARIA tab roles/aria-controls to the right-column tabs (with focus outlines) and clearing inline-style/lint noise.
 - Usage dashboard filters are explicitly labeled (“Usage time range”, “Usage records window”) with slightly looser padding for filters/cards; manual updated for accessibility cues.
+
+## 2025-12-15 – Retrieval profiles Phase 0
+- Added centralized retrieval profiles for messages/docs/memory/tasks in `backend/app/context/retrieval_strategies.py` with env-configurable `top_k`/score thresholds (defaults unchanged).
+- Wired chat retrieval and search endpoints to use profiles; stub vector store paths remain covered.
+- Documented new knobs in `CONFIG_ENV.md`, noted status in `SYSTEM_OVERVIEW.md`, `ALIGNMENT_OVERVIEW.md`, and `TODO_CHECKLIST.md`, and added API tests for profile defaults/overrides.
 
 
 ## 2025-12-08 – Noisy history hardening
