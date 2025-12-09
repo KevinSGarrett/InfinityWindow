@@ -96,6 +96,7 @@ def test_telemetry_and_audit_are_consistent(client, project):
         None,
     )
     assert matching is not None, "Expected telemetry entry for login task"
+    assert matching.get("source") == "auto_conversation"
     assert matching.get("task_description") == login_task["description"]
     assert (matching.get("task_auto_notes") or "").startswith("Closed automatically")
     assert (login_task.get("auto_notes") or "").startswith("Closed automatically")
@@ -140,6 +141,7 @@ def test_auto_update_tasks_adds_deduped_audit_note_and_telemetry_for_exact_dupli
     ]
     assert dedup_events, "Expected auto_deduped telemetry for login task"
     newest = dedup_events[0]
+    assert newest.get("source") == "auto_conversation"
     assert newest.get("task_description") == login_task["description"]
     assert (newest.get("task_auto_notes") or "").startswith(
         "Duplicate automatically ignored"
@@ -192,6 +194,7 @@ def test_auto_update_tasks_adds_deduped_audit_note_for_similar_description(
         None,
     )
     assert matching is not None, "Expected telemetry entry for similar login task"
+    assert matching.get("source") == "auto_conversation"
     assert matching.get("task_description") == login_task["description"]
 
 
@@ -239,6 +242,7 @@ def test_auto_update_tasks_dedupes_login_screen_with_noise(client, project):
         None,
     )
     assert dedup_event is not None
+    assert dedup_event.get("source") == "auto_conversation"
 
 
 def test_auto_update_tasks_handles_noisy_conversation_without_wrong_completions(
@@ -293,6 +297,7 @@ def test_auto_update_tasks_handles_noisy_conversation_without_wrong_completions(
         None,
     )
     assert completion_event is not None, "Expected auto_completed telemetry for login"
+    assert completion_event.get("source") == "auto_conversation"
     assert completion_event.get("task_description") == login_task["description"]
     if completion_event.get("matched_text"):
         assert "login" in completion_event["matched_text"].lower()
@@ -307,4 +312,23 @@ def test_auto_update_tasks_handles_noisy_conversation_without_wrong_completions(
         and action.get("action") == "auto_completed"
         for action in telemetry
     )
+
+
+def test_seed_task_action_sets_source(client, project):
+    payload = {
+        "project_id": project["id"],
+        "description": "Seeded auto-added task",
+        "action": "auto_added",
+        "confidence": 0.9,
+        "model": "gpt-4o-mini",
+    }
+    seed_resp = client.post("/debug/seed_task_action", json=payload)
+    assert seed_resp.status_code == 200, seed_resp.text
+
+    telemetry = _get_recent_actions(client)
+    assert telemetry, "Expected seeded telemetry action"
+    seeded = telemetry[0]
+    assert seeded.get("action") == "auto_added"
+    assert seeded.get("task_description") == payload["description"]
+    assert seeded.get("source") == "qa_seed"
 

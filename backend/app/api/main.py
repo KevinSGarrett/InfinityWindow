@@ -1075,8 +1075,10 @@ def _record_task_action(
     conversation_id: Optional[int] = None,
     details: Optional[Dict[str, Any]] = None,
     timestamp: Optional[datetime] = None,
+    source: Optional[str] = None,
 ) -> None:
     ts = timestamp or datetime.now(timezone.utc)
+    resolved_source = source or (details or {}).get("source")
     entry: Dict[str, Any] = {
         "timestamp": ts.isoformat(),
         "action": action_type,
@@ -1086,6 +1088,8 @@ def _record_task_action(
         "project_id": project_id or getattr(task, "project_id", None),
         "conversation_id": conversation_id,
     }
+    if resolved_source:
+        entry["source"] = resolved_source
     if isinstance(task, models.Task):
         entry["task_status"] = task.status
         entry["task_priority"] = task.priority
@@ -1196,6 +1200,7 @@ def _record_task_automation_event(
         _TASK_TELEMETRY[action_type] += 1
 
     merged_details = dict(details or {})
+    merged_details.setdefault("source", "auto_conversation")
     if matched_text and "matched_text" not in merged_details:
         merged_details["matched_text"] = matched_text
     if model is not None and "model" not in merged_details:
@@ -1209,6 +1214,7 @@ def _record_task_automation_event(
             project_id=project_id,
             details=merged_details or None,
             timestamp=ts,
+            source=merged_details.get("source"),
         )
     except Exception as exc:  # noqa: BLE001
         print(f"[WARN] Failed to record task action '{action_type}': {exc!r}")
@@ -1291,7 +1297,7 @@ def _create_task_suggestion(
         description=payload.get("description"),
         confidence=confidence,
         conversation_id=conversation_id,
-        details={"suggestion_id": suggestion.id},
+        details={"suggestion_id": suggestion.id, "source": "task_suggestion"},
     )
     return suggestion
 
@@ -1549,7 +1555,7 @@ def auto_update_tasks_from_conversation(
                                 "priority": task_obj.priority,
                                 "blocked_reason": task_obj.blocked_reason,
                                 "model": model_name,
-                                "source": "auto_update",
+                                "source": "auto_conversation",
                             },
                         )
                         print(
@@ -1839,7 +1845,7 @@ def auto_update_tasks_from_conversation(
                 matched_text=desc,
                 model=model_name,
                 details={
-                    "source": "auto_update",
+                    "source": "auto_conversation",
                     "priority": priority,
                     "blocked_reason": blocked_reason,
                     "dependency_hint": dependency_hint,
@@ -2929,19 +2935,66 @@ def update_task(
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found.")
 
+    changes: Dict[str, Dict[str, Any]] = {}
+
+    original_description = task.description
+    original_status = task.status
+    original_priority = task.priority
+    original_blocked_reason = task.blocked_reason
+    original_auto_notes = task.auto_notes
+
     if payload.description is not None:
+        if payload.description != task.description:
+            changes["description"] = {
+                "before": task.description,
+                "after": payload.description,
+            }
         task.description = payload.description
     if payload.status is not None:
+        if payload.status != task.status:
+            changes["status"] = {"before": task.status, "after": payload.status}
         task.status = payload.status
     if payload.priority is not None:
+        if payload.priority != task.priority:
+            changes["priority"] = {"before": task.priority, "after": payload.priority}
         task.priority = payload.priority
     if payload.blocked_reason is not None:
+        if payload.blocked_reason != task.blocked_reason:
+            changes["blocked_reason"] = {
+                "before": task.blocked_reason,
+                "after": payload.blocked_reason,
+            }
         task.blocked_reason = payload.blocked_reason
     if payload.auto_notes is not None:
+        if payload.auto_notes != task.auto_notes:
+            changes["auto_notes"] = {
+                "before": task.auto_notes,
+                "after": payload.auto_notes,
+            }
         task.auto_notes = payload.auto_notes
 
     _commit_with_retry(db)
     db.refresh(task)
+
+    if changes:
+        action_type = "manual_update"
+        if changes.get("status", {}).get("after") == "done" and original_status != "done":
+            action_type = "manual_completed"
+        _record_task_action(
+            action_type,
+            task=task,
+            confidence=1.0,
+            project_id=task.project_id,
+            details={
+                "source": "manual_update",
+                "changes": changes,
+                "previous_status": original_status,
+                "previous_priority": original_priority,
+                "previous_blocked_reason": original_blocked_reason,
+                "previous_auto_notes": original_auto_notes,
+                "previous_description": original_description,
+            },
+        )
     return task
 
 
@@ -3108,7 +3161,7 @@ def approve_task_suggestion(
             task=new_task,
             confidence=suggestion.confidence,
             conversation_id=suggestion.conversation_id,
-            details={"suggestion_id": suggestion.id},
+            details={"suggestion_id": suggestion.id, "source": "task_suggestion"},
         )
     elif suggestion.action_type == "complete":
         if suggestion.target_task is None:
@@ -3134,7 +3187,7 @@ def approve_task_suggestion(
             task=suggestion.target_task,
             confidence=suggestion.confidence,
             conversation_id=suggestion.conversation_id,
-            details={"suggestion_id": suggestion.id},
+            details={"suggestion_id": suggestion.id, "source": "task_suggestion"},
         )
     else:
         raise HTTPException(
@@ -3174,7 +3227,7 @@ def dismiss_task_suggestion(
         description=payload.get("description"),
         confidence=suggestion.confidence,
         conversation_id=suggestion.conversation_id,
-        details={"suggestion_id": suggestion.id},
+        details={"suggestion_id": suggestion.id, "source": "task_suggestion"},
     )
     return _task_suggestion_to_schema(suggestion)
 
@@ -3310,17 +3363,12 @@ def read_telemetry(reset: bool = False) -> Dict[str, Any]:
 class SeedTaskActionPayload(BaseModel):
     project_id: int
     description: str
-    action: Literal[
-        "auto_added",
-        "auto_completed",
-        "auto_deduped",
-        "auto_dismissed",
-        "auto_suggested",
-    ] = "auto_added"
+    action: str = "auto_added"
     confidence: float = 0.9
     status: Optional[str] = None
     auto_notes: Optional[str] = None
     model: Optional[str] = None
+    source: Optional[str] = None
 
 
 @app.post("/debug/seed_task_action", response_model=TaskRead)
@@ -3365,7 +3413,7 @@ def seed_task_action(payload: SeedTaskActionPayload, db: Session = Depends(get_d
         confidence=payload.confidence,
         project_id=payload.project_id,
         details={
-            "source": "debug_seed",
+            "source": "qa_seed",
             "model": payload.model,
         },
     )

@@ -221,7 +221,7 @@ def client(_temp_db_and_chroma: dict) -> Iterator[TestClient]:
                         confidence=conf,
                         conversation_id=conversation.id if conversation else None,
                         matched_text=desc,
-                        details={"source": "stub_auto_update"},
+                            details={"source": "auto_conversation"},
                         existing_task_description=existing_task.description,
                     )
                     continue
@@ -240,7 +240,7 @@ def client(_temp_db_and_chroma: dict) -> Iterator[TestClient]:
                     confidence=conf,
                     conversation_id=conversation.id if conversation else None,
                     matched_text=desc,
-                    details={"source": "stub_auto_update"},
+                    details={"source": "auto_conversation"},
                 )
             session.commit()
 
@@ -280,7 +280,7 @@ def client(_temp_db_and_chroma: dict) -> Iterator[TestClient]:
                         conversation_id=conversation.id if conversation else None,
                         matched_text=candidate,
                         details={
-                            "source": "stub_auto_update",
+                                    "source": "auto_conversation",
                             "reason": "similar_candidate",
                             "matched_text": candidate,
                         },
@@ -370,7 +370,7 @@ def client(_temp_db_and_chroma: dict) -> Iterator[TestClient]:
                                 confidence=confidence,
                                 conversation_id=conversation.id if conversation else None,
                                 matched_text=clause or task.description,
-                                details={"matched_text": clause, "source": "stub_auto_update"},
+                                details={"matched_text": clause, "source": "auto_conversation"},
                             )
                             completed = True
                             break

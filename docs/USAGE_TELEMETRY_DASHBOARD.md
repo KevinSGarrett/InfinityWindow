@@ -38,6 +38,12 @@ Status: Phase 1 shipped; Phase 2 shipped (filters, time filter, JSON/CSV export,
   - `/debug/telemetry/actions?limit=100&action=auto_added&group=critical`.
   - `/conversations/{id}/usage/aggregate?window=1h` (optional).
 
+### Task action sources (telemetry)
+- `auto_conversation`: automation from chat-driven auto-update (and manual retries).
+- `manual_update`: manual task edits/closures via `PATCH /tasks/{task_id}`.
+- `task_suggestion`: approve/dismiss flows for suggested add/complete actions.
+- `qa_seed`: QA-only seed helper `/debug/seed_task_action`.
+
 ## Task Grouping Surface
 - Use `task_group` (critical/blocked/ready) in recent actions and any future charts.
 - Consider a small legend in Usage showing counts by group.

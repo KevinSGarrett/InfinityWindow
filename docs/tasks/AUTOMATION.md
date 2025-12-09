@@ -47,6 +47,12 @@ This document captures the live task surface (APIs, automation behavior, telemet
 - Usage tab (2025-12-12): filters (action/group/model), time filter (all/last5/last10), action/model counts, JSON/CSV export for filtered recent actions; shows routing reason for auto mode when available.
 - Dev/test seed helper: `/debug/seed_task_action` can create a task and record an automation action with confidence/notes for UI/QA.
 
+### Telemetry `source` values
+- `auto_conversation`: automation emitted from chat auto-update (automatic after `/chat` or manual `POST /projects/{id}/auto_update_tasks`).
+- `manual_update`: manual edits via `PATCH /tasks/{task_id}` (e.g., closing or reprioritizing a task).
+- `task_suggestion`: approvals/dismissals of low-confidence suggestions.
+- `qa_seed`: QA/debug seeds via `/debug/seed_task_action`.
+
 ## Recent telemetry / usage checks
 - `/debug/telemetry` on 8000 shows non-zero task confidence stats and recent actions (auto_added/auto_suggested).
 - `/conversations/{id}/usage` (sample chat on gpt-5-pro) returned non-zero cost (~$0.04917) confirming usage totals are flowing post-port alignment.
