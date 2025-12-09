@@ -21,9 +21,10 @@ Status: Phase 1 shipped; Phase 2 shipped (filters, time filter, JSON/CSV export,
      - Conversation selector (existing).
 2) **Phase 2 (charts + filters)**:
    - Implemented:
-     - Filters: action, group, model ✅; time filter (all/last5/last10) ✅.
+     - Filters: action, group, model ✅; Action source (All/Automatic/Manual) ✅; time filter (all/last5/last10) ✅.
      - Exports: JSON/CSV for **the currently filtered/time-windowed recent actions** ✅.
      - Charts (lightweight bars) for calls per model, task action counts, confidence buckets, and auto-mode route usage ✅.
+     - Manual audit entries (e.g., manual closes) appear in recent actions and charts under the Action source filter so manual vs automatic actions stay distinct.
      - Empty/error states keep the Usage tab stable and surfaced inline (usage fetch errors + export copy failures) ✅.
    - Still open for future windows:
      - Time windows beyond the recent-action window (e.g., last hour/day) if APIs grow.

@@ -28,10 +28,16 @@ This document captures the live task surface (APIs, automation behavior, telemet
   - AI edit accepts `instruction` or `instructions`.
   - Terminal scoped run injects `project_id` from path; body `project_id` optional.
 
+### Priorities & blocked status (v1)
+- Auto-added tasks get a default priority from keyword heuristics (critical/high/normal/low style) when the phrasing is explicit; otherwise they stay at the neutral default.
+- Blocked/dependency hints (“blocked on”, “waiting for”, “depends on/after …”) are appended to `auto_notes` and shown in Tasks/Usage alongside the detected priority/group.
+- Automation is intentionally conservative; manual edits in the Tasks tab always override automation (including priority/blocked fields and notes).
+
 ## Telemetry & usage
 - Task counters: auto-added / auto-completed / auto-deduped; confidence stats + buckets; recent actions list (with status/priority/blocked/auto_notes/confidence/action/timestamp/matched_text/task_group and `dependency_hint` when present).
 - Cost: pricing table includes `gpt-5-nano`, `gpt-5-pro`, `gpt-5.1-codex`; Usage tab now shows non-zero totals.
 - Usage tab surfaces confidence buckets (lt_0_4, 0_4_0_7, gte_0_7) and per-action confidence; added filters (action/group/model) and JSON export for recent task actions.
+- Audit & source: manual closes emit audit notes (“Closed manually on …”) plus `manual_completed` telemetry; action source classification (`auto_conversation`, `manual_update`, `qa_seed`, review-queue approvals) flows into Usage filters and recent actions to separate manual vs automatic work.
 - Dev/test seed helper: `/debug/seed_task_action` can create a task and record an automation action with confidence/notes for UI/QA.
 
 ## Tests (current)
@@ -40,12 +46,6 @@ This document captures the live task surface (APIs, automation behavior, telemet
 - Smoke: `qa/run_smoke.py` includes tasks auto-loop probe.
 - UI: Playwright suite on backend 8000 now green — `frontend/tests/tasks-suggestions.spec.ts` (suggestion drawer approve/dismiss; priority/blocked chips), `frontend/tests/tasks-confidence.spec.ts` (confidence chip + Usage buckets), `frontend/tests/ui-smoke.spec.ts` (instructions meta tightened), `frontend/tests/ui-chat-smoke.spec.ts`, `frontend/tests/ui-extended.spec.ts`.
 - Ingestion-adjacent (for completeness): `qa/tests_api/test_ingestion_e2e.py` ensures ingestion does not block task flows.
-
-## Telemetry & usage
-- Task counters: auto-added / auto-completed / auto-deduped; confidence stats + buckets; recent actions list (with status/priority/blocked/auto_notes/confidence/action/timestamp/matched_text/task_group and `dependency_hint` when present).
-- Cost: pricing table includes `gpt-5-nano`, `gpt-5-pro`, `gpt-5.1-codex`; Usage tab now shows non-zero totals.
-- Usage tab (2025-12-12): filters (action/group/model), time filter (all/last5/last10), action/model counts, JSON/CSV export for filtered recent actions; shows routing reason for auto mode when available.
-- Dev/test seed helper: `/debug/seed_task_action` can create a task and record an automation action with confidence/notes for UI/QA.
 
 ## Recent telemetry / usage checks
 - `/debug/telemetry` on 8000 shows non-zero task confidence stats and recent actions (auto_added/auto_suggested).

@@ -361,6 +361,12 @@ To inspect how auto‑mode and tasks automation are behaving:
 
 ## 6. Tasks / TODOs (Project Tasks)
 
+Tasks in the UI can carry small status cues beyond open/done:
+
+- Priority chips (High/Normal/Low, etc.) and grouping tags that reflect the maintainer’s v1 heuristics.
+- Blocked badges when a blocker is detected; the blocker/dependency hint is appended to the task’s notes (`auto_notes`) for context.
+- Audit notes under each task for both automatic and manual actions (e.g., “Closed automatically on …” or “Closed manually on …”).
+
 ### 6.1 Manual Tasks
 
 In the **Tasks** tab (right column):
@@ -417,9 +423,15 @@ What you’ll see:
 - As you discuss future work (“We need to X, Y, Z”), new tasks appear in the Tasks tab automatically.
 - As you report progress (“We finished X”, “Y is done”, “we merged the change for Z”), corresponding tasks flip to `done` automatically, when the wording is similar enough.
 - If you mention that something is still pending/not done/blocked, the maintainer leaves it open; only the latest clear completion will close a task.
-- When automation adds, closes, or dedupes a task, a short audit note appears under the task (e.g., “Closed automatically on 2025-12-08 14:20 UTC after: 'login page task is done'”).
+- When automation adds, closes, or dedupes a task, a short audit note appears under the task (e.g., “Closed automatically on 2025-12-08 14:20 UTC after: 'login page task is done'”). Manual closes carry similar notes (“Closed manually on …”) and show up in Usage/exports as manual actions.
 
-### 6.3 Current Behavior & Best Practices
+### 6.3 Review queue (low-confidence suggestions)
+
+- Low-confidence additions or completions land in the **review queue** instead of changing tasks immediately.
+- Each suggestion shows the proposed description/status plus any detected priority or blocked/dependency hint so you can judge risk quickly.
+- Approve moves the suggestion into the normal task list (with the suggested priority/blocked note applied); Dismiss drops it and records the dismissal in telemetry.
+
+### 6.4 Current Behavior & Best Practices
 
 - The auto‑maintainer is **conservative**:
   - It prefers to **not** mark something done rather than mark the wrong task.
@@ -752,7 +764,7 @@ In the **Usage** tab:
   - Shows auto-mode routing counts, fallback attempts/successes, and autonomous task stats.
   - “Refresh & reset” lets you zero the counters after capturing a snapshot.
 - **Task automation charts & exports**:
-  - Action/group/model filters and the time filter apply to charts, the recent actions list, and JSON/CSV exports.
+  - Action/group/model filters, the Action source filter (All/Automatic/Manual), and the time filter apply to charts, the recent actions list, and JSON/CSV exports; manual actions (including manual closes) carry their audit notes when filtered.
   - Filters are keyboard/screen-reader friendly (action/group/model/time plus “Usage time range” and “Usage records window” selectors).
   - Charts cover task action types, calls per model, confidence buckets, and auto-mode routes.
   - If clipboard copy fails, the export preview still appears inline; usage/telemetry fetch errors are shown inline without collapsing the tab.

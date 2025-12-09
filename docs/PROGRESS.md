@@ -402,6 +402,12 @@ These phases are intentionally high‑level. When we decide to start on one, we 
 - Task telemetry recent_actions include `task_auto_notes`, matched text, and model info for these automation events to keep audit trails and exports in sync.
 - Added API coverage for audit notes and telemetry consistency (`qa/tests_api/test_tasks_automation_audit.py`) and reset task telemetry between tests for deterministic counts.
 
+## 2025-12-19 – TODO priority/blocked heuristics v1
+- Autonomous TODOs now apply v1 priority and blocked/dependency heuristics: auto-added tasks get a default priority, and explicit blocker/dependency phrasing is appended to `auto_notes`; heuristics remain conservative and telemetry tuning is future work.
+- Tasks UI surfaces priority chips and blocked badges; low-confidence suggestions show the proposed priority/blocked hint in the review queue so maintainers can approve or dismiss quickly.
+- Telemetry records action sources (`auto_conversation`, `manual_update`, `qa_seed`, review-queue) and manual-close audits (`manual_completed`); the Usage Action source filter separates manual vs automatic actions in charts/exports.
+- CI stays gated by `make ci` with stubbed LLM/vector modes; no change to the workflow for docs-only PRs.
+
 ## 2025-12-15 – Frontend ARIA polish
 - Closed ISSUE-045 by adding ARIA tab roles/aria-controls to the right-column tabs (with focus outlines) and clearing inline-style/lint noise.
 - Usage dashboard filters are explicitly labeled (“Usage time range”, “Usage records window”) with slightly looser padding for filters/cards; manual updated for accessibility cues.

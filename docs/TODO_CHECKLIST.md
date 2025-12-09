@@ -49,10 +49,13 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
   - [x] Audit trail snippets for auto-added/completed/deduped tasks (Task.auto_notes shown in Tasks/Usage; telemetry recent_actions include notes + matched_text).  
   - [~] Suggested-change queue / Approve–Dismiss flow for low-confidence additions or completions (initial version shipped; refine heuristics/UX over time).  
   - [~] Priority & grouping heuristics (Critical / Blocked / Ready) instead of pure recency.  
-  - [~] Dependency tracking and smarter duplicate detection beyond simple similarity (dependency hints appended to auto notes; full graph still future).  
+    - v1 assigns a default priority to auto-added tasks and captures blocked/dependency hints when phrasing is explicit (appended to `auto_notes`).  
+    - Status stays `[~]`: heuristics are conservative/not telemetry-tuned; richer ranking/grouping and dependency graphs remain future.  
+  - [~] Dependency tracking and smarter duplicate detection beyond simple similarity.  
+    - Dependency hints are appended to `auto_notes` when detected; full dependency graph modeling and cross-task dependency UIs remain future.  
   - [x] Core telemetry: counters + `/debug/telemetry` endpoint + Usage tab telemetry drawer for task automation.  
 - [~] Full usage/telemetry dashboard UI (graphs, filters, long‑term analytics).  (Phase 2 shipped: charts for action/model/confidence/mode with shared filters/time window, filtered JSON/CSV exports, inline empty/error states, and export error fallbacks; Phase 3 long-term analytics/persistence still future.)  
-  - [x] Usage tab filters/render verification; telemetry now fetches on tab entry/Use current chat; filters verified.  
+  - [x] Usage tab filters/render verification; telemetry now fetches on tab entry/Use current chat; filters verified. Action source filters distinguish automatic vs manual actions (including manual closes) and flow through charts/exports.  
   - [x] Audit trail snippets when the maintainer closes a task (“Closed automatically on …”).  
   - [ ] Context-aware extraction prompts (feed project goals, sprint focus, blockers).  
   - [x] Additional QA around noisy projects and long histories.  
