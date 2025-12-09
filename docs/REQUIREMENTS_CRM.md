@@ -26,11 +26,11 @@ Use this as the high-level map of requirement clusters, their status, and where 
 - Code: `backend/app/llm/embeddings.py` (`embed_texts_batched`), `backend/app/vectorstore/chroma_store.py`, `backend/app/api/main.py` (ingestion job endpoints).
 - Tests: `qa/ingestion_probe.py`, `qa/run_smoke.py`, `docs/TEST_PLAN.md` B-Docs cases.
 
-## Enhanced retrieval & context shaping — Status: Not started
-- Scope: Per-surface retrieval tuning (tasks vs docs vs memory) and configurable retrieval strategies; not yet implemented.
-- Docs: `docs/TODO_CHECKLIST.md` (§2), `docs/SYSTEM_OVERVIEW.md` (future roadmap references).
-- Code: Planned only.
-- Tests: Planned only.
+## Enhanced retrieval & context shaping — Status: Partial (Phase 0 complete)
+- Scope: Centralized retrieval profiles for messages/docs/memory/tasks with env-configurable `top_k`/thresholds; deeper per-surface tuning and scoring remain future.
+- Docs: `docs/TODO_CHECKLIST.md` (§2), `docs/SYSTEM_OVERVIEW.md`, `docs/CONFIG_ENV.md` (§5.2).
+- Code: `backend/app/context/retrieval_strategies.py`, retrieval wiring in `backend/app/api/main.py` and `backend/app/api/search.py`, vector store helpers in `backend/app/vectorstore/chroma_store.py`.
+- Tests: `qa/tests_api/test_retrieval_profiles.py`.
 
 ## Autopilot / Blueprint & Learning — Status: Design-only
 - Scope: Blueprint/Plan graph, Manager/Worker agents, execution runs/rollback, learning signals, autonomy modes; no code/UI live yet.
