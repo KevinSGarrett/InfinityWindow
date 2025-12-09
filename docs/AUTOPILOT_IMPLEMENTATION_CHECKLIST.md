@@ -1,4 +1,4 @@
-# InfinityWindow Autopilot  Implementation Checklist (Design)
+# InfinityWindow Autopilot – Implementation Checklist (Design)
 
 Status: Not started. Autopilot is design-only; no phases are implemented. Keep this checklist in sync with `docs/PROGRESS.md`, `docs/TODO_CHECKLIST.md`, and the design docs.
 
