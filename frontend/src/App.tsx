@@ -5883,7 +5883,11 @@ function App() {
                 {selectedProjectId == null ? (
                   <div className="files-empty">No project selected.</div>
                 ) : fsError ? (
-                  <div className="files-error-banner" role="alert">
+                  <div
+                    className="files-error-banner"
+                    data-testid="files-error-banner"
+                    role="alert"
+                  >
                     <div className="files-error-message">{fsError}</div>
                     <div className="files-error-actions">
                       <button
@@ -5950,7 +5954,7 @@ function App() {
                           No files or folders at this level.
                         </div>
                       ) : (
-                        <ul>
+                        <ul data-testid="files-root-list">
                           {fsEntries.map((entry) => {
                             const isSelected =
                               !entry.is_dir &&
