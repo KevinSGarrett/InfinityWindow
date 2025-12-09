@@ -805,12 +805,41 @@ _TASK_TELEMETRY: Dict[str, int] = {
     "auto_completed": 0,
     "auto_deduped": 0,
     "auto_suggested": 0,
+    "manual_completed": 0,
+    "manual_reopened": 0,
 }
 _TASK_ACTION_HISTORY: Deque[Dict[str, Any]] = deque(maxlen=50)
+_MANUAL_COMPLETED_ACTION = "manual_completed"
+_ACTION_SOURCE_AUTO = "auto_conversation"
+_ACTION_SOURCE_MANUAL = "manual_update"
+_ACTION_SOURCE_QA_SEED = "qa_seed"
+_ACTION_SOURCE_STUB = "stub"
+_ACTION_SOURCE_MANUAL_REVIEW = "manual_review"
+_ACTION_SOURCE_UNKNOWN = "unknown"
 _AUTO_UPDATE_TASKS_AFTER_CHAT = (
     os.getenv("AUTO_UPDATE_TASKS_AFTER_CHAT", "true").lower()
     not in {"0", "false", "no", "off"}
 )
+
+
+def _normalize_action_source(raw: Optional[str]) -> str:
+    """
+    Normalize action source strings into a small, analytics-friendly vocabulary.
+    """
+    if not raw:
+        return _ACTION_SOURCE_UNKNOWN
+    lowered = raw.strip().lower()
+    if "stub" in lowered:
+        return _ACTION_SOURCE_STUB
+    if "seed" in lowered or "debug_seed" in lowered:
+        return _ACTION_SOURCE_QA_SEED
+    if lowered in {"auto_update", "auto_conversation", "automation"}:
+        return _ACTION_SOURCE_AUTO
+    if "review" in lowered or "suggestion" in lowered:
+        return _ACTION_SOURCE_MANUAL_REVIEW
+    if "manual" in lowered:
+        return _ACTION_SOURCE_MANUAL
+    return lowered
 
 
 def get_task_telemetry(reset: bool = False) -> Dict[str, int]:
@@ -1070,22 +1099,27 @@ def _record_task_action(
     *,
     task: Optional[models.Task] = None,
     description: Optional[str] = None,
-    confidence: float,
+    confidence: Optional[float] = None,
     project_id: Optional[int] = None,
     conversation_id: Optional[int] = None,
     details: Optional[Dict[str, Any]] = None,
     timestamp: Optional[datetime] = None,
+    source: Optional[str] = None,
 ) -> None:
     ts = timestamp or datetime.now(timezone.utc)
+    raw_source = source or (details or {}).get("source")
+    normalized_source = _normalize_action_source(raw_source)
     entry: Dict[str, Any] = {
         "timestamp": ts.isoformat(),
         "action": action_type,
-        "confidence": _clamp_confidence(confidence),
         "task_id": getattr(task, "id", None),
         "task_description": getattr(task, "description", description),
         "project_id": project_id or getattr(task, "project_id", None),
         "conversation_id": conversation_id,
+        "source": normalized_source,
     }
+    if confidence is not None:
+        entry["confidence"] = _clamp_confidence(confidence)
     if isinstance(task, models.Task):
         entry["task_status"] = task.status
         entry["task_priority"] = task.priority
@@ -1105,6 +1139,8 @@ def _record_task_action(
         if "blocked_reason" in details and "task_blocked_reason" not in entry:
             entry["task_blocked_reason"] = details.get("blocked_reason")
     _TASK_ACTION_HISTORY.appendleft(entry)
+    if action_type in {"manual_completed", "manual_reopened"}:
+        _TASK_TELEMETRY[action_type] = _TASK_TELEMETRY.get(action_type, 0) + 1
 
 
 def _short_audit_snippet(value: Optional[str], max_len: int = 160) -> str:
@@ -1173,6 +1209,7 @@ def _record_task_automation_event(
     details: Optional[Dict[str, Any]] = None,
     project_id: Optional[int] = None,
     existing_task_description: Optional[str] = None,
+    source: Optional[str] = _ACTION_SOURCE_AUTO,
 ) -> str:
     """
     Single place to record task automation telemetry and write a short audit note.
@@ -1196,6 +1233,8 @@ def _record_task_automation_event(
         _TASK_TELEMETRY[action_type] += 1
 
     merged_details = dict(details or {})
+    if source and "source" not in merged_details:
+        merged_details["source"] = source
     if matched_text and "matched_text" not in merged_details:
         merged_details["matched_text"] = matched_text
     if model is not None and "model" not in merged_details:
@@ -1209,6 +1248,7 @@ def _record_task_automation_event(
             project_id=project_id,
             details=merged_details or None,
             timestamp=ts,
+            source=source,
         )
     except Exception as exc:  # noqa: BLE001
         print(f"[WARN] Failed to record task action '{action_type}': {exc!r}")
@@ -1273,6 +1313,7 @@ def _create_task_suggestion(
     payload: Dict[str, Any],
     confidence: float,
     target_task: Optional[models.Task] = None,
+    source: Optional[str] = _ACTION_SOURCE_AUTO,
 ) -> models.TaskSuggestion:
     suggestion = models.TaskSuggestion(
         project_id=project_id,
@@ -1292,6 +1333,7 @@ def _create_task_suggestion(
         confidence=confidence,
         conversation_id=conversation_id,
         details={"suggestion_id": suggestion.id},
+        source=source,
     )
     return suggestion
 
@@ -1549,8 +1591,8 @@ def auto_update_tasks_from_conversation(
                                 "priority": task_obj.priority,
                                 "blocked_reason": task_obj.blocked_reason,
                                 "model": model_name,
-                                "source": "auto_update",
                             },
+                            source=_ACTION_SOURCE_AUTO,
                         )
                         print(
                             f"[Tasks] Auto-completed '{task_obj.description}' "
@@ -1741,6 +1783,7 @@ def auto_update_tasks_from_conversation(
                     model=model_name,
                     details={"reason": "already_open", "candidate": desc},
                     existing_task_description=existing.description,
+                    source=_ACTION_SOURCE_AUTO,
                 )
                 continue
 
@@ -1799,6 +1842,7 @@ def auto_update_tasks_from_conversation(
                         existing_task_description=getattr(
                             target_task, "description", None
                         ),
+                        source=_ACTION_SOURCE_AUTO,
                     )
                 continue
 
@@ -1819,6 +1863,7 @@ def auto_update_tasks_from_conversation(
                         "dependency_hint": dependency_hint,
                     },
                     confidence=add_confidence,
+                    source=_ACTION_SOURCE_AUTO,
                 )
                 continue
 
@@ -1839,12 +1884,12 @@ def auto_update_tasks_from_conversation(
                 matched_text=desc,
                 model=model_name,
                 details={
-                    "source": "auto_update",
                     "priority": priority,
                     "blocked_reason": blocked_reason,
                     "dependency_hint": dependency_hint,
                     "model": model_name,
                 },
+                source=_ACTION_SOURCE_AUTO,
             )
             if dependency_hint:
                 note = f"Dependency hint: {dependency_hint}"
@@ -2929,6 +2974,8 @@ def update_task(
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found.")
 
+    previous_status = task.status
+
     if payload.description is not None:
         task.description = payload.description
     if payload.status is not None:
@@ -2939,6 +2986,25 @@ def update_task(
         task.blocked_reason = payload.blocked_reason
     if payload.auto_notes is not None:
         task.auto_notes = payload.auto_notes
+
+    manual_closed = previous_status == "open" and task.status == "done"
+    if manual_closed:
+        ts = datetime.now(timezone.utc)
+        ts_str = ts.isoformat().replace("+00:00", "Z")
+        manual_note = f"Closed manually on {ts_str}."
+        existing_notes = (task.auto_notes or "").rstrip()
+        task.auto_notes = f"{existing_notes}\n{manual_note}" if existing_notes else manual_note
+        try:
+            _record_task_action(
+                _MANUAL_COMPLETED_ACTION,
+                task=task,
+                confidence=None,
+                timestamp=ts,
+                details={"source": _ACTION_SOURCE_MANUAL},
+                source=_ACTION_SOURCE_MANUAL,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"[WARN] Failed to record manual task action: {exc!r}")
 
     _commit_with_retry(db)
     db.refresh(task)
@@ -3285,16 +3351,7 @@ def read_telemetry(reset: bool = False) -> Dict[str, Any]:
             .all()
         )
         task_snapshot["suggestions"] = [
-            {
-                "id": s.id,
-                "project_id": s.project_id,
-                "conversation_id": s.conversation_id,
-                "action_type": s.action_type,
-                "confidence": s.confidence,
-                "payload": s.payload,
-                "created_at": s.created_at.isoformat(),
-            }
-            for s in suggestions
+            _task_suggestion_to_schema(s).model_dump() for s in suggestions
         ]
     except Exception as e:  # noqa: BLE001
         task_snapshot["suggestions_error"] = str(e)
@@ -3365,9 +3422,10 @@ def seed_task_action(payload: SeedTaskActionPayload, db: Session = Depends(get_d
         confidence=payload.confidence,
         project_id=payload.project_id,
         details={
-            "source": "debug_seed",
+            "source": _ACTION_SOURCE_QA_SEED,
             "model": payload.model,
         },
+        source=_ACTION_SOURCE_QA_SEED,
     )
     db.commit()
     db.refresh(task)
@@ -3438,6 +3496,7 @@ def seed_task_suggestion(
         payload=suggestion_payload,
         confidence=payload.confidence,
         target_task=target_task,
+        source=_ACTION_SOURCE_QA_SEED,
     )
     db.commit()
     db.refresh(suggestion)

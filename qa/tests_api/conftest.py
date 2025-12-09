@@ -223,6 +223,7 @@ def client(_temp_db_and_chroma: dict) -> Iterator[TestClient]:
                         matched_text=desc,
                         details={"source": "stub_auto_update"},
                         existing_task_description=existing_task.description,
+                        source="auto_conversation",
                     )
                     continue
 
@@ -241,6 +242,7 @@ def client(_temp_db_and_chroma: dict) -> Iterator[TestClient]:
                     conversation_id=conversation.id if conversation else None,
                     matched_text=desc,
                     details={"source": "stub_auto_update"},
+                    source="auto_conversation",
                 )
             session.commit()
 
@@ -285,6 +287,7 @@ def client(_temp_db_and_chroma: dict) -> Iterator[TestClient]:
                             "matched_text": candidate,
                         },
                         existing_task_description=best_task.description,
+                        source="auto_conversation",
                     )
 
             if not active_seeds and not _has_actionable_hint(latest_user_message):
@@ -371,6 +374,7 @@ def client(_temp_db_and_chroma: dict) -> Iterator[TestClient]:
                                 conversation_id=conversation.id if conversation else None,
                                 matched_text=clause or task.description,
                                 details={"matched_text": clause, "source": "stub_auto_update"},
+                                source="auto_conversation",
                             )
                             completed = True
                             break

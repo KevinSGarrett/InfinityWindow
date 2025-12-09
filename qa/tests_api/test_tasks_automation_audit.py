@@ -99,6 +99,7 @@ def test_telemetry_and_audit_are_consistent(client, project):
     assert matching.get("task_description") == login_task["description"]
     assert (matching.get("task_auto_notes") or "").startswith("Closed automatically")
     assert (login_task.get("auto_notes") or "").startswith("Closed automatically")
+    assert matching.get("source") == "auto_conversation"
     if matching.get("matched_text"):
         assert "login" in matching["matched_text"].lower()
 
@@ -144,6 +145,7 @@ def test_auto_update_tasks_adds_deduped_audit_note_and_telemetry_for_exact_dupli
     assert (newest.get("task_auto_notes") or "").startswith(
         "Duplicate automatically ignored"
     )
+    assert newest.get("source") == "auto_conversation"
     if newest.get("matched_text"):
         assert "login" in newest["matched_text"].lower()
 
@@ -193,6 +195,7 @@ def test_auto_update_tasks_adds_deduped_audit_note_for_similar_description(
     )
     assert matching is not None, "Expected telemetry entry for similar login task"
     assert matching.get("task_description") == login_task["description"]
+    assert matching.get("source") == "auto_conversation"
 
 
 def test_auto_update_tasks_dedupes_login_screen_with_noise(client, project):
@@ -239,6 +242,7 @@ def test_auto_update_tasks_dedupes_login_screen_with_noise(client, project):
         None,
     )
     assert dedup_event is not None
+    assert dedup_event.get("source") == "auto_conversation"
 
 
 def test_auto_update_tasks_handles_noisy_conversation_without_wrong_completions(

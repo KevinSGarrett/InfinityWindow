@@ -25,6 +25,8 @@ def test_debug_telemetry_recent_actions_and_buckets(client: TestClient, project:
     assert counts["auto_added"] == 1
     assert counts["auto_completed"] == 1
     assert counts["auto_suggested"] == 1
+    sources = {a.get("source") for a in actions}
+    assert sources == {"qa_seed"}
 
     models = {a.get("model") or (a.get("details") or {}).get("model") for a in actions}
     assert "gpt-4o-mini" in models
