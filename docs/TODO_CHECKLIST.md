@@ -54,12 +54,13 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
 - [~] Full usage/telemetry dashboard UI (graphs, filters, long‑term analytics).  (Phase 2 shipped: charts for action/model/confidence/mode with shared filters/time window, filtered JSON/CSV exports, inline empty/error states, and export error fallbacks; Phase 3 long-term analytics/persistence still future.)  
   - [x] Usage tab filters/render verification; telemetry now fetches on tab entry/Use current chat; filters verified.  
   - [x] Audit trail snippets when the maintainer closes a task (“Closed automatically on …”).  
-  - [ ] Context-aware extraction prompts (feed project goals, sprint focus, blockers).  
+  - [x] Context-aware extraction prompts (goals/instructions/pinned notes + blocked/dependency context injected into extraction prompt).  
   - [x] Additional QA around noisy projects and long histories.  
 
-- [ ] **Enhanced retrieval & context shaping**  
-  - [ ] Per‑feature retrieval tuning (tasks vs docs vs memory).  
-  - [ ] Configurable retrieval strategies via `CONFIG_ENV.md`.  
+- [~] **Enhanced retrieval & context shaping**  
+  - [x] Phase 0 retrieval profiles centralized for messages/docs/memory/tasks with env overrides (`CONFIG_ENV.md`).  
+  - [~] Per‑feature retrieval tuning (tasks vs docs vs memory).  
+  - [~] Configurable retrieval strategies via `CONFIG_ENV.md` (baseline knobs shipped; deeper tuning future).  
 
 ---
 
