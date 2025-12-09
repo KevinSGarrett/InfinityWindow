@@ -2279,6 +2279,28 @@ function App() {
 
   // ---------- Filesystem helpers ----------
 
+  const mapFsError = (status: number, detail: string, attemptedSubpath: string) => {
+    const lowerDetail = detail.toLowerCase();
+    if (status === 400 && lowerDetail.includes("local_root_path")) {
+      return "This project does not have a valid local project folder configured. Set a local_root_path in the project settings before using the Files tab.";
+    }
+    if (status === 404) {
+      return attemptedSubpath
+        ? "Path not found under this project root. Use the up button or refresh to return to the root."
+        : "Project root not found on disk. Check local_root_path.";
+    }
+    if (status === 400 && lowerDetail.includes("not a directory")) {
+      return "Path is not a directory under the project root. Use the up button or refresh to return to the root.";
+    }
+    if (detail) {
+      return detail;
+    }
+    if (status === 400) {
+      return "Project filesystem is not available. Check local_root_path.";
+    }
+    return "Unexpected error loading files for this project.";
+  };
+
   const loadProjectFiles = async (
     projectId: number,
     subpath: string = ""
@@ -2306,10 +2328,9 @@ function App() {
         }
         setFsEntries([]);
         setFsRoot(null);
-        setFsDisplayPath("");
-        setFsError(
-          detail || "Project filesystem is not available for this project."
-        );
+        setFsDisplayPath(subpath || "");
+        setFsCurrentSubpath(subpath);
+        setFsError(mapFsError(res.status, detail, subpath));
         return;
       }
       const data: {
@@ -2321,12 +2342,14 @@ function App() {
       setFsEntries(data.entries ?? []);
       setFsDisplayPath(data.path ?? "");
       setFsCurrentSubpath(subpath);
+      setFsError(null);
     } catch (e) {
       console.error("Fetching project files threw:", e);
       setFsEntries([]);
       setFsRoot(null);
-      setFsDisplayPath("");
-      setFsError("Failed to load project files.");
+      setFsDisplayPath(subpath || "");
+      setFsCurrentSubpath(subpath);
+      setFsError("Unexpected error loading files for this project.");
     } finally {
       setFsIsLoadingList(false);
     }
@@ -5860,7 +5883,30 @@ function App() {
                 {selectedProjectId == null ? (
                   <div className="files-empty">No project selected.</div>
                 ) : fsError ? (
-                  <div className="files-error">{fsError}</div>
+                  <div className="files-error-banner" role="alert">
+                    <div className="files-error-message">{fsError}</div>
+                    <div className="files-error-actions">
+                      <button
+                        type="button"
+                        className="btn-secondary tiny"
+                        onClick={() =>
+                          selectedProjectId &&
+                          loadProjectFiles(selectedProjectId, "")
+                        }
+                        disabled={fsIsLoadingList}
+                      >
+                        Go to project root
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-secondary tiny"
+                        onClick={handleFsRefresh}
+                        disabled={fsIsLoadingList}
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  </div>
                 ) : (
                   <>
                     <div className="files-location-row">
@@ -5920,7 +5966,7 @@ function App() {
                                     "file-list-entry-button" +
                                     (isSelected ? " selected" : "")
                                   }
-                                      onClick={() => handleOpenFsEntry(entry)}
+                                  onClick={() => handleOpenFsEntry(entry)}
                                 >
                                   <span className="file-list-name">
                                     {entry.is_dir ? "📁" : "📄"}{" "}

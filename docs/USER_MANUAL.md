@@ -564,6 +564,7 @@ In the **Files** tab:
 - The header shows:
   - Project root (from `local_root_path`).
   - Current subdirectory.
+- `local_root_path` must point to a real directory on disk; if it is missing or invalid the Files tab will show an inline error prompting you to set it before browsing.
 - The file list:
   - Folders (`📁`) and files (`📄`).
   - Click a folder to enter it.
@@ -581,6 +582,7 @@ Safety:
   - Absolute paths.
   - Relative paths with `..`.
   - Attempts to escape the project root.
+- If the requested path is missing or not a directory, the Files tab shows a friendly error and offers a quick reset back to the project root.
 
 ### 8.2 AI File Edits (Manual & Automatic)
 

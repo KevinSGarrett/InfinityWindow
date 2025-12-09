@@ -406,6 +406,11 @@ These phases are intentionally high‑level. When we decide to start on one, we 
 - Closed ISSUE-045 by adding ARIA tab roles/aria-controls to the right-column tabs (with focus outlines) and clearing inline-style/lint noise.
 - Usage dashboard filters are explicitly labeled (“Usage time range”, “Usage records window”) with slightly looser padding for filters/cards; manual updated for accessibility cues.
 
+## 2025-12-16 – Files tab local_root_path UX
+- Files tab now surfaces clear errors when `local_root_path` is missing/invalid (400) or the target path is missing/not a directory (404/400), with reset-to-root controls.
+- Added API coverage for `/projects/{id}/fs/list` local_root_path validation (missing, invalid, happy path) while keeping `_safe_join` / `_get_project_root` protections unchanged.
+- USER_MANUAL and TODO checklist updated to note the requirement for a valid on-disk project root and the UI messaging.
+
 
 ## 2025-12-08 – Noisy history hardening
 - Added API QA for noisy/long conversations: mixed completion vs pending signals, chatter-only no-op, and near-duplicate “login screen” dedupe telemetry.

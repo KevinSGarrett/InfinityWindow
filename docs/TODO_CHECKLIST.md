@@ -68,6 +68,7 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
 - [x] **Right‑column 8‑tab model** (Tasks, Docs, Files, Search, Terminal, Usage, Notes, Memory).  
 - [x] **Global “Refresh all”** for right‑hand panels.  
 - [~] **Right‑column layout polish** (spacing, typography, panel ergonomics).  
+- [x] Files tab surfaces `local_root_path` / path-not-found errors (fs/list) with reset-to-root guidance.  
 - [x] **Search tab UX**: filters, result grouping, “open in…” affordances.  
 - [x] **Usage tab UX**: better aggregation, per-project and per-conversation summaries.  
 - [x] **Notes/Decisions UX**: richer metadata, tags, cross-links, pinned notes, and diff preview.  
