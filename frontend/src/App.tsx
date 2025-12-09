@@ -541,6 +541,9 @@ function App() {
   const [isIngestingRepo, setIsIngestingRepo] = useState(false);
   const [repoIngestionJob, setRepoIngestionJob] =
     useState<IngestionJob | null>(null);
+  const [repoIngestionError, setRepoIngestionError] = useState<string | null>(
+    null
+  );
   const repoIngestionPollRef = useRef<number | null>(null);
   const [repoIngestionJobs, setRepoIngestionJobs] = useState<IngestionJob[]>(
     []
@@ -3709,16 +3712,17 @@ function App() {
 
   const handleIngestRepo = async () => {
     if (!selectedProjectId) {
-      alert("No project selected.");
+      setRepoIngestionError("No project selected.");
       return;
     }
     if (!repoRootPath.trim()) {
-      alert("Please enter a repo root path.");
+      setRepoIngestionError("Please enter a repo root path.");
       return;
     }
 
     setIsIngestingRepo(true);
     setRepoIngestionJob(null);
+    setRepoIngestionError(null);
     stopRepoIngestionPolling();
     try {
       const res = await fetch(
@@ -3737,8 +3741,19 @@ function App() {
 
       if (!res.ok) {
         console.error("Repo ingestion failed:", res.status);
-        alert("Repo ingestion failed; see backend logs.");
-        setIsIngestingRepo(false);
+        let detail = "";
+        try {
+          const body = await res.json();
+          if (body && typeof body.detail === "string") {
+            detail = body.detail;
+          }
+        } catch {
+          // ignore parse errors
+        }
+        setRepoIngestionError(
+          detail ||
+            "Repo ingestion failed. Confirm local_root_path and source path are valid."
+        );
         return;
       }
 
@@ -3748,9 +3763,7 @@ function App() {
       await loadRepoIngestionJobs(selectedProjectId);
     } catch (e) {
       console.error("Repo ingestion threw:", e);
-      alert("Unexpected error while ingesting repo.");
-      setIsIngestingRepo(false);
-      stopRepoIngestionPolling();
+      setRepoIngestionError("Unexpected error while ingesting repo.");
     } finally {
       setIsIngestingRepo(false);
     }
@@ -5034,6 +5047,24 @@ function App() {
                   <details className="ingest-collapsible">
                     <summary>Ingest local repo</summary>
                 <div className="ingest-repo-form">
+              {repoIngestionError && (
+                <div
+                  className="files-error-banner ingest-error-banner"
+                  role="alert"
+                  data-testid="repo-ingest-error-banner"
+                >
+                  <div className="files-error-message">{repoIngestionError}</div>
+                  <div className="files-error-actions">
+                    <button
+                      type="button"
+                      className="btn-secondary tiny"
+                      onClick={() => setRepoIngestionError(null)}
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              )}
                   <input
                     className="ingest-input"
                     type="text"

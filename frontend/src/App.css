@@ -1904,6 +1904,32 @@ body {
   color: #6b7280;
 }
 
+.files-error-banner {
+  font-size: 0.85rem;
+  color: #991b1b;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 0.6rem;
+  padding: 0.65rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.files-error-message {
+  font-weight: 600;
+}
+
+.files-error-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.ingest-error-banner {
+  margin-bottom: 0.4rem;
+}
+
 .files-error {
   font-size: 0.85rem;
   color: #b91c1c;

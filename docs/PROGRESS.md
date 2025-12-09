@@ -406,6 +406,12 @@ These phases are intentionally high‑level. When we decide to start on one, we 
 - Closed ISSUE-045 by adding ARIA tab roles/aria-controls to the right-column tabs (with focus outlines) and clearing inline-style/lint noise.
 - Usage dashboard filters are explicitly labeled (“Usage time range”, “Usage records window”) with slightly looser padding for filters/cards; manual updated for accessibility cues.
 
+## 2025-12-17 – Retrieval Phase 1b, Files UX, multi-agent docs
+- Retrieval profiles Phase 0/1: centralized profiles with env-configurable `top_k`/thresholds applied across chat/search for messages/docs/memory; `qa/tests_api/test_retrieval_profiles.py` updated accordingly.
+- Files tab & fs/list safety: invalid/missing `local_root_path` and path-not-found cases surface inline errors with reset-to-root guidance; backend helpers `_safe_join`/`_get_project_root` unchanged; API coverage in `qa/tests_api/test_projects_fs.py`; Playwright coverage in `frontend/tests/ui-files-fs-ux.spec.ts`.
+- Docs refreshed: CRM/checklist/alignment reflect retrieval Phase 0/1 and Files UX; multi-agent workflow (Cursor #A/#B/#C) documented with stubbed `make ci` expectations.
+- CI: GitHub Actions continues to run `make ci` with `LLM_MODE=stub` and `VECTORSTORE_MODE=stub`; no external keys required.
+
 
 ## 2025-12-08 – Noisy history hardening
 - Added API QA for noisy/long conversations: mixed completion vs pending signals, chatter-only no-op, and near-duplicate “login screen” dedupe telemetry.

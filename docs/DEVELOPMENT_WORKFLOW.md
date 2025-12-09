@@ -86,3 +86,15 @@ npm run test:e2e
 
 Quick pointers: use `DEV_GUIDE.md` for code structure and conventions, `OPERATIONS_RUNBOOK.md` for QA/ops routines, and `TEST_PLAN.md` for detailed test cases.
 
+## Parallel development with multiple Cursor agents
+- Roles (typical):
+  - Cursor #A – backend retrieval/automation.
+  - Cursor #B – frontend/UI/Playwright.
+  - Cursor #C – docs/alignment/workflow.
+- Branch/PR flow (Cursor-driven):
+  - Sync main: `git switch main` → `git pull --ff-only`.
+  - Create a scoped branch (e.g., `feature/agent-a-<topic>`, `fix/agent-b-<topic>`, `docs/agent-c-<topic>`).
+  - Develop and test locally with stubbed deps: `$env:LLM_MODE="stub"; $env:VECTORSTORE_MODE="stub"; make ci`.
+  - Commit with conventional messages, push, and open a PR to `main`; merge only after GitHub Actions `make ci` (stubbed, no external keys) is green.
+- Cursor agents handle git/PR operations via the integrated tools; humans should not need to run manual git commands except for emergencies or explicit requests.
+
