@@ -171,6 +171,11 @@ Autopilot & blueprint design docs (roadmap only, not implemented yet):
 
 This hydration file is meant to point you to those documents rather than duplicate them.
 
+### Source-of-truth pipeline
+- Plans (`Project_Plan_003_UPDATED.txt` + `Updated_Project_Plan_2_*.txt`) → CRM (`docs/REQUIREMENTS_CRM.md`) → backlog/status (`docs/TODO_CHECKLIST.md`, `docs/PROGRESS.md`) → implementation + tests.
+- Newer plans supersede older ones; `Project_Plan_001/002` stay archived for context.
+- If any layer disagrees with the one above it, treat it as an alignment bug: update CRM/docs/tests (and the plan, if it was wrong) instead of accepting drift. Log mismatches in `docs/ISSUES_LOG.md`.
+
 ---
 
 ## 5. Behavioral guidelines for AI agents

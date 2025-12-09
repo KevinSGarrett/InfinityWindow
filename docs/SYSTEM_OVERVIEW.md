@@ -1,7 +1,8 @@
 # InfinityWindow – System Overview (Current System)
 
 This document describes **what InfinityWindow actually does today**: its architecture, core features, automation, and QA/operations story.  
-For detailed setup and usage steps, see `docs/USER_MANUAL.md`. For a feature‑to‑code map, see `docs/SYSTEM_MATRIX.md`. For developer workflow and Git/GitHub steps, see `docs/DEVELOPMENT_WORKFLOW.md`.
+For full requirements and status, see `docs/REQUIREMENTS_CRM.md` plus the latest project plans; for shipped vs roadmap views, use `docs/PROGRESS.md` and `docs/TODO_CHECKLIST.md`.  
+For detailed setup and usage steps, see `docs/USER_MANUAL.md`. For a feature-to-code map, see `docs/SYSTEM_MATRIX.md`. For developer workflow and Git/GitHub steps, see `docs/DEVELOPMENT_WORKFLOW.md`.
 
 ---
 
@@ -479,10 +480,11 @@ Details live in `docs/OPERATIONS_RUNBOOK.md`.
 
 Planned and partially implemented features are tracked in:
 
+- Project plans (`Project_Plan_003_UPDATED.txt` + `Updated_Project_Plan_2_*.txt`) and `docs/REQUIREMENTS_CRM.md` define the intended behavior.
 - `docs/PROGRESS.md` – by window and version (v3/v4+).
 - `docs/TODO_CHECKLIST.md` – checkbox view of outstanding work.
 
-These documents are the canonical place to see what is **planned** vs. what is implemented today. Autopilot/Blueprint/Learning work is tracked there under future phases until it ships.
+`PROGRESS.md` and `TODO_CHECKLIST.md` are the canonical views of what is **planned vs. implemented today** and must stay in sync with the CRM. Autopilot/Blueprint/Learning remain design-only; their specs live in the updated project plans and AUTOPILOT docs until they ship.
 
 ---
 
