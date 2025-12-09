@@ -44,12 +44,13 @@ export async function createTestProject(
 export async function setProjectInstructions(
   request: APIRequestContext,
   projectId: number,
-  text: string
+  text: string,
+  pinnedNote?: string
 ): Promise<void> {
   const response = await request.put(
     `${API_BASE}/projects/${projectId}/instructions`,
     {
-      data: { instruction_text: text },
+      data: { instruction_text: text, pinned_note_text: pinnedNote },
     }
   );
   expect(response.ok()).toBeTruthy();
@@ -59,16 +60,24 @@ export async function addDecision(
   request: APIRequestContext,
   projectId: number,
   title: string,
-  details: string
+  details: string,
+  options?: { category?: string; status?: string; tags?: string[] }
 ): Promise<void> {
+  const payload: Record<string, unknown> = {
+    title,
+    details,
+    category: options?.category ?? "Playwright QA",
+  };
+  if (options?.status) {
+    payload.status = options.status;
+  }
+  if (options?.tags) {
+    payload.tags = options.tags;
+  }
   const response = await request.post(
     `${API_BASE}/projects/${projectId}/decisions`,
     {
-      data: {
-        title,
-        details,
-        category: 'Playwright QA',
-      },
+      data: payload,
     }
   );
   expect(response.ok()).toBeTruthy();

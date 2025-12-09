@@ -139,10 +139,39 @@ type TaskTelemetryAction = {
   task_blocked_reason?: string | null;
   task_auto_notes?: string | null;
   task_group?: string | null;
+  source?: string | null;
   project_id?: number | null;
   conversation_id?: number | null;
   details?: TaskTelemetryDetails;
   matched_text?: string | null;
+};
+
+type ActionSource = "automatic" | "manual";
+
+const extractActionSource = (action: TaskTelemetryAction): string => {
+  const detailSource =
+    action.details && typeof action.details["source"] === "string"
+      ? String(action.details["source"])
+      : "";
+  return action.source || detailSource || "";
+};
+
+const inferActionSource = (action: TaskTelemetryAction): ActionSource => {
+  const resolvedSource = extractActionSource(action).toLowerCase();
+  if (
+    resolvedSource.includes("manual") ||
+    resolvedSource.includes("user") ||
+    resolvedSource.includes("human")
+  ) {
+    return "manual";
+  }
+  if (resolvedSource.includes("auto")) {
+    return "automatic";
+  }
+  if ((action.action || "").startsWith("auto_")) {
+    return "automatic";
+  }
+  return "manual";
 };
 
 type UsageRecord = {
@@ -439,6 +468,7 @@ function App() {
   const [isLoadingTelemetry, setIsLoadingTelemetry] = useState(false);
   const [telemetryError, setTelemetryError] = useState<string | null>(null);
   const [usageActionFilter, setUsageActionFilter] = useState<string>("all");
+  const [usageSourceFilter, setUsageSourceFilter] = useState<string>("all");
   const [usageGroupFilter, setUsageGroupFilter] = useState<string>("all");
   const [usageModelFilter, setUsageModelFilter] = useState<string>("all");
   const [usageTimeFilter, setUsageTimeFilter] = useState<string>("all");
@@ -962,11 +992,16 @@ function App() {
       const matchesModel =
         usageModelFilter === "all" || actionModel === usageModelFilter;
 
-      return matchesAction && matchesGroup && matchesModel;
+      const actionSource = inferActionSource(a);
+      const matchesSource =
+        usageSourceFilter === "all" || actionSource === usageSourceFilter;
+
+      return matchesAction && matchesGroup && matchesModel && matchesSource;
     });
   }, [
     telemetry,
     usageActionFilter,
+    usageSourceFilter,
     usageGroupFilter,
     usageModelFilter,
     lastUsageModel,
@@ -1071,7 +1106,15 @@ function App() {
   const copyRecentActionsJson = useCallback(() => {
     setUsageExportError(null);
     try {
-      const data = JSON.stringify(timeFilteredRecentActions, null, 2);
+      const actionsWithSource = timeFilteredRecentActions.map((a) => {
+        const rawSource = extractActionSource(a);
+        return {
+          ...a,
+          action_source: inferActionSource(a),
+          raw_source: rawSource || undefined,
+        };
+      });
+      const data = JSON.stringify(actionsWithSource, null, 2);
       setUsageExportFormat("json");
       setUsageExportJson(data);
       navigator.clipboard
@@ -1092,6 +1135,8 @@ function App() {
     const header = [
       "timestamp",
       "action",
+      "source",
+      "raw_source",
       "confidence",
       "task_id",
       "task_description",
@@ -1115,10 +1160,14 @@ function App() {
         return;
       }
       const rows = timeFilteredRecentActions.map((a) => {
+        const actionSource = inferActionSource(a);
+        const rawSource = extractActionSource(a);
         const m = a.model ?? a.details?.model ?? "";
         return [
           a.timestamp ?? "",
           a.action ?? "",
+          actionSource,
+          rawSource,
           a.confidence ?? "",
           a.task_id ?? "",
           a.task_description ?? "",
@@ -1519,55 +1568,71 @@ function App() {
                 className="usage-telemetry-list"
                 data-testid="recent-actions-list"
               >
-                {timeFilteredRecentActions.map((a, idx) => (
-                  <li key={`${a.timestamp}-${idx}`}>
-                    <div className="usage-label">
-                      {a.action} · conf {(a.confidence ?? 0).toFixed(2)}
-                      {(() => {
-                        const actionModel =
-                          a.details?.model ?? a.model ?? lastUsageModel;
-                        return actionModel ? (
+                {timeFilteredRecentActions.map((a, idx) => {
+                  const actionSource = inferActionSource(a);
+                  const rawSource = extractActionSource(a);
+                  const actionModel =
+                    a.details?.model ?? a.model ?? lastUsageModel;
+                  return (
+                    <li key={`${a.timestamp}-${idx}`}>
+                      <div className="usage-label">
+                        <span
+                          className={`usage-source-pill ${actionSource}`}
+                          title={
+                            rawSource
+                              ? `Source: ${rawSource}`
+                              : actionSource === "automatic"
+                              ? "Automatic action"
+                              : "Manual action"
+                          }
+                        >
+                          {actionSource === "automatic" ? "Automatic" : "Manual"}
+                        </span>
+                        {a.action} · conf {(a.confidence ?? 0).toFixed(2)}
+                        {actionModel ? (
                           <span className="usage-subtext">
                             (model: {actionModel})
                           </span>
-                        ) : null;
-                      })()}
-                    </div>
-                    <div className="usage-telemetry-sub">
-                      {a.task_description ?? "—"}
-                    </div>
-                    <div className="usage-telemetry-sub">
+                        ) : null}
+                      </div>
+                      <div className="usage-telemetry-sub">
+                        {a.task_description ?? "—"}
+                      </div>
+                      <div className="usage-telemetry-sub">
                       {a.task_status ? `status: ${a.task_status}` : ""}
                       {a.task_priority ? ` · priority: ${a.task_priority}` : ""}
                       {a.task_group ? ` · group: ${a.task_group}` : ""}
                       {a.task_blocked_reason
                         ? ` · blocked: ${a.task_blocked_reason}`
                         : ""}
-                    </div>
-                    {(a.details?.matched_text || a.matched_text) ? (
-                      <div className="usage-telemetry-sub">
-                        matched: {a.details?.matched_text ?? a.matched_text}
                       </div>
-                    ) : null}
-                    <div className="mini-bar">
-                      <div
-                        className={percentToWidthClass(
-                          ((a.confidence ?? 0) /
-                            (maxActionConfidence || 1)) *
-                            100
-                        )}
-                      />
-                    </div>
-                    {a.timestamp ? (
-                      <div className="usage-telemetry-sub">at: {a.timestamp}</div>
-                    ) : null}
-                    {a.task_auto_notes ? (
-                      <div className="usage-telemetry-sub">
-                        notes: {a.task_auto_notes}
+                      {(a.details?.matched_text || a.matched_text) ? (
+                        <div className="usage-telemetry-sub">
+                          matched: {a.details?.matched_text ?? a.matched_text}
+                        </div>
+                      ) : null}
+                      <div className="mini-bar">
+                        <div
+                          className={percentToWidthClass(
+                            ((a.confidence ?? 0) /
+                              (maxActionConfidence || 1)) *
+                              100
+                          )}
+                        />
                       </div>
-                    ) : null}
-                  </li>
-                ))}
+                      {a.timestamp ? (
+                        <div className="usage-telemetry-sub">
+                          at: {a.timestamp}
+                        </div>
+                      ) : null}
+                      {a.task_auto_notes ? (
+                        <div className="usage-telemetry-sub">
+                          notes: {a.task_auto_notes}
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
               <div className="usage-telemetry-empty">
@@ -4507,7 +4572,7 @@ function App() {
               type="button"
               id="right-tab-tasks"
               role="tab"
-              aria-selected={rightTab === "tasks"}
+              aria-selected={rightTab === "tasks" ? "true" : "false"}
               aria-controls="right-panel-tasks"
               className={
                 "right-tab" + (rightTab === "tasks" ? " active" : "")
@@ -4520,7 +4585,7 @@ function App() {
               type="button"
               id="right-tab-files"
               role="tab"
-              aria-selected={rightTab === "files"}
+              aria-selected={rightTab === "files" ? "true" : "false"}
               aria-controls="right-panel-files"
               className={
                 "right-tab" + (rightTab === "files" ? " active" : "")
@@ -4533,7 +4598,7 @@ function App() {
               type="button"
               id="right-tab-docs"
               role="tab"
-              aria-selected={rightTab === "docs"}
+              aria-selected={rightTab === "docs" ? "true" : "false"}
               aria-controls="right-panel-docs"
               className={
                 "right-tab" + (rightTab === "docs" ? " active" : "")
@@ -4546,7 +4611,7 @@ function App() {
               type="button"
               id="right-tab-search"
               role="tab"
-              aria-selected={rightTab === "search"}
+              aria-selected={rightTab === "search" ? "true" : "false"}
               aria-controls="right-panel-search"
               className={
                 "right-tab" + (rightTab === "search" ? " active" : "")
@@ -4559,7 +4624,7 @@ function App() {
               type="button"
               id="right-tab-terminal"
               role="tab"
-              aria-selected={rightTab === "terminal"}
+              aria-selected={rightTab === "terminal" ? "true" : "false"}
               aria-controls="right-panel-terminal"
               className={
                 "right-tab" + (rightTab === "terminal" ? " active" : "")
@@ -4572,7 +4637,7 @@ function App() {
               type="button"
               id="right-tab-usage"
               role="tab"
-              aria-selected={rightTab === "usage"}
+              aria-selected={rightTab === "usage" ? "true" : "false"}
               aria-controls="right-panel-usage"
               className={
                 "right-tab" + (rightTab === "usage" ? " active" : "")
@@ -4585,7 +4650,7 @@ function App() {
               type="button"
               id="right-tab-notes"
               role="tab"
-              aria-selected={rightTab === "notes"}
+              aria-selected={rightTab === "notes" ? "true" : "false"}
               aria-controls="right-panel-notes"
               className={
                 "right-tab" + (rightTab === "notes" ? " active" : "")
@@ -4598,7 +4663,7 @@ function App() {
               type="button"
               id="right-tab-memory"
               role="tab"
-              aria-selected={rightTab === "memory"}
+              aria-selected={rightTab === "memory" ? "true" : "false"}
               aria-controls="right-panel-memory"
               className={
                 "right-tab" + (rightTab === "memory" ? " active" : "")
@@ -5246,15 +5311,20 @@ function App() {
                   ) : (
                     <>
                       <div className="pinned-note-block">
-                        <label className="pinned-note-label">
+                        <label
+                          className="pinned-note-label"
+                          htmlFor="pinned-note-textarea"
+                        >
                           Pinned note (shows at the top of Notes as a quick
                           reminder)
                         </label>
                         <textarea
+                          id="pinned-note-textarea"
                           className="pinned-note-textarea"
                           placeholder="Summarize the current sprint goal, the most urgent reminder, or a key constraint..."
                           value={projectPinnedNote}
                           onChange={(e) => setProjectPinnedNote(e.target.value)}
+                          aria-label="Pinned note for this project"
                         />
                       </div>
                       <textarea
@@ -5262,6 +5332,7 @@ function App() {
                         placeholder="Use this space to capture coding conventions, sensitive areas, current priorities..."
                         value={projectInstructions}
                         onChange={(e) => setProjectInstructions(e.target.value)}
+                        aria-label="Project instructions"
                       />
                       <div className="instructions-meta">
                         {instructionsDirty ? (
@@ -5296,9 +5367,20 @@ function App() {
                       {instructionsDirty && (
                         <details className="instructions-diff">
                           <summary>View last saved instructions</summary>
-                          <pre className="instructions-diff-content">
-                            {projectInstructionsSaved || "(empty)"}
-                          </pre>
+                          <div className="instructions-diff-content">
+                            <div className="instructions-diff-label">
+                              Pinned note (saved)
+                            </div>
+                            <pre className="instructions-diff-block">
+                              {projectPinnedNoteSaved || "(empty)"}
+                            </pre>
+                            <div className="instructions-diff-label">
+                              Instructions (saved)
+                            </div>
+                            <pre className="instructions-diff-block">
+                              {projectInstructionsSaved || "(empty)"}
+                            </pre>
+                          </div>
                         </details>
                       )}
                       <div className="instructions-preview">
@@ -5306,9 +5388,21 @@ function App() {
                           Prompt preview
                         </div>
                         <pre className="instructions-preview-content">
-                          {projectInstructions
-                            ? `Project-specific instructions:\n${projectInstructions}`
-                            : "(No instructions will be injected.)"}
+                          {(() => {
+                            const parts: string[] = [];
+                            if (projectPinnedNote.trim()) {
+                              parts.push(`Pinned note:\n${projectPinnedNote.trim()}`);
+                            }
+                            if (projectInstructions.trim()) {
+                              parts.push(
+                                `Project-specific instructions:\n${projectInstructions.trim()}`
+                              );
+                            }
+                            if (parts.length === 0) {
+                              return "(No instructions will be injected.)";
+                            }
+                            return parts.join("\n\n");
+                          })()}
                         </pre>
               </div>
             </>
@@ -5353,9 +5447,13 @@ function App() {
                   ) : (
                     <>
                       <div className="decision-filters">
-                        <label className="decision-filter">
+                        <label
+                          className="decision-filter"
+                          htmlFor="decision-status-filter"
+                        >
                           <span>Status</span>
                           <select
+                            id="decision-status-filter"
                             aria-label="Filter decisions by status"
                             title="Filter decisions by status"
                             value={decisionStatusFilter}
@@ -5370,9 +5468,13 @@ function App() {
                             <option value="dismissed">Dismissed</option>
                           </select>
                         </label>
-                        <label className="decision-filter">
+                        <label
+                          className="decision-filter"
+                          htmlFor="decision-category-filter"
+                        >
                           <span>Category</span>
                           <select
+                            id="decision-category-filter"
                             aria-label="Filter decisions by category"
                             title="Filter decisions by category"
                             value={decisionCategoryFilter}
@@ -5388,9 +5490,13 @@ function App() {
                             ))}
                           </select>
                         </label>
-                        <label className="decision-filter">
+                        <label
+                          className="decision-filter"
+                          htmlFor="decision-tag-filter"
+                        >
                           <span>Tag</span>
                           <select
+                            id="decision-tag-filter"
                             aria-label="Filter decisions by tag"
                             title="Filter decisions by tag"
                             value={decisionTagFilter}
@@ -5406,9 +5512,13 @@ function App() {
                             ))}
                           </select>
                         </label>
-                        <label className="decision-filter decision-search">
+                        <label
+                          className="decision-filter decision-search"
+                          htmlFor="decision-search-input"
+                        >
                           <span>Search</span>
                           <input
+                            id="decision-search-input"
                             type="text"
                             placeholder="Find a decision…"
                             value={decisionSearchQuery}
@@ -5609,6 +5719,29 @@ function App() {
                                       {decision.details}
                                     </div>
                                   )}
+                                  <div className="decision-audit-note">
+                                    <span
+                                      className={
+                                        "decision-chip" +
+                                        (decision.auto_detected ? " auto" : " manual")
+                                      }
+                                      aria-label={
+                                        decision.auto_detected
+                                          ? "Automatically detected decision"
+                                          : "Manually added decision"
+                                      }
+                                    >
+                                      {decision.auto_detected ? "Auto" : "Manual"}
+                                    </span>
+                                    <span className="task-notes decision-audit-text">
+                                      {decision.auto_detected
+                                        ? `Detected${decision.source_conversation_id ? ` from conversation #${decision.source_conversation_id}` : " from recent chat"}`
+                                        : "Added manually"}
+                                      {` · ${new Date(
+                                        decision.created_at
+                                      ).toLocaleString()}`}
+                                    </span>
+                                  </div>
                                   <div className="decision-meta">
                                     <span>
                                       Created{" "}
@@ -6717,6 +6850,19 @@ function App() {
                         <option value="auto_suggested">Auto-suggested</option>
                         <option value="auto_dismissed">Auto-dismissed</option>
                         <option value="auto_deduped">Auto-deduped</option>
+                      </select>
+                    </label>
+                    <label className="usage-filter">
+                      <span>Action source</span>
+                      <select
+                        value={usageSourceFilter}
+                        onChange={(e) => setUsageSourceFilter(e.target.value)}
+                        aria-label="Action source filter"
+                        title="Action source filter"
+                      >
+                        <option value="all">All sources</option>
+                        <option value="automatic">Automatic</option>
+                        <option value="manual">Manual</option>
                       </select>
                     </label>
                     <label className="usage-filter">

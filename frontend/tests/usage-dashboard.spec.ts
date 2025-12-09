@@ -31,6 +31,17 @@ test.describe("Usage dashboard charts and exports", () => {
       });
       expect(seedResp.ok()).toBeTruthy();
     }
+    const manualSeed = {
+      description: "Manual dashboard note",
+      action: "manual_followup",
+      confidence: 0.42,
+      model: "gpt-4o",
+      source: "manual",
+    };
+    const manualSeedResp = await request.post(`${API}/debug/seed_task_action`, {
+      data: { project_id: projectId, ...manualSeed },
+    });
+    expect(manualSeedResp.ok()).toBeTruthy();
 
     await page.goto(APP);
     await page.waitForLoadState("networkidle");
@@ -54,17 +65,34 @@ test.describe("Usage dashboard charts and exports", () => {
     );
     expect(await modelChartRows.count()).toBeGreaterThanOrEqual(2);
 
-    await page.getByLabel("Action filter").selectOption("auto_completed");
-    await page.getByLabel("Time filter").selectOption("last5");
-
     const filteredActionRows = page.locator(
       '[data-testid="recent-actions-list"] li'
     );
+
+    await page.getByLabel("Action source filter").selectOption("manual");
+    await expect(
+      filteredActionRows.filter({ hasText: manualSeed.description })
+    ).toHaveCount(1);
+    await expect(
+      filteredActionRows.filter({ hasText: "Seed auto add" })
+    ).toHaveCount(0);
+    await page.getByRole("button", { name: "Copy JSON" }).first().click();
+    const exportPreview = page.locator('[data-testid="usage-export-preview"]');
+    await expect(exportPreview).toContainText(manualSeed.description);
+    await expect(exportPreview).not.toContainText("Seed auto add");
+    await page.getByLabel("Action source filter").selectOption("automatic");
+    await expect(
+      filteredActionRows.filter({ hasText: manualSeed.description })
+    ).toHaveCount(0);
+    await page.getByLabel("Action source filter").selectOption("all");
+
+    await page.getByLabel("Action filter").selectOption("auto_completed");
+    await page.getByLabel("Time filter").selectOption("last5");
+
     await expect(filteredActionRows).toHaveCount(1);
     await expect(filteredActionRows.first()).toContainText("auto_completed");
 
     await page.getByRole("button", { name: "Copy JSON" }).first().click();
-    const exportPreview = page.locator('[data-testid="usage-export-preview"]');
     await expect(exportPreview).toContainText("auto_completed");
     await expect(exportPreview).not.toContainText("auto_added");
 

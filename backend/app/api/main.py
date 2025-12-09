@@ -3310,17 +3310,12 @@ def read_telemetry(reset: bool = False) -> Dict[str, Any]:
 class SeedTaskActionPayload(BaseModel):
     project_id: int
     description: str
-    action: Literal[
-        "auto_added",
-        "auto_completed",
-        "auto_deduped",
-        "auto_dismissed",
-        "auto_suggested",
-    ] = "auto_added"
+    action: str = "auto_added"
     confidence: float = 0.9
     status: Optional[str] = None
     auto_notes: Optional[str] = None
     model: Optional[str] = None
+    source: Optional[str] = None
 
 
 @app.post("/debug/seed_task_action", response_model=TaskRead)
@@ -3329,6 +3324,7 @@ def seed_task_action(payload: SeedTaskActionPayload, db: Session = Depends(get_d
     Test helper: seed a task with automation metadata for UI/QA.
     Creates the task if it does not exist; records a task action with confidence.
     """
+    action = (payload.action or "auto_added").strip() or "auto_added"
     project = db.get(models.Project, payload.project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found.")
@@ -3356,16 +3352,17 @@ def seed_task_action(payload: SeedTaskActionPayload, db: Session = Depends(get_d
     if payload.auto_notes:
         task.auto_notes = payload.auto_notes
 
-    if payload.action in _TASK_TELEMETRY:
-        _TASK_TELEMETRY[payload.action] = _TASK_TELEMETRY.get(payload.action, 0) + 1
+    if action in _TASK_TELEMETRY:
+        _TASK_TELEMETRY[action] = _TASK_TELEMETRY.get(action, 0) + 1
 
+    source = (payload.source or "qa_seed").strip() or "qa_seed"
     _record_task_action(
-        payload.action,
+        action,
         task=task,
         confidence=payload.confidence,
         project_id=payload.project_id,
         details={
-            "source": "debug_seed",
+            "source": source,
             "model": payload.model,
         },
     )

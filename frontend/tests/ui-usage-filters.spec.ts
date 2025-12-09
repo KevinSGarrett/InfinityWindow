@@ -31,6 +31,17 @@ test('usage filters and exports', async ({ page, request }) => {
     });
     expect(seedResp.ok()).toBeTruthy();
   }
+  const manualSeed = {
+    description: 'Manual checklist update',
+    action: 'manual_review',
+    confidence: 0.4,
+    model: 'gpt-4o',
+    source: 'manual',
+  };
+  const manualResp = await request.post(`${API}/debug/seed_task_action`, {
+    data: { project_id: projectId, ...manualSeed },
+  });
+  expect(manualResp.ok()).toBeTruthy();
 
   await page.goto(APP);
   await page.waitForLoadState('networkidle');
@@ -68,6 +79,21 @@ test('usage filters and exports', async ({ page, request }) => {
   const modelFilteredCount = await actionsList.count();
   expect(modelFilteredCount).toBeGreaterThan(0);
   expect(modelFilteredCount).toBeLessThanOrEqual(autoAddedCount);
+
+  // Reset action/model filters so source filter can show manual entries
+  await page.getByLabel('Action filter').selectOption('all');
+  await page.getByLabel('Model filter').selectOption('all');
+
+  // Source filter hides or shows manual vs automatic
+  await page.getByLabel('Action source filter').selectOption('automatic');
+  await expect(
+    actionsList.filter({ hasText: manualSeed.description })
+  ).toHaveCount(0);
+  await page.getByLabel('Action source filter').selectOption('manual');
+  await expect(
+    actionsList.filter({ hasText: manualSeed.description })
+  ).toHaveCount(1);
+  await expect(actionsList.filter({ hasText: 'Add task' })).toHaveCount(0);
 
   // Usage time window (records) should not throw and keeps list visible
   await page.getByLabel('Usage records window').selectOption('24h');
