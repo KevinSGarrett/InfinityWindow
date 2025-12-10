@@ -234,6 +234,10 @@ Job metadata is stored in the `ingestion_jobs` table; per-file digests live in `
 
 Used by QA to verify that heuristics are behaving as expected.
 
+- **GET `/conversations/{conversation_id}/debug/retrieval_context`**
+  - Returns retrieval profiles plus recent message/doc/memory snippets used to build chat context.
+  - Intended for debugging/inspection (e.g., the Usage tab retrieval inspector), not for general user automation; snippets may be partial.
+
 ---
 
 ## 9. Health & misc
