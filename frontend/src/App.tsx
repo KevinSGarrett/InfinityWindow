@@ -2849,13 +2849,13 @@ function App() {
           const projJson: Project[] = await projRes.json();
           setProjects(projJson);
           if (projJson.length > 0) {
-            const firstId = projJson[0].id;
-            setSelectedProjectId(firstId);
-            // Preload for first project
-            refreshConversations(firstId);
-            loadProjectDocs(firstId);
-            loadTasks(firstId);
-            loadProjectFiles(firstId, "");
+            const latestId = projJson[projJson.length - 1].id;
+            setSelectedProjectId(latestId);
+            // Preload for the latest project so the UI is ready immediately.
+            refreshConversations(latestId);
+            loadProjectDocs(latestId);
+            loadTasks(latestId);
+            loadProjectFiles(latestId, "");
           }
         }
       } catch (e) {

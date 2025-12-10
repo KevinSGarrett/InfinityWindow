@@ -128,7 +128,7 @@ test.describe('UI Extended Smoke - Files / Folders / Decisions / Terminal', () =
     await expect(memoryItem).toBeVisible({ timeout: 15_000 });
 
     // Files tab: ensure listing works and no local_root_path warning
-    await page.getByRole('button', { name: 'Files' }).click();
+    await page.getByRole('tab', { name: 'Files' }).click();
     const filesPanel = page.locator('.files-panel');
     await filesPanel.waitFor({ timeout: 15_000, state: 'visible' });
     await expect(page.locator('.files-error')).toHaveCount(0);
@@ -138,7 +138,7 @@ test.describe('UI Extended Smoke - Files / Folders / Decisions / Terminal', () =
     }
 
     // Tasks tab: verify seeded task (mark done if checkbox exists)
-    await page.getByRole('button', { name: 'Tasks' }).click();
+    await page.getByRole('tab', { name: 'Tasks' }).click();
     const taskItem = page
       .locator('li.task-item', { hasText: 'Extended task' })
       .first();
@@ -180,7 +180,7 @@ test.describe('UI Extended Smoke - Files / Folders / Decisions / Terminal', () =
     }
 
     // Terminal tab: run a safe command
-    await page.getByRole('button', { name: 'Terminal' }).click();
+    await page.getByRole('tab', { name: 'Terminal' }).click();
     const terminalInput = page.locator('.manual-terminal-textarea');
     await terminalInput.waitFor({ timeout: 15_000 });
     await terminalInput.fill('echo extended-terminal');
@@ -192,7 +192,7 @@ test.describe('UI Extended Smoke - Files / Folders / Decisions / Terminal', () =
     ).toBeVisible({ timeout: 20_000 });
 
     // Search tab: verify docs search returns a result for seeded doc
-    await page.getByRole('button', { name: 'Search' }).click();
+    await page.getByRole('tab', { name: 'Search' }).click();
     const searchInput = page
       .locator(
         'input[type="text"], input[type="search"], input[placeholder*="Search"]'
