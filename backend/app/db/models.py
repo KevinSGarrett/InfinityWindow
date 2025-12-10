@@ -38,6 +38,7 @@ class Project(Base):
     pinned_note_text: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True
     )
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow
     )
@@ -241,6 +242,16 @@ class Task(Base):
     project: Mapped["Project"] = relationship(
         "Project", back_populates="tasks"
     )
+    dependencies: Mapped[List["TaskDependency"]] = relationship(
+        "TaskDependency",
+        foreign_keys="TaskDependency.task_id",
+        cascade="all, delete-orphan",
+    )
+    prerequisite_for: Mapped[List["TaskDependency"]] = relationship(
+        "TaskDependency",
+        foreign_keys="TaskDependency.depends_on_task_id",
+        cascade="all, delete-orphan",
+    )
 
 
 class TaskSuggestion(Base):
@@ -270,6 +281,37 @@ class TaskSuggestion(Base):
     project: Mapped["Project"] = relationship("Project")
     conversation: Mapped[Optional["Conversation"]] = relationship("Conversation")
     target_task: Mapped[Optional["Task"]] = relationship("Task")
+
+
+class TaskDependency(Base):
+    __tablename__ = "task_dependencies"
+    __table_args__ = (
+        UniqueConstraint(
+            "task_id",
+            "depends_on_task_id",
+            name="uq_task_dependency_task_depends_on",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("projects.id"), index=True
+    )
+    task_id: Mapped[int] = mapped_column(Integer, ForeignKey("tasks.id"), index=True)
+    depends_on_task_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tasks.id"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, index=True
+    )
+
+    project: Mapped["Project"] = relationship("Project")
+    task: Mapped["Task"] = relationship(
+        "Task", foreign_keys=[task_id], back_populates="dependencies"
+    )
+    depends_on_task: Mapped["Task"] = relationship(
+        "Task", foreign_keys=[depends_on_task_id], back_populates="prerequisite_for"
+    )
 
 
 class UsageRecord(Base):

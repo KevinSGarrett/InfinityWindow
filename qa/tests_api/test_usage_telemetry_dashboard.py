@@ -32,8 +32,8 @@ def test_debug_telemetry_recent_actions_and_buckets(client: TestClient, project:
 
     buckets = tasks["confidence_buckets"]
     assert buckets["lt_0_4"] == 1
-    assert buckets["0_4_0_7"] == 1
-    assert buckets["gte_0_7"] == 1
+    assert buckets["0_4_0_8"] == 1
+    assert buckets["gte_0_8"] == 1
 
     reset_resp = client.get("/debug/telemetry?reset=true")
     assert reset_resp.status_code == 200

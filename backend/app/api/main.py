@@ -8,7 +8,7 @@ import re
 import time
 import threading
 from collections import deque
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, List, Dict, Deque, Any, Literal, cast, TYPE_CHECKING, Generator
 
@@ -82,6 +82,7 @@ class ProjectCreate(BaseModel):
     # NEW: optional local filesystem root configured at creation
     local_root_path: Optional[str] = None
     instruction_text: Optional[str] = None
+    is_archived: Optional[bool] = False
 
     @model_validator(mode="before")
     @classmethod
@@ -101,6 +102,7 @@ class ProjectRead(BaseModel):
     instruction_text: Optional[str] = None
     instruction_updated_at: Optional[datetime] = None
     pinned_note_text: Optional[str] = None
+    is_archived: bool
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -111,6 +113,7 @@ class ProjectUpdate(BaseModel):
     local_root_path: Optional[str] = None
     instruction_text: Optional[str] = None
     pinned_note_text: Optional[str] = None
+    is_archived: Optional[bool] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -395,6 +398,8 @@ class TaskSuggestionRead(BaseModel):
     task_status: Optional[str] = None
     task_priority: Optional[str] = None
     task_blocked_reason: Optional[str] = None
+    blocking_task_ids: Optional[List[int]] = None
+    reasons: Optional[List[str]] = None
     created_at: datetime
     updated_at: datetime
 
@@ -416,6 +421,8 @@ class TaskSuggestionSeedPayload(BaseModel):
     description: Optional[str] = None
     priority: Optional[str] = None
     blocked_reason: Optional[str] = None
+    blocking_task_ids: Optional[List[int]] = None
+    reasons: Optional[List[str]] = None
     confidence: float = 0.5
 
 
@@ -584,6 +591,16 @@ def _ensure_project(db: Session, project_id: int) -> models.Project:
     project = db.get(models.Project, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found.")
+    return project
+
+
+def _ensure_active_project(db: Session, project_id: int) -> models.Project:
+    project = _ensure_project(db, project_id)
+    if getattr(project, "is_archived", False):
+        raise HTTPException(
+            status_code=400,
+            detail="Project is archived; automation disabled.",
+        )
     return project
 
 
@@ -805,6 +822,10 @@ _TASK_TELEMETRY: Dict[str, int] = {
     "auto_completed": 0,
     "auto_deduped": 0,
     "auto_suggested": 0,
+    "task_suggestion_auto_applied": 0,
+    "task_suggestion_queued_for_review": 0,
+    "task_suggestion_ignored": 0,
+    "task_suggestion_blocked_by_dependency": 0,
 }
 _TASK_ACTION_HISTORY: Deque[Dict[str, Any]] = deque(maxlen=50)
 _AUTO_UPDATE_TASKS_AFTER_CHAT = (
@@ -829,19 +850,42 @@ def get_task_telemetry(reset: bool = False) -> Dict[str, int]:
                 "avg": round(sum(confidences) / len(confidences), 3),
                 "count": len(confidences),
             }
-        bucket = {"lt_0_4": 0, "0_4_0_7": 0, "gte_0_7": 0}
-        for c in confidences:
-            if c < 0.4:
-                bucket["lt_0_4"] += 1
-            elif c < 0.7:
-                bucket["0_4_0_7"] += 1
-            else:
-                bucket["gte_0_7"] += 1
-        snapshot["confidence_buckets"] = bucket
+            bucket = {"lt_0_4": 0, "0_4_0_8": 0, "gte_0_8": 0}
+            for c in confidences:
+                if c < 0.4:
+                    bucket["lt_0_4"] += 1
+                elif c < 0.8:
+                    bucket["0_4_0_8"] += 1
+                else:
+                    bucket["gte_0_8"] += 1
+            snapshot["confidence_buckets"] = bucket
+        suggestion_actions = [
+            a for a in actions if str(a.get("action") or "").startswith("suggestion_")
+        ]
+        suggestion_confidences = [
+            c for c in (a.get("confidence") for a in suggestion_actions) if isinstance(c, (int, float))
+        ]
+        if suggestion_confidences:
+            suggestion_bucket = {"lt_0_4": 0, "0_4_0_8": 0, "gte_0_8": 0}
+            for c in suggestion_confidences:
+                if c < 0.4:
+                    suggestion_bucket["lt_0_4"] += 1
+                elif c < 0.8:
+                    suggestion_bucket["0_4_0_8"] += 1
+                else:
+                    suggestion_bucket["gte_0_8"] += 1
+            snapshot["suggestion_confidence_buckets"] = suggestion_bucket
+    blocked_by_dependency = _TASK_TELEMETRY.get(
+        "task_suggestion_blocked_by_dependency", 0
+    )
     if reset:
         reset_task_telemetry()
         snapshot = dict(_TASK_TELEMETRY)
         actions = []
+        blocked_by_dependency = _TASK_TELEMETRY.get(
+            "task_suggestion_blocked_by_dependency", 0
+        )
+    snapshot["suggestion_blocked_by_dependency"] = blocked_by_dependency
     return snapshot
 
 
@@ -997,8 +1041,23 @@ _TASK_ACTION_VERBS = (
     "document",
     "create",
 )
-_TASK_ADD_CONFIDENCE_THRESHOLD = 0.7
-_TASK_COMPLETE_CONFIDENCE_THRESHOLD = 0.7
+_TASK_ADD_CONFIDENCE_THRESHOLD = 0.8
+_TASK_COMPLETE_CONFIDENCE_THRESHOLD = 0.8
+_SUGGESTION_AUTO_APPLY_THRESHOLD = 0.8
+_SUGGESTION_REVIEW_THRESHOLD = 0.4
+_SUGGESTION_IGNORE_THRESHOLD = 0.2
+_SUGGESTION_MANUAL_CONFLICT_WINDOW_SECONDS = 300
+_AMBIGUOUS_COMPLETION_HINTS = (
+    "maybe done",
+    "might be done",
+    "probably done",
+    "should be done",
+    "should we close",
+    "consider closing",
+    "think about closing",
+    "might close",
+    "perhaps done",
+)
 
 
 def _normalize_task_text(value: str) -> str:
@@ -1065,6 +1124,85 @@ def _estimate_add_confidence(description: str, max_similarity: float) -> float:
     return _clamp_confidence(raw)
 
 
+def _normalize_ts(value: Optional[datetime]) -> Optional[datetime]:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
+def _has_recent_manual_change(task: Optional[models.Task]) -> bool:
+    if not isinstance(task, models.Task):
+        return False
+    updated_at = _normalize_ts(getattr(task, "updated_at", None))
+    if updated_at is None:
+        return False
+    now = datetime.now(timezone.utc)
+    if now - updated_at > timedelta(seconds=_SUGGESTION_MANUAL_CONFLICT_WINDOW_SECONDS):
+        return False
+    # If automation already touched this task recently, treat it as handled.
+    for action in _TASK_ACTION_HISTORY:
+        if action.get("task_id") == task.id:
+            return False
+    return True
+
+
+def _blocking_dependency_ids(db: Session, task: Optional[models.Task]) -> List[int]:
+    if not isinstance(task, models.Task):
+        return []
+    deps = (
+        db.query(models.TaskDependency)
+        .filter(models.TaskDependency.task_id == task.id)
+        .all()
+    )
+    blocking: List[int] = []
+    for dep in deps:
+        dep_task = dep.depends_on_task or db.get(models.Task, dep.depends_on_task_id)
+        if dep_task and dep_task.status != "done":
+            blocking.append(dep_task.id)
+    return blocking
+
+
+def _is_ambiguous_completion_text(text: Optional[str]) -> bool:
+    lowered = (text or "").lower()
+    return any(hint in lowered for hint in _AMBIGUOUS_COMPLETION_HINTS)
+
+
+def _classify_suggestion_decision(
+    *,
+    action_type: str,
+    confidence: float,
+    project_archived: bool,
+    has_blocking_dependencies: bool,
+    ambiguous_text: bool,
+    manual_conflict: bool,
+) -> tuple[str, List[str]]:
+    reasons: List[str] = []
+    if project_archived:
+        reasons.append("project_archived")
+        return "ignored", reasons
+    if has_blocking_dependencies:
+        reasons.append("blocking_dependencies")
+    if ambiguous_text:
+        reasons.append("ambiguous_text")
+    if manual_conflict:
+        reasons.append("recent_manual_changes")
+    if confidence < _SUGGESTION_IGNORE_THRESHOLD:
+        reasons.append("very_low_confidence")
+        return "ignored", reasons
+    if confidence >= _SUGGESTION_AUTO_APPLY_THRESHOLD and not reasons:
+        return "auto_applied", reasons
+    if confidence >= _SUGGESTION_REVIEW_THRESHOLD or reasons:
+        if "ambiguous_text" not in reasons and "blocking_dependencies" not in reasons:
+            reasons.append(
+                "mid_confidence" if confidence >= _SUGGESTION_REVIEW_THRESHOLD else "low_confidence"
+            )
+        return "queued_for_review", reasons
+    reasons.append("low_confidence")
+    return "queued_for_review", reasons
+
+
 def _record_task_action(
     action_type: str,
     *,
@@ -1105,6 +1243,60 @@ def _record_task_action(
         if "blocked_reason" in details and "task_blocked_reason" not in entry:
             entry["task_blocked_reason"] = details.get("blocked_reason")
     _TASK_ACTION_HISTORY.appendleft(entry)
+
+
+_SUGGESTION_DECISION_COUNTERS = {
+    "auto_applied": "task_suggestion_auto_applied",
+    "queued_for_review": "task_suggestion_queued_for_review",
+    "ignored": "task_suggestion_ignored",
+}
+
+
+def _record_suggestion_action(
+    decision: str,
+    *,
+    action_type: str,
+    confidence: float,
+    project_id: Optional[int],
+    conversation_id: Optional[int],
+    target_task: Optional[models.Task],
+    description: Optional[str],
+    reasons: Optional[List[str]] = None,
+    blocking_task_ids: Optional[List[int]] = None,
+    suggestion: Optional[models.TaskSuggestion] = None,
+    source: Optional[str] = None,
+    extra_details: Optional[Dict[str, Any]] = None,
+) -> None:
+    counter_key = _SUGGESTION_DECISION_COUNTERS.get(decision)
+    if counter_key:
+        _TASK_TELEMETRY[counter_key] = _TASK_TELEMETRY.get(counter_key, 0) + 1
+    if blocking_task_ids:
+        _TASK_TELEMETRY["task_suggestion_blocked_by_dependency"] = (
+            _TASK_TELEMETRY.get("task_suggestion_blocked_by_dependency", 0) + 1
+        )
+    action_label = f"suggestion_{decision}_{action_type}"
+    merged_details: Dict[str, Any] = dict(extra_details or {})
+    merged_details.update(
+        {
+            "suggestion_id": getattr(suggestion, "id", None),
+            "suggestion_decision": decision,
+            "suggestion_action_type": action_type,
+            "reasons": reasons or None,
+            "blocking_task_ids": blocking_task_ids or None,
+            "source": source,
+        }
+    )
+    # Drop empty detail values to keep telemetry compact.
+    merged_details = {k: v for k, v in merged_details.items() if v not in (None, [], {})}
+    _record_task_action(
+        action_label,
+        task=target_task,
+        description=description,
+        confidence=confidence,
+        project_id=project_id,
+        conversation_id=conversation_id,
+        details=merged_details or None,
+    )
 
 
 def _short_audit_snippet(value: Optional[str], max_len: int = 160) -> str:
@@ -1273,25 +1465,39 @@ def _create_task_suggestion(
     payload: Dict[str, Any],
     confidence: float,
     target_task: Optional[models.Task] = None,
+    reasons: Optional[List[str]] = None,
+    blocking_task_ids: Optional[List[int]] = None,
+    source: Optional[str] = None,
+    decision: str = "queued_for_review",
 ) -> models.TaskSuggestion:
+    payload_with_meta = dict(payload)
+    if reasons:
+        payload_with_meta["reasons"] = reasons
+    if blocking_task_ids:
+        payload_with_meta["blocking_task_ids"] = blocking_task_ids
     suggestion = models.TaskSuggestion(
         project_id=project_id,
         conversation_id=conversation_id,
         action_type=action_type,
-        payload=json.dumps(payload),
+        payload=json.dumps(payload_with_meta),
         confidence=_clamp_confidence(confidence),
         target_task_id=getattr(target_task, "id", None),
     )
     db.add(suggestion)
     db.flush()
     _TASK_TELEMETRY["auto_suggested"] += 1
-    _record_task_action(
-        f"suggested_{action_type}",
-        task=target_task,
-        description=payload.get("description"),
+    _record_suggestion_action(
+        decision or "queued_for_review",
+        action_type=action_type,
         confidence=confidence,
+        project_id=project_id,
         conversation_id=conversation_id,
-        details={"suggestion_id": suggestion.id},
+        target_task=target_task,
+        description=payload_with_meta.get("description"),
+        reasons=reasons,
+        blocking_task_ids=blocking_task_ids,
+        suggestion=suggestion,
+        source=source,
     )
     return suggestion
 
@@ -1338,6 +1544,8 @@ def _task_suggestion_to_schema(
     task_status = None
     task_priority = None
     task_blocked_reason = None
+    blocking_task_ids: Optional[List[int]] = None
+    reasons: Optional[List[str]] = None
     if suggestion.target_task is not None:
         task_desc = suggestion.target_task.description
         task_status = suggestion.target_task.status
@@ -1345,6 +1553,14 @@ def _task_suggestion_to_schema(
         task_blocked_reason = suggestion.target_task.blocked_reason
     elif isinstance(payload.get("description"), str):
         task_desc = payload["description"]
+    if isinstance(payload.get("blocking_task_ids"), list):
+        blocking_task_ids = [
+            _safe_int(item)
+            for item in payload.get("blocking_task_ids", [])
+            if _safe_int(item) is not None
+        ] or None
+    if isinstance(payload.get("reasons"), list):
+        reasons = [str(r) for r in payload.get("reasons", []) if r] or None
     return TaskSuggestionRead(
         id=suggestion.id,
         project_id=suggestion.project_id,
@@ -1358,6 +1574,8 @@ def _task_suggestion_to_schema(
         task_status=task_status,
         task_priority=task_priority,
         task_blocked_reason=task_blocked_reason,
+        blocking_task_ids=blocking_task_ids,
+        reasons=reasons,
         created_at=suggestion.created_at,
         updated_at=suggestion.updated_at,
     )
@@ -1402,6 +1620,21 @@ def auto_update_tasks_from_conversation(
 
     This is best‑effort and should never raise out of here.
     """
+    project = conversation.project or db.get(models.Project, conversation.project_id)
+    if project and getattr(project, "is_archived", False):
+        _record_suggestion_action(
+            "ignored",
+            action_type="auto_update_tasks",
+            confidence=0.0,
+            project_id=conversation.project_id,
+            conversation_id=conversation.id,
+            target_task=None,
+            description=None,
+            reasons=["project_archived"],
+            blocking_task_ids=None,
+            source="auto_update",
+        )
+        return
     # Get recent messages (most recent first, then reverse to chronological)
     recent_messages = (
         db.query(models.Message)
@@ -1535,7 +1768,18 @@ def auto_update_tasks_from_conversation(
                     confidence = _estimate_completion_confidence(
                         max(ratio, short_overlap), max(overlap_score, short_overlap)
                     )
-                    if confidence >= 0.6:  # lower threshold for short completions
+                    blocking_task_ids = _blocking_dependency_ids(db, task_obj)
+                    decision, reasons = _classify_suggestion_decision(
+                        action_type="complete",
+                        confidence=confidence,
+                        project_archived=bool(
+                            project and getattr(project, "is_archived", False)
+                        ),
+                        has_blocking_dependencies=bool(blocking_task_ids),
+                        ambiguous_text=_is_ambiguous_completion_text(text),
+                        manual_conflict=_has_recent_manual_change(task_obj),
+                    )
+                    if decision == "auto_applied":
                         task_obj.status = "done"
                         task_obj.updated_at = datetime.now(timezone.utc)
                         _record_task_automation_event(
@@ -1550,13 +1794,28 @@ def auto_update_tasks_from_conversation(
                                 "blocked_reason": task_obj.blocked_reason,
                                 "model": model_name,
                                 "source": "auto_update",
+                                "blocking_task_ids": blocking_task_ids or None,
+                                "decision": decision,
                             },
+                        )
+                        _record_suggestion_action(
+                            "auto_applied",
+                            action_type="complete",
+                            confidence=confidence,
+                            project_id=conversation.project_id,
+                            conversation_id=conversation.id,
+                            target_task=task_obj,
+                            description=task_obj.description,
+                            reasons=reasons,
+                            blocking_task_ids=blocking_task_ids,
+                            suggestion=None,
+                            source="auto_update",
                         )
                         print(
                             f"[Tasks] Auto-completed '{task_obj.description}' "
                             "based on recent chat."
                         )
-                    else:
+                    elif decision == "queued_for_review":
                         _create_task_suggestion(
                             db,
                             project_id=conversation.project_id,
@@ -1568,6 +1827,22 @@ def auto_update_tasks_from_conversation(
                             },
                             confidence=confidence,
                             target_task=task_obj,
+                            reasons=reasons,
+                            blocking_task_ids=blocking_task_ids,
+                            source="auto_update",
+                        )
+                    else:
+                        _record_suggestion_action(
+                            "ignored",
+                            action_type="complete",
+                            confidence=confidence,
+                            project_id=conversation.project_id,
+                            conversation_id=conversation.id,
+                            target_task=task_obj,
+                            description=task_obj.description,
+                            reasons=reasons,
+                            blocking_task_ids=blocking_task_ids,
+                            source="auto_update",
                         )
                     info["normalized"] = ""
         # Remove tasks marked done from duplicate checks
@@ -1806,7 +2081,15 @@ def auto_update_tasks_from_conversation(
             priority = _infer_task_priority(desc)
             blocked_reason = _extract_blocked_reason(desc)
             dependency_hint = _extract_dependency_hint(desc)
-            if add_confidence < _TASK_ADD_CONFIDENCE_THRESHOLD:
+            decision, reasons = _classify_suggestion_decision(
+                action_type="add",
+                confidence=add_confidence,
+                project_archived=bool(project and getattr(project, "is_archived", False)),
+                has_blocking_dependencies=False,
+                ambiguous_text=_intent_penalty(desc) > 0.0,
+                manual_conflict=False,
+            )
+            if decision == "queued_for_review":
                 _create_task_suggestion(
                     db,
                     project_id=conversation.project_id,
@@ -1819,6 +2102,23 @@ def auto_update_tasks_from_conversation(
                         "dependency_hint": dependency_hint,
                     },
                     confidence=add_confidence,
+                    reasons=reasons,
+                    blocking_task_ids=None,
+                    source="auto_update",
+                )
+                continue
+            if decision == "ignored":
+                _record_suggestion_action(
+                    "ignored",
+                    action_type="add",
+                    confidence=add_confidence,
+                    project_id=conversation.project_id,
+                    conversation_id=conversation.id,
+                    target_task=None,
+                    description=desc,
+                    reasons=reasons,
+                    blocking_task_ids=None,
+                    source="auto_update",
                 )
                 continue
 
@@ -1844,7 +2144,20 @@ def auto_update_tasks_from_conversation(
                     "blocked_reason": blocked_reason,
                     "dependency_hint": dependency_hint,
                     "model": model_name,
+                    "decision": decision,
                 },
+            )
+            _record_suggestion_action(
+                "auto_applied",
+                action_type="add",
+                confidence=add_confidence,
+                project_id=conversation.project_id,
+                conversation_id=conversation.id,
+                target_task=new_task,
+                description=desc,
+                reasons=reasons,
+                blocking_task_ids=None,
+                source="auto_update",
             )
             if dependency_hint:
                 note = f"Dependency hint: {dependency_hint}"
@@ -2067,6 +2380,7 @@ def create_project(
         local_root_path=str(validated_root),
         instruction_text=instructions,
         instruction_updated_at=datetime.now(timezone.utc) if instructions else None,
+        is_archived=bool(payload.is_archived),
     )
     db.add(project)
     _commit_with_retry(db)
@@ -2120,6 +2434,8 @@ def update_project(
         project.instruction_updated_at = datetime.now(timezone.utc)
     if payload.pinned_note_text is not None:
         project.pinned_note_text = payload.pinned_note_text.strip() or None
+    if payload.is_archived is not None:
+        project.is_archived = bool(payload.is_archived)
 
     _commit_with_retry(db)
     db.refresh(project)
@@ -2967,9 +3283,7 @@ def trigger_auto_update_tasks(
     Trigger automatic TODO extraction from the most recent conversation
     in a project. If no conversation exists, return a 400.
     """
-    project = db.get(models.Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found.")
+    project = _ensure_active_project(db, project_id)
 
     conversation = (
         db.query(models.Conversation)
@@ -3438,6 +3752,9 @@ def seed_task_suggestion(
         payload=suggestion_payload,
         confidence=payload.confidence,
         target_task=target_task,
+        reasons=payload.reasons,
+        blocking_task_ids=payload.blocking_task_ids,
+        source="debug_seed",
     )
     db.commit()
     db.refresh(suggestion)
@@ -4641,7 +4958,9 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
         print(f"[WARN] auto_title_conversation outer failed: {e!r}")
 
     # 11) AI‑assist the project TODO list (best‑effort, doesn't block)
-    if _AUTO_UPDATE_TASKS_AFTER_CHAT:
+    if conversation.project and getattr(conversation.project, "is_archived", False):
+        print("[Tasks] Skipping auto-update after chat (project archived).")
+    elif _AUTO_UPDATE_TASKS_AFTER_CHAT:
         ok, err = _run_auto_update_with_retry(
             db, conversation, model_name=model_name, attempts=2, base_delay=0.2
         )

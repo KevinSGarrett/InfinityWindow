@@ -156,6 +156,10 @@ def client(_temp_db_and_chroma: dict) -> Iterator[TestClient]:
                 for m in all_messages
                 if getattr(m, "role", "").lower() == "user"
             ]
+            project = session.get(models.Project, project_id)
+            if project and getattr(project, "is_archived", False):
+                session.commit()
+                return
             latest_message = (all_messages[-1].content or "").lower() if all_messages else ""
             latest_user_message = (
                 (user_messages[-1] or "").lower() if user_messages else latest_message
