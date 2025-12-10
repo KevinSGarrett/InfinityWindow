@@ -8,7 +8,7 @@ import re
 import time
 import threading
 from collections import deque
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional, List, Dict, Deque, Any, Literal, cast, TYPE_CHECKING, Generator
 
@@ -232,7 +232,35 @@ class ConversationUsageSummary(BaseModel):
     total_tokens_in: Optional[int]
     total_tokens_out: Optional[int]
     total_cost_estimate: Optional[float]
+    auto_reason: Optional[str] = None
     records: List[UsageRecordRead]
+
+
+class ProjectUsageSummary(BaseModel):
+    project_id: int
+    window: str
+    total_tokens_in: Optional[int]
+    total_tokens_out: Optional[int]
+    total_cost_estimate: Optional[float]
+    records: List[UsageRecordRead]
+
+_USAGE_WINDOWS = {
+    "1h": timedelta(hours=1),
+    "24h": timedelta(hours=24),
+    "7d": timedelta(days=7),
+}
+
+
+def _resolve_usage_window(window: Optional[str]) -> tuple[str, datetime]:
+    normalized = (window or "24h").lower()
+    if normalized not in _USAGE_WINDOWS:
+        raise HTTPException(
+            status_code=400, detail="window must be one of: 1h, 24h, 7d"
+        )
+    now = datetime.now(timezone.utc)
+    start = now - _USAGE_WINDOWS[normalized]
+    # Usage timestamps are stored in UTC without tzinfo; drop tzinfo for comparisons.
+    return normalized, start.replace(tzinfo=None)
 
 if TYPE_CHECKING:
     # Hints for dynamic attributes added to SQLAlchemy models at runtime
@@ -3201,7 +3229,65 @@ def _cleanup_stale_suggestions(db: Session, project_id: int) -> None:
     db.commit()
 
 
-# ---------- Usage (per-conversation) ----------
+# ---------- Usage (project + per-conversation) ----------
+
+
+@app.get(
+    "/projects/{project_id}/usage_summary",
+    response_model=ProjectUsageSummary,
+)
+def get_project_usage_summary(
+    project_id: int,
+    window: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Return aggregated usage for a project over a rolling window.
+    """
+    project = db.get(models.Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    window_label, window_start = _resolve_usage_window(window)
+
+    records_db = (
+        db.query(models.UsageRecord)
+        .filter(models.UsageRecord.project_id == project_id)
+        .filter(models.UsageRecord.created_at >= window_start)
+        .order_by(models.UsageRecord.created_at.asc())
+        .all()
+    )
+    records: List[UsageRecordRead] = [
+        UsageRecordRead.model_validate(r) for r in records_db
+    ]
+
+    total_in = sum((r.tokens_in or 0) for r in records)
+    total_out = sum((r.tokens_out or 0) for r in records)
+
+    total_cost: Optional[float] = None
+    if records:
+        running_cost = 0.0
+        for r in records:
+            try:
+                running_cost += estimate_call_cost(
+                    model=r.model,
+                    tokens_in=r.tokens_in or 0,
+                    tokens_out=r.tokens_out or 0,
+                )
+            except Exception as e:  # noqa: BLE001
+                print(
+                    f"[WARN] estimate_call_cost failed for record {r.id}: {e!r}"
+                )
+        total_cost = running_cost
+
+    return ProjectUsageSummary(
+        project_id=project_id,
+        window=window_label,
+        total_tokens_in=total_in,
+        total_tokens_out=total_out,
+        total_cost_estimate=total_cost,
+        records=cast(List[UsageRecordRead], records),  # type: ignore[arg-type]
+    )
 
 
 @app.get(
@@ -3253,11 +3339,18 @@ def get_conversation_usage(
                 )
         total_cost = running_cost
 
+    telemetry_snapshot = openai_module.get_llm_telemetry(reset=False)
+    latest_auto_reason: Optional[str] = None
+    latest_auto = telemetry_snapshot.get("latest_auto_route") if telemetry_snapshot else None
+    if isinstance(latest_auto, dict):
+        latest_auto_reason = latest_auto.get("reason") or None
+
     return ConversationUsageSummary(
         conversation_id=conversation_id,
         total_tokens_in=total_in,
         total_tokens_out=total_out,
         total_cost_estimate=total_cost,
+        auto_reason=latest_auto_reason,
         records=cast(List[UsageRecordRead], records),  # type: ignore[arg-type]
     )
 

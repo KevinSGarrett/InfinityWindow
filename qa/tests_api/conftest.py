@@ -106,6 +106,7 @@ def _reset_state(_temp_db_and_chroma: dict) -> Iterator[None]:
     Base.metadata.create_all(bind=engine)
     chroma_store._reset_chroma_persistence(clear_data=True)
     main.reset_task_telemetry()
+    openai_client.reset_llm_telemetry()
     yield
 
 
@@ -125,8 +126,33 @@ def client(_temp_db_and_chroma: dict) -> Iterator[TestClient]:
     """
     mp = pytest.MonkeyPatch()
 
-    def fake_generate_reply_from_history(messages, mode: str = "auto", model_override=None, **_: object):
-        stub = stubbed_chat(mode, messages)
+    def fake_generate_reply_from_history(
+        messages,
+        mode: str = "auto",
+        model: str | None = None,
+        usage_out: dict | None = None,
+        **_: object,
+    ):
+        normalized_mode = (mode or "auto").lower()
+        routed_mode = normalized_mode
+        routed_reason = ""
+        if model is None and normalized_mode == "auto":
+            routed_mode, routed_reason = openai_client._infer_auto_submode(messages)
+            routed_mode = routed_mode or "deep"
+            openai_client._record_auto_route(routed_mode, routed_reason)
+            if usage_out is not None:
+                usage_out["auto_mode"] = routed_mode
+                usage_out["auto_reason"] = routed_reason
+
+        stub = stubbed_chat(routed_mode, messages)
+        if usage_out is not None:
+            usage_out["model"] = model or routed_mode
+            usage_out["tokens_in"] = stub.get("tokens_in", 0)
+            usage_out["tokens_out"] = stub.get("tokens_out", 0)
+            usage_out["total_tokens"] = (stub.get("tokens_in", 0) or 0) + (
+                stub.get("tokens_out", 0) or 0
+            )
+            usage_out["cost_estimate"] = stub.get("cost", 0.0)
         return stub["reply"]
 
     mp.setattr(openai_client, "generate_reply_from_history", fake_generate_reply_from_history)

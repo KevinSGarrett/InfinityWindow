@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import os
 import re
-from collections import defaultdict
+from collections import defaultdict, deque
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple, Any
 
 from dotenv import load_dotenv
@@ -160,10 +161,13 @@ _PLANNING_HINTS = (
 )
 
 _LLM_TELEMETRY_AUTO_ROUTES: Dict[str, int] = defaultdict(int)
+_LLM_RECENT_AUTO_ROUTES: deque[Dict[str, Any]] = deque(maxlen=20)
 _LLM_TELEMETRY: Dict[str, Any] = {
     "auto_routes": _LLM_TELEMETRY_AUTO_ROUTES,
     "fallback_attempts": 0,
     "fallback_success": 0,
+    "latest_auto_route": None,
+    "recent_auto_routes": _LLM_RECENT_AUTO_ROUTES,
 }
 
 
@@ -216,30 +220,159 @@ def _infer_auto_submode(
     stripped_len = len(prompt.strip())
     newline_count = prompt.count("\n")
 
-    has_code_block = "```" in prompt or bool(re.search(r"[{};]", prompt))
-    code_hint = any(hint in lowered for hint in _CODE_HINTS)
-    if has_code_block or code_hint:
-        return "code", "code-like prompt"
-
-    is_researchy = (
-        stripped_len > 800
-        or newline_count > 8
-        or any(term in lowered for term in _RESEARCH_HINTS)
+    history_chars = sum(
+        len(str(m.get("content") or ""))
+        for m in messages
+        if isinstance(m.get("content"), str)
     )
-    if is_researchy:
-        return "research", "long/research prompt"
+    user_turns = sum(
+        1 for m in messages if (m.get("role") or "").lower() == "user"
+    )
+    total_turns = len(messages)
 
-    if any(term in lowered for term in _PLANNING_HINTS):
-        return "deep", "planning prompt"
+    code_signals: List[str] = []
+    has_code_block = "```" in prompt
+    if has_code_block:
+        code_signals.append("code fences")
 
-    if stripped_len < 120 and newline_count <= 1:
-        return "fast", "short prompt"
+    patch_markers = bool(re.search(r"(diff --git|@@ |\+\+\+|---|\bapply_patch\b)", prompt))
+    if patch_markers:
+        code_signals.append("diff/patch text")
 
-    return "deep", "default"
+    file_path_mention = bool(
+        re.search(
+            r"[A-Za-z0-9_./\\-]+\.(py|ts|tsx|js|jsx|java|go|rb|rs|c|cpp|h|cs|sql|md|mdx|json|yml|yaml|ini|cfg|toml|sh|ps1)",
+            prompt,
+        )
+    )
+    if file_path_mention:
+        code_signals.append("file paths")
+
+    terminal_like = bool(
+        re.search(r"\b(git|npm|pnpm|yarn|pip|docker|kubectl|make|pytest|uvicorn)\b", lowered)
+    )
+    if terminal_like:
+        code_signals.append("terminal/command text")
+
+    stacktrace_like = "traceback" in lowered or "exception" in lowered
+    if stacktrace_like:
+        code_signals.append("errors/traceback")
+
+    code_keywords = any(hint in lowered for hint in _CODE_HINTS)
+    if code_keywords and not code_signals:
+        code_signals.append("code keywords")
+
+    if code_signals:
+        return "code", "; ".join(code_signals)
+
+    research_hits = any(term in lowered for term in _RESEARCH_HINTS)
+    very_long_prompt = stripped_len > 1600 or newline_count > 12
+    very_long_history = history_chars > 8000 or total_turns > 30
+    short_prompt = stripped_len < 220 and newline_count <= 2
+    if research_hits or very_long_prompt or (very_long_history and not short_prompt):
+        reasons: List[str] = []
+        if research_hits:
+            reasons.append("research keywords")
+        if very_long_prompt or very_long_history:
+            reasons.append("very long prompt/history")
+        return "research", "; ".join(reasons)
+
+    planning_hits = [term for term in _PLANNING_HINTS if term in lowered]
+    if planning_hits:
+        return "deep", f"planning keywords ({', '.join(planning_hits[:2])})"
+
+    task_keywords = (
+        "todo",
+        "to-do",
+        "task",
+        "tasks",
+        "status",
+        "update",
+        "progress",
+        "blocker",
+        "blockers",
+        "standup",
+        "stand-up",
+        "eta",
+    )
+    doc_keywords = (
+        "doc",
+        "docs",
+        "documentation",
+        "readme",
+        "spec",
+        "design",
+        "memo",
+        "wiki",
+        "memory",
+        "notes",
+    )
+    file_keywords = (
+        "repo",
+        "repository",
+        "file",
+        "folder",
+        "path",
+        "directory",
+        "fs ",
+        "fs/",
+        "stack trace",
+        "logs",
+        "terminal",
+        "shell",
+    )
+
+    has_tasks = any(term in lowered for term in task_keywords)
+    has_docs = any(term in lowered for term in doc_keywords)
+    has_files = any(term in lowered for term in file_keywords)
+
+    if short_prompt:
+        reasons = ["short prompt"]
+        if has_tasks:
+            reasons.append("task/status keywords")
+        elif has_docs or has_files:
+            reasons.append("light context only")
+        return "fast", "; ".join(reasons)
+
+    long_history = history_chars > 2400 or user_turns > 8 or total_turns > 12
+    multi_paragraph = newline_count >= 6 or stripped_len > 600
+
+    if long_history or multi_paragraph or (has_docs and stripped_len > 220) or (
+        has_files and stripped_len > 220
+    ):
+        reasons: List[str] = []
+        if long_history:
+            reasons.append("long history")
+        if multi_paragraph:
+            reasons.append("multi-paragraph prompt")
+        if has_docs:
+            reasons.append("docs/memory references")
+        if has_files:
+            reasons.append("files/terminal context")
+        return "deep", "; ".join(reasons)
+
+    if stripped_len < 220 and newline_count <= 2:
+        reasons = ["short prompt"]
+        if has_tasks:
+            reasons.append("task/status keywords")
+        elif has_docs or has_files:
+            reasons.append("light context only")
+        return "fast", "; ".join(reasons)
+
+    return "deep", "default (balanced prompt)"
 
 
-def _record_auto_route(route: str) -> None:
+def _record_auto_route(route: str, reason: Optional[str] = None) -> None:
     _LLM_TELEMETRY_AUTO_ROUTES[route] += 1
+    decision = {
+        "route": route,
+        "reason": reason or "",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    _LLM_TELEMETRY["latest_auto_route"] = decision
+    recent = _LLM_TELEMETRY.get("recent_auto_routes")
+    if isinstance(recent, deque):
+        recent.appendleft(decision)
 
 
 def get_llm_telemetry(reset: bool = False) -> Dict[str, Any]:
@@ -247,6 +380,8 @@ def get_llm_telemetry(reset: bool = False) -> Dict[str, Any]:
         "auto_routes": dict(_LLM_TELEMETRY_AUTO_ROUTES),
         "fallback_attempts": int(_LLM_TELEMETRY["fallback_attempts"]),
         "fallback_success": int(_LLM_TELEMETRY["fallback_success"]),
+        "latest_auto_route": _LLM_TELEMETRY.get("latest_auto_route"),
+        "recent_auto_routes": list(_LLM_RECENT_AUTO_ROUTES),
     }
     if reset:
         reset_llm_telemetry()
@@ -257,6 +392,8 @@ def reset_llm_telemetry() -> None:
     _LLM_TELEMETRY_AUTO_ROUTES.clear()
     _LLM_TELEMETRY["fallback_attempts"] = 0
     _LLM_TELEMETRY["fallback_success"] = 0
+    _LLM_TELEMETRY["latest_auto_route"] = None
+    _LLM_RECENT_AUTO_ROUTES.clear()
 
 
 def _is_responses_model(model: str) -> bool:
@@ -545,7 +682,7 @@ def generate_reply_from_history(
     if model is None and normalized_mode == "auto":
         inferred_mode, inferred_reason = _infer_auto_submode(messages)
         routed_mode = inferred_mode or "deep"
-        _record_auto_route(routed_mode)
+        _record_auto_route(routed_mode, inferred_reason)
         print(
             f"[LLM] Auto mode heuristics routed this prompt to '{routed_mode}' ({inferred_reason})."
         )
