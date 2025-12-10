@@ -106,6 +106,7 @@ def _reset_state(_temp_db_and_chroma: dict) -> Iterator[None]:
     Base.metadata.create_all(bind=engine)
     chroma_store._reset_chroma_persistence(clear_data=True)
     main.reset_task_telemetry()
+    main.reset_project_telemetry()
     yield
 
 
