@@ -1,9 +1,25 @@
 # InfinityWindow – Progress Log
 
-_Updated from `Hydration_File_002.txt`, `To_Do_List_001.txt`, and `Cursor_Chat_Log_002.md` on 2025‑12‑02._
+This log tracks the recovered `C:\InfinityWindow_Recovery` repo (baseline 2025-12-10). Active dev repo: `C:\InfinityWindow_Recovery`; read-only backup: `C:\InfinityWindow_Backup\019`; legacy `C:\InfinityWindow` is quarantined.
 
-## High‑level status
+## Recovery 2025-12-10
+- Merge-conflict/DB/test meltdown in the legacy repo (deleted tests, schema drift, merge conflicts).
+- Restored clean snapshot from `C:\InfinityWindow_Backup\019` into `C:\InfinityWindow_Recovery`, rebuilt SQLite/Chroma, and revalidated the stack.
+- main will be resynced via a recovery branch/PR; do not edit the quarantined repo.
+- Recommended verification on the recovery branch: `python -m pytest qa/tests_api -q --disable-warnings` and `LLM_MODE=stub VECTORSTORE_MODE=stub make ci`.
 
+## Current status (Recovery build)
+- Core workspace (projects, conversations, chat/search) shipped; tasks auto add/complete/dedupe with telemetry; docs ingestion with jobs/progress/cancel/history; scoped files/terminal; notes/decisions/memory present; usage panel with short-window task telemetry charts/filters/exports.
+- Autopilot/Blueprint/export-import are design-only and not present in this build; any dashboards beyond the current usage telemetry are future work.
+
+## Next steps
+- Re-run smoke/API/Playwright checks on the recovery branch after any code changes.
+- Refine task automation heuristics and auto-mode routing as telemetry comes in; keep feature branches small and scoped per Agent A/B/C.
+
+## Historical log (pre-recovery — revalidate before relying)
+_Historical note from pre-recovery: Updated from `Hydration_File_002.txt`, `To_Do_List_001.txt`, and `Cursor_Chat_Log_002.md` on 2025‑12‑02._
+
+### High‑level status
 - **Core backend & chat**: complete per `To_Do_List_001` (health, projects, conversations, /chat with retrieval, usage logging).
 - **Docs & local repo ingestion + search**: complete (text docs, repo ingest, /search endpoints, UI panel) plus **batched ingestion jobs + progress UI (2025‑12‑04)**. Recent fixes: Chroma metadata TypeError resolved; backend expected on `http://127.0.0.1:8000`; Job History UI occasionally slow/flake under load (allow up to 60s).
 - **Tasks / TODO system**: complete (DB, API, sidebar UI, auto‑extraction from conversations).
