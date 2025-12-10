@@ -525,7 +525,7 @@ Result actions:
   - Switches to the Docs tab.
   - Highlights the selected document in the list.
 
-Both message and doc search are covered by the automated QA probes and test plan (`docs/TEST_PLAN.md`); if you see empty results unexpectedly, check the backend logs and QA docs for guidance.
+Both message and doc search are covered by the automated QA probes and test plan (`docs/TEST_PLAN.md`); if you see empty results unexpectedly, check the backend logs and QA docs for guidance. The Search tab uses the same embeddings/indexes that power chat retrieval; the Usage tab retrieval context inspector (see §11.1) shows which message/doc/memory snippets were actually pulled for recent replies.
 
 ### 7.4 Memory Items
 
@@ -756,6 +756,11 @@ In the **Usage** tab:
   - Filters are keyboard/screen-reader friendly (action/group/model/time plus “Usage time range” and “Usage records window” selectors).
   - Charts cover task action types, calls per model, confidence buckets, and auto-mode routes.
   - If clipboard copy fails, the export preview still appears inline; usage/telemetry fetch errors are shown inline without collapsing the tab.
+
+### 11.1 Retrieval context inspector
+- The Usage tab includes a retrieval context inspector card for the selected conversation that lists which messages, docs, and memory items were retrieved recently (with counts and representative snippets).
+- Use these counts/snippets to verify what context fed the last replies; snippets are samples of recent retrieval, not the full transcript or documents.
+- Errors or fallbacks in this card are non-blocking—the rest of the Usage tab (cost/usage summaries, charts, telemetry) stays available.
 
 Backend:
 

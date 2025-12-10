@@ -57,9 +57,12 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
   - [ ] Context-aware extraction prompts (feed project goals, sprint focus, blockers).  
   - [x] Additional QA around noisy projects and long histories.  
 
-- [ ] **Enhanced retrieval & context shaping**  
-  - [ ] Per‑feature retrieval tuning (tasks vs docs vs memory).  
-  - [ ] Configurable retrieval strategies via `CONFIG_ENV.md`.  
+- [~] **Retrieval & context shaping**  
+  - [x] Per-kind retrieval profiles (messages/docs/memory/tasks) with defaults and env overrides.  
+  - [x] Retrieval telemetry + `/conversations/{id}/debug/retrieval_context` + Usage retrieval inspector UI.  
+  - Future extensions (Retrieval):  
+    - [ ] Telemetry-driven profile refinement per surface (chat vs Search vs Tasks).  
+    - [ ] Autopilot/blueprint graph-aware retrieval (design-only for now).  
 
 ---
 

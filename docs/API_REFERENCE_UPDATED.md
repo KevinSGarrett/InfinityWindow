@@ -4,6 +4,13 @@ This version reflects the latest backend behavior after 2025-12-06 fixes. Base U
 
 ---
 
+## 0. Updates
+
+### 2025-12-10 – Retrieval Phase 1
+- Added per-kind retrieval profiles (messages/docs/memory/tasks) with env overrides for `top_k` and `score_threshold` via `RETRIEVAL_<KIND>_TOP_K` / `RETRIEVAL_<KIND>_SCORE_THRESHOLD` (retrieval v1.5).
+- Retrieval telemetry is now reported under `/debug/telemetry`, and a structured retrieval context debugger is available at `GET /conversations/{conversation_id}/debug/retrieval_context` (powers the Usage tab retrieval context inspector).
+- Frontend Usage tab surfaces a retrieval context inspector card for the selected conversation; work landed across `feature/agent-a-retrieval-v1-5` (backend) and `feature/agent-b-retrieval-context-ui` (frontend).
+
 ## 1. Projects & Conversations
 
 ### 1.1 Projects

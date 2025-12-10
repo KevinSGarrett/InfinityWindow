@@ -18,6 +18,12 @@ _Updated from `Hydration_File_002.txt`, `To_Do_List_001.txt`, and `Cursor_Chat_L
 - **Right‑column UI 2.0**: partially implemented; layout is currently under active iteration based on UX feedback.
 - **CI attempt (2025‑12‑05)**: `make ci` currently fails with “No rule to make target 'ci'.” – add/restore a CI target or document the correct command.
 
+## 2025‑12‑10 – Retrieval Phase 1
+- Backend: retrieval v1.5 per-kind profiles (messages/docs/memory/tasks) with env-configurable `top_k`/`score_threshold` via `RETRIEVAL_<KIND>_TOP_K` and `RETRIEVAL_<KIND>_SCORE_THRESHOLD`; a shared retrieval helper now feeds chat and debug flows; telemetry is exposed under `/debug/telemetry`; structured retrieval context lives at `/conversations/{id}/debug/retrieval_context`.
+- Frontend: Usage tab adds a retrieval context inspector card showing recent message/doc/memory snippets and counts for the selected conversation; errors in this card are non-blocking and other Usage analytics remain visible.
+- Branches: merged work from `feature/agent-a-retrieval-v1-5` (backend) and `feature/agent-b-retrieval-context-ui` (frontend).
+- Tests: Phase 1 exercised via retrieval/telemetry API coverage (e.g., `qa/tests_api/test_usage_telemetry_dashboard.py`) and Usage UI coverage (`frontend/tests/usage-dashboard.spec.ts`); continue to run docs guard + `make ci` for regression.
+
 ## 2025‑12‑08 – CI & telemetry alignment
 - CI stabilized with stubbed dependencies: `LLM_MODE=stub` and `VECTORSTORE_MODE=stub` now drive `make ci` locally and in GitHub Actions (badge on README stays green).
 - Usage dashboard Phase 2 confirmed complete: shared action/group/model filters + time window across charts/exports, JSON/CSV exports scoped to filters, and inline empty/error/export-fallback states.

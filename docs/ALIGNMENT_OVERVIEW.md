@@ -21,6 +21,13 @@ This is a skim-friendly entry point for alignment and requirement tracking. For 
 - Code: `backend/app/api/main.py` (task maintainer + telemetry), `backend/app/db/models.py` (`Task.auto_notes`), `frontend/src/App.tsx` (Tasks tab + audit note display).
 - Tests: `qa/tests_api/test_tasks_automation_audit.py`, `qa/tests_api` task telemetry cases; Playwright coverage in `frontend/tests/tasks-confidence.spec.ts` and `tasks-suggestions.spec.ts`.
 
+### Retrieval & context shaping — Status: Partial (Phase 1 shipped)
+- Scope: Phase 1 delivers per-kind retrieval profiles (messages/docs/memory/tasks) with env overrides, a shared retrieval helper used by chat and debug, retrieval telemetry via `/debug/telemetry`, a structured retrieval context debugger (`/conversations/{id}/debug/retrieval_context`), and the Usage tab retrieval context inspector card (errors in this card are non-blocking).
+- Docs: `docs/REQUIREMENTS_CRM.md`, `docs/TODO_CHECKLIST.md` (§2), `docs/PROGRESS.md` (2025-12-10 Retrieval Phase 1), `docs/USER_MANUAL.md` (§11.1), `docs/API_REFERENCE.md` (`/conversations/{id}/debug/retrieval_context`), `docs/API_REFERENCE_UPDATED.md`.
+- Code: `backend/app/api/main.py` (retrieval profiles, telemetry, debug endpoints), `backend/app/llm` retrieval helpers, `frontend/src/App.tsx` (Usage tab retrieval context inspector).
+- Tests: `qa/tests_api/test_usage_telemetry_dashboard.py` (telemetry/debug), `frontend/tests/usage-dashboard.spec.ts` (Usage tab), docs guard suites.
+- Remaining: Multi-surface tuning from real telemetry, future Autopilot/blueprint graph-aware retrieval, and richer configuration/inspection surfaces as they land.
+
 ### Usage & telemetry dashboard — Status: Partial (Phase 1/2 done; Phase 3 persistence pending)
 - Scope: Cards + charts for action/model/confidence/auto-mode routes, shared filters/time window, filtered JSON/CSV exports, and inline empty/error/export-fallback states are shipped. Long-window persistence/analytics is not started.
 - Docs: `docs/USAGE_TELEMETRY_DASHBOARD.md`, `docs/TODO_CHECKLIST.md` (§2, §5), `docs/PROGRESS.md` (2025-12-13/2025-12-08 entries), `docs/USER_MANUAL.md` (§11, §5.3).
