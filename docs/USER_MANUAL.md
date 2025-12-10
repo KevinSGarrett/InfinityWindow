@@ -234,6 +234,15 @@ Invoke-RestMethod -Method Post `
   -Body $body
 ```
 
+#### Archive a project
+
+- In the project selector/list, use **Archive project** to remove a project from the active list without deleting its data.
+- The UI calls `DELETE /projects/{id}`, which **archives** the project (soft delete):
+  - Archived projects are hidden from `GET /projects` by default; APIs accept `include_archived=true` to list them for audit.
+  - Existing conversations, tasks, docs, and usage records remain available for reference.
+  - New writes (chat, tasks, docs, ingestion) may be rejected while the project is archived; treat it as read-only.
+- If you need to review usage or history from an archived project, select it from an include-archived list (when exposed) or fetch it directly by id.
+
 ### 4.2 Conversations
 
 In the left column:
@@ -756,6 +765,8 @@ In the **Usage** tab:
   - Filters are keyboard/screen-reader friendly (action/group/model/time plus “Usage time range” and “Usage records window” selectors).
   - Charts cover task action types, calls per model, confidence buckets, and auto-mode routes.
   - If clipboard copy fails, the export preview still appears inline; usage/telemetry fetch errors are shown inline without collapsing the tab.
+- Archived projects: usage and telemetry remain readable for existing conversations, but archived projects are hidden from the main project list by default and may reject new chats/ingests/tasks. Include-archived selectors or direct IDs surface their historical usage safely.
+- Debug retrieval note: `GET /conversations/{id}/debug/retrieval_context` returns **404** when the conversation id does not exist; this is expected and not treated as a regression.
 
 Backend:
 

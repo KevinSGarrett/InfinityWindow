@@ -91,6 +91,10 @@ The frontend talks to the backend via JSON APIs described in `docs/API_REFERENCE
   - Shows messages for the active conversation.
   - Lets you pick a chat mode and send new messages.
 
+**Project lifecycle**:
+
+- `DELETE /projects/{id}` archives (soft deletes) projects. `GET /projects` hides archived entries unless `include_archived=true`; `GET /projects/{id}` returns archived rows for audit. Archived projects retain conversations/tasks/docs/usage but may reject new writes while archived.
+
 ---
 
 ### 3.2 Tasks / TODOs (Project Tasks)

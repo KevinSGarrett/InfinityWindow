@@ -14,7 +14,7 @@ from typing import Optional, List, Dict, Deque, Any, Literal, cast, TYPE_CHECKIN
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from sqlalchemy import case
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError
@@ -365,6 +365,93 @@ class MemoryItemRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ProjectExportMeta(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    created_at: datetime
+    is_archived: bool = False
+    archived_at: Optional[datetime] = None
+    instruction_text: Optional[str] = None
+    pinned_note_text: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TaskExport(BaseModel):
+    id: int
+    project_id: int
+    description: str
+    status: str
+    priority: str
+    blocked_reason: Optional[str]
+    auto_notes: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TaskDependencyExport(BaseModel):
+    id: int
+    task_id: int
+    depends_on_task_id: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MemoryExport(BaseModel):
+    id: int
+    project_id: int
+    title: str
+    content: str
+    tags: List[str]
+    pinned: bool
+    expires_at: Optional[datetime]
+    source_conversation_id: Optional[int]
+    source_message_id: Optional[int]
+    superseded_by_id: Optional[int]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DecisionExport(BaseModel):
+    id: int
+    project_id: int
+    title: str
+    details: Optional[str]
+    category: Optional[str]
+    status: str
+    tags: List[str]
+    source_conversation_id: Optional[int]
+    follow_up_task_id: Optional[int]
+    is_draft: bool
+    auto_detected: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProjectExportBundle(BaseModel):
+    project: ProjectExportMeta
+    tasks: List[TaskExport]
+    task_dependencies: List[TaskDependencyExport] = Field(default_factory=list)
+    memories: List[MemoryExport] = Field(default_factory=list)
+    decisions: List[DecisionExport] = Field(default_factory=list)
+
+
+class ProjectImportResult(BaseModel):
+    project_id: int
+    tasks_imported: int
+    dependencies_imported: int
+    memories_imported: int
+    decisions_imported: int
+
+
 class ChatRequest(BaseModel):
     # project this chat belongs to (used if conversation_id is not provided)
     project_id: Optional[int] = None
@@ -577,6 +664,93 @@ def _tags_to_list(raw: Optional[str]) -> List[str]:
     except json.JSONDecodeError:
         pass
     return []
+
+
+# ---------- Helper: export/import ----------
+
+
+def _project_to_export_meta(project: models.Project) -> ProjectExportMeta:
+    return ProjectExportMeta(
+        id=project.id,
+        name=project.name,
+        description=project.description,
+        created_at=project.created_at,
+        is_archived=project.is_archived,
+        archived_at=project.archived_at,
+        instruction_text=getattr(project, "instruction_text", None),
+        pinned_note_text=getattr(project, "pinned_note_text", None),
+    )
+
+
+def _task_to_export(task: models.Task) -> TaskExport:
+    return TaskExport.model_validate(task)
+
+
+def _task_dependency_to_export(
+    dependency: models.TaskDependency,
+) -> TaskDependencyExport:
+    return TaskDependencyExport.model_validate(dependency)
+
+
+def _memory_item_to_export(memory_item: models.MemoryItem) -> MemoryExport:
+    return MemoryExport(
+        id=memory_item.id,
+        project_id=memory_item.project_id,
+        title=memory_item.title,
+        content=memory_item.content,
+        tags=_tags_to_list(memory_item.tags_raw),
+        pinned=memory_item.pinned,
+        expires_at=memory_item.expires_at,
+        source_conversation_id=memory_item.source_conversation_id,
+        source_message_id=memory_item.source_message_id,
+        superseded_by_id=memory_item.superseded_by_id,
+        created_at=memory_item.created_at,
+        updated_at=memory_item.updated_at,
+    )
+
+
+def _decision_to_export(decision: models.ProjectDecision) -> DecisionExport:
+    return DecisionExport(
+        id=decision.id,
+        project_id=decision.project_id,
+        title=decision.title,
+        details=decision.details,
+        category=decision.category,
+        status=decision.status,
+        tags=_tags_to_list(decision.tags_raw),
+        source_conversation_id=decision.source_conversation_id,
+        follow_up_task_id=decision.follow_up_task_id,
+        is_draft=decision.is_draft,
+        auto_detected=decision.auto_detected,
+        created_at=decision.created_at,
+        updated_at=decision.updated_at,
+    )
+
+
+def _make_import_project_name(desired_name: str, db: Session) -> str:
+    base = desired_name.strip() if desired_name and desired_name.strip() else "Imported Project"
+    candidate = base
+    existing = (
+        db.query(models.Project).filter(models.Project.name == candidate).first()
+    )
+    if existing:
+        suffix = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        candidate = f"{base} (Imported {suffix})"
+        existing = (
+            db.query(models.Project).filter(models.Project.name == candidate).first()
+        )
+        if existing:
+            candidate = f"{base} (Imported {suffix} {int(time.time())})"
+    return candidate
+
+
+def _validate_import_bundle(payload: Dict[str, Any]) -> ProjectExportBundle:
+    try:
+        return ProjectExportBundle.model_validate(payload)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=400, detail="Invalid project export bundle."
+        ) from exc
 
 
 # ---------- Helper: filesystem ----------
@@ -822,7 +996,11 @@ _AUTO_UPDATE_TASKS_AFTER_CHAT = (
     not in {"0", "false", "no", "off"}
 )
 
-_PROJECT_TELEMETRY: Dict[str, int] = {"archived": 0}
+_PROJECT_TELEMETRY: Dict[str, int] = {
+    "archived": 0,
+    "exported": 0,
+    "imported": 0,
+}
 
 
 def get_task_telemetry(reset: bool = False) -> Dict[str, int]:
@@ -2166,6 +2344,196 @@ def archive_project(project_id: int, db: Session = Depends(get_db)):
         _PROJECT_TELEMETRY["archived"] += 1
         _commit_with_retry(db)
     return Response(status_code=204)
+
+
+@app.get("/projects/{project_id}/export", response_model=ProjectExportBundle)
+def export_project_bundle(project_id: int, db: Session = Depends(get_db)):
+    """
+    Export a project's core data (metadata, tasks, dependencies, memory, decisions).
+    """
+    project = _ensure_project(db, project_id)
+    tasks = (
+        db.query(models.Task)
+        .filter(models.Task.project_id == project_id)
+        .order_by(models.Task.id.asc())
+        .all()
+    )
+    task_ids = [task.id for task in tasks]
+
+    dependencies: List[models.TaskDependency] = []
+    if task_ids:
+        dependencies = (
+            db.query(models.TaskDependency)
+            .filter(models.TaskDependency.task_id.in_(task_ids))
+            .order_by(models.TaskDependency.id.asc())
+            .all()
+        )
+
+    memories = (
+        db.query(models.MemoryItem)
+        .filter(models.MemoryItem.project_id == project_id)
+        .order_by(models.MemoryItem.id.asc())
+        .all()
+    )
+    decisions = (
+        db.query(models.ProjectDecision)
+        .filter(models.ProjectDecision.project_id == project_id)
+        .order_by(models.ProjectDecision.id.asc())
+        .all()
+    )
+
+    _PROJECT_TELEMETRY["exported"] += 1
+
+    return ProjectExportBundle(
+        project=_project_to_export_meta(project),
+        tasks=[_task_to_export(task) for task in tasks],
+        task_dependencies=[
+            _task_dependency_to_export(dep) for dep in dependencies
+        ],
+        memories=[_memory_item_to_export(item) for item in memories],
+        decisions=[_decision_to_export(decision) for decision in decisions],
+    )
+
+
+@app.post("/projects/import", response_model=ProjectImportResult)
+def import_project_bundle(
+    payload: Dict[str, Any], db: Session = Depends(get_db)
+):
+    """
+    Import a project from an export bundle, creating a brand new project.
+    """
+    bundle = _validate_import_bundle(payload)
+    if bundle.project is None or bundle.tasks is None:
+        raise HTTPException(
+            status_code=400,
+            detail="project and tasks are required in the bundle.",
+        )
+
+    project_name = _make_import_project_name(bundle.project.name, db)
+    project = models.Project(
+        name=project_name,
+        description=bundle.project.description,
+        is_archived=False,
+        archived_at=None,
+        instruction_text=bundle.project.instruction_text,
+        instruction_updated_at=(
+            datetime.now(timezone.utc)
+            if bundle.project.instruction_text
+            else None
+        ),
+        pinned_note_text=bundle.project.pinned_note_text,
+        local_root_path=None,
+    )
+    db.add(project)
+    _commit_with_retry(db)
+    db.refresh(project)
+
+    task_id_map: Dict[int, int] = {}
+    tasks_imported = 0
+    for task in bundle.tasks:
+        if task.project_id != bundle.project.id:
+            print(
+                f"[WARN] Skipping task {task.id}: project_id mismatch "
+                f"(expected {bundle.project.id}, got {task.project_id})"
+            )
+            continue
+        new_task = models.Task(
+            project_id=project.id,
+            description=task.description,
+            status=task.status if task.status in {"open", "done"} else "open",
+            priority=task.priority or "normal",
+            blocked_reason=task.blocked_reason,
+            auto_notes=task.auto_notes,
+        )
+        db.add(new_task)
+        _flush_with_retry(db)
+        task_id_map[task.id] = new_task.id
+        tasks_imported += 1
+
+    dependencies_imported = 0
+    for dep in bundle.task_dependencies:
+        new_task_id = task_id_map.get(dep.task_id)
+        new_depends_on_id = task_id_map.get(dep.depends_on_task_id)
+        if not new_task_id or not new_depends_on_id:
+            print(
+                f"[WARN] Skipping dependency {dep.id}: task ids not in bundle map."
+            )
+            continue
+        db.add(
+            models.TaskDependency(
+                task_id=new_task_id,
+                depends_on_task_id=new_depends_on_id,
+            )
+        )
+        dependencies_imported += 1
+
+    memory_id_map: Dict[int, int] = {}
+    imported_memories: List[tuple[MemoryExport, models.MemoryItem]] = []
+    for memory in bundle.memories:
+        if memory.project_id != bundle.project.id:
+            print(
+                f"[WARN] Skipping memory {memory.id}: project_id mismatch "
+                f"(expected {bundle.project.id}, got {memory.project_id})"
+            )
+            continue
+        new_memory = models.MemoryItem(
+            project_id=project.id,
+            title=memory.title,
+            content=memory.content,
+            tags_raw=_normalize_tags(memory.tags),
+            pinned=memory.pinned,
+            expires_at=memory.expires_at,
+            source_conversation_id=None,
+            source_message_id=None,
+        )
+        db.add(new_memory)
+        _flush_with_retry(db)
+        memory_id_map[memory.id] = new_memory.id
+        imported_memories.append((memory, new_memory))
+
+    for memory_export, new_memory in imported_memories:
+        if memory_export.superseded_by_id is not None:
+            superseder = memory_id_map.get(memory_export.superseded_by_id)
+            if superseder:
+                new_memory.superseded_by_id = superseder
+
+    decisions_imported = 0
+    for decision in bundle.decisions:
+        if decision.project_id != bundle.project.id:
+            print(
+                f"[WARN] Skipping decision {decision.id}: project_id mismatch "
+                f"(expected {bundle.project.id}, got {decision.project_id})"
+            )
+            continue
+        follow_up_task_id = None
+        if decision.follow_up_task_id is not None:
+            follow_up_task_id = task_id_map.get(decision.follow_up_task_id)
+        db.add(
+            models.ProjectDecision(
+                project_id=project.id,
+                title=decision.title,
+                details=decision.details,
+                category=decision.category,
+                status=decision.status,
+                tags_raw=_normalize_tags(decision.tags),
+                source_conversation_id=None,
+                follow_up_task_id=follow_up_task_id,
+                is_draft=decision.is_draft,
+                auto_detected=decision.auto_detected,
+            )
+        )
+        decisions_imported += 1
+
+    _commit_with_retry(db)
+    _PROJECT_TELEMETRY["imported"] += 1
+
+    return ProjectImportResult(
+        project_id=project.id,
+        tasks_imported=tasks_imported,
+        dependencies_imported=dependencies_imported,
+        memories_imported=len(imported_memories),
+        decisions_imported=decisions_imported,
+    )
 
 
 # ---------- Project instructions ----------

@@ -14,7 +14,7 @@ It is not an exhaustive OpenAPI spec, but a practical reference for development 
 ### 1.1 Projects
 
 - **GET `/projects`**  
-  List all projects.
+  List projects. Archived projects are hidden by default; pass `include_archived=true` to return both active and archived.
 
 - **POST `/projects`**  
   Create a project. Typical body:
@@ -29,6 +29,9 @@ It is not an exhaustive OpenAPI spec, but a practical reference for development 
 
 - **GET `/projects/{project_id}`**  
   Get project details.
+
+- **DELETE `/projects/{project_id}`**  
+  **Archive** a project (soft delete). Returns 200/204 on success. Archived projects remain readable (conversations/tasks/docs/usage) but may reject new writes; they are excluded from `GET /projects` unless `include_archived=true`.
 
 ### 1.2 Conversations & messages
 
@@ -233,6 +236,9 @@ Job metadata is stored in the `ingestion_jobs` table; per-file digests live in `
   - Task automation (auto‑added, auto‑completed, auto‑deduped).
 
 Used by QA to verify that heuristics are behaving as expected.
+
+- **GET `/conversations/{id}/debug/retrieval_context`**  
+  Returns retrieval context for a conversation. Responds **404** if the conversation id does not exist; treat this as expected (not a regression).
 
 ---
 

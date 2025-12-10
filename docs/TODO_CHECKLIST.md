@@ -29,6 +29,16 @@ Legend:
   - `IngestionJob` + `FileIngestionState` tables track job progress and skip unchanged files.
   - Docs tab shows live status via `GET /projects/{id}/ingestion_jobs/{job_id}`.
 
+### Project lifecycle & housekeeping
+
+- [x] Safe project archiving via `DELETE /projects/{id}` (soft delete).
+- [x] Archive UX in the project list.
+
+#### Future extensions
+
+- [ ] Permanent purge path for archived projects.
+- [ ] Bulk archive/unarchive and list filters for archived projects.
+
 ---
 
 ## 2. v3 – Intelligence & automation

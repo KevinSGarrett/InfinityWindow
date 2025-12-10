@@ -4,11 +4,18 @@ This version reflects the latest backend behavior after 2025-12-06 fixes. Base U
 
 ---
 
+## 2025-12-10 – Project archive API
+- `DELETE /projects/{id}` now **archives** projects (soft delete) instead of 405. Archived projects remain readable (conversations/tasks/docs/usage) but may reject new writes while archived.
+- `GET /projects` defaults to active projects; pass `include_archived=true` to include archived ones. `GET /projects/{id}` returns archived rows for audit.
+- Retrieval debug note: `GET /conversations/{id}/debug/retrieval_context` returns **404** when the conversation id is missing; this is expected and not a regression.
+
+---
+
 ## 1. Projects & Conversations
 
 ### 1.1 Projects
 - **GET `/projects`**  
-  List all projects.
+  List projects. Archived projects are hidden by default; pass `include_archived=true` to include them.
 
 - **POST `/projects`**  
   Create a project. Body:
@@ -28,6 +35,9 @@ This version reflects the latest backend behavior after 2025-12-06 fixes. Base U
 
 - **PATCH `/projects/{project_id}`**  
   Update `name`, `description`, `local_root_path`, or `instruction_text`.
+
+- **DELETE `/projects/{project_id}`**  
+  Archive (soft delete) a project. Returns 200/204. Archived projects stay readable but are excluded from `GET /projects` unless `include_archived=true`; write operations may be rejected while archived.
 
 ### 1.2 Conversations & messages
 - **GET `/projects/{project_id}/conversations`**  
@@ -295,6 +305,8 @@ Notes:
 
 - **GET `/projects/{project_id}/tasks/overview`**  
   Convenience endpoint returning both `tasks` and `suggestions` (pending by default) in one call. Query: `suggestion_status`, `suggestion_limit`.
+
+Retrieval debug: `GET /conversations/{id}/debug/retrieval_context` returns **404** for missing conversation IDs; treat this as expected when the conversation does not exist.
 
 Notes on modes:
 - Mode → model defaults (overridable via `OPENAI_MODEL_<MODE>`): `auto:gpt-4.1`, `fast:gpt-4.1-mini`, `deep:gpt-5.1`, `budget:gpt-4.1-nano`, `research:o3-deep-research`, `code:gpt-5.1-codex`.

@@ -280,6 +280,15 @@ body {
   font-size: 0.85rem;
   color: #4b5563;
 }
+.project-actions {
+  margin-top: 0.35rem;
+  display: flex;
+  justify-content: flex-end;
+}
+.project-actions .btn-link.danger:disabled {
+  color: #d1d5db;
+  cursor: not-allowed;
+}
 
 /* Conversation list */
 

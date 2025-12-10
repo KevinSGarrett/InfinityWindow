@@ -355,6 +355,7 @@ function App() {
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(
     null
   );
+  const [isArchivingProject, setIsArchivingProject] = useState(false);
 
   // Conversations / messages
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -609,6 +610,61 @@ function App() {
     setTimeout(() => {
       setToasts((prev) => prev.filter((toast) => toast.id !== id));
     }, 4000);
+  }, []);
+
+  const clearProjectState = useCallback(() => {
+    setConversations([]);
+    setSelectedConversationId(null);
+    setUsageConversationId(null);
+    setMessages([]);
+    setUsage(null);
+    setUsageError(null);
+    setUsageExportJson(null);
+    setUsageExportError(null);
+    setUsageExportFormat(null);
+    setTelemetry(null);
+    setTelemetryError(null);
+
+    setProjectDocs([]);
+    setTasks([]);
+    setTaskSuggestions([]);
+    setTaskSuggestionError(null);
+    setIsLoadingTaskSuggestions(false);
+
+    setFolders([]);
+    setSelectedFolderId("all");
+    setMemoryItems([]);
+    setHighlightedDocId(null);
+
+    setFileEditProposal(null);
+    setFileEditStatus(null);
+    setFileEditPreview(null);
+    setFileEditError(null);
+
+    setTerminalProposal(null);
+    setTerminalResult(null);
+    setTerminalError(null);
+
+    setProjectInstructions("");
+    setProjectInstructionsUpdatedAt(null);
+    setProjectInstructionsError(null);
+    setProjectInstructionsSaved("");
+    setProjectPinnedNote("");
+    setProjectPinnedNoteSaved("");
+    setProjectDecisions([]);
+    setDecisionsError(null);
+    setHighlightNewDrafts(false);
+
+    setFsEntries([]);
+    setFsRoot(null);
+    setFsCurrentSubpath("");
+    setFsDisplayPath("");
+    setFsSelectedRelPath(null);
+    setFsOriginalContent("");
+    setFsEditedContent("");
+    setFsShowOriginal(false);
+    setFsError(null);
+    setRepoIngestionJobs([]);
   }, []);
 
   useEffect(() => {
@@ -2144,6 +2200,13 @@ function App() {
 
   const loadUsageForConversation = async (conversationId: number) => {
     try {
+      if (!selectedProjectId) {
+        setUsageConversationId(null);
+        setUsage(null);
+        setUsageError("No project selected.");
+        return;
+      }
+      const currentProjectId = selectedProjectId;
       setIsLoadingUsage(true);
       setUsageConversationId(conversationId);
       setUsageError(null);
@@ -2152,11 +2215,29 @@ function App() {
       );
       if (!res.ok) {
         console.error("Fetching usage failed:", res.status);
+        if (selectedProjectId !== currentProjectId) return;
+        let detail = "";
+        try {
+          const errBody = await res.json();
+          if (errBody && typeof errBody.detail === "string") {
+            detail = errBody.detail;
+          }
+        } catch {
+          // ignore JSON parse errors
+        }
+        const friendlyMessage =
+          detail ||
+          (res.status === 404
+            ? "Usage unavailable for this conversation (it may be archived or missing)."
+            : res.status === 403
+            ? "Usage is not available for this project."
+            : `Failed to load usage (status ${res.status}).`);
         setUsage(null);
-        setUsageError(`Failed to load usage (status ${res.status}).`);
+        setUsageError(friendlyMessage);
         return;
       }
       const data: ConversationUsage = await res.json();
+      if (selectedProjectId !== currentProjectId) return;
       setUsage(data);
     } catch (e: unknown) {
       console.error("Fetching usage threw:", e);
@@ -2202,7 +2283,17 @@ function App() {
       const res = await fetch(
         `${BACKEND_BASE}/projects/${projectId}/conversations`
       );
-      if (!res.ok) return;
+      if (!res.ok) {
+        console.error("Fetching conversations failed:", res.status);
+        if (res.status === 404 || res.status === 410) {
+          setConversations([]);
+          setSelectedConversationId(null);
+          setUsageConversationId(null);
+          setMessages([]);
+          setUsage(null);
+        }
+        return;
+      }
       const convs: Conversation[] = await res.json();
       setConversations(convs);
 
@@ -2934,41 +3025,8 @@ function App() {
   // ---------- When project changes, load its conversations + docs + tasks + files ----------
 
   useEffect(() => {
+    clearProjectState();
     if (selectedProjectId == null) {
-      setConversations([]);
-      setMessages([]);
-      setProjectDocs([]);
-      setTasks([]);
-      setTaskSuggestions([]);
-      setTaskSuggestionError(null);
-      setIsLoadingTaskSuggestions(false);
-      setUsage(null);
-      setFolders([]);
-      setMemoryItems([]);
-      setSelectedFolderId("all");
-
-      setFileEditProposal(null);
-      setFileEditStatus(null);
-      setTerminalProposal(null);
-      setTerminalResult(null);
-      setTerminalError(null);
-
-      setProjectInstructions("");
-      setProjectInstructionsUpdatedAt(null);
-      setProjectInstructionsError(null);
-      setProjectDecisions([]);
-      setDecisionsError(null);
-
-      // Clear filesystem state
-      setFsEntries([]);
-      setFsRoot(null);
-      setFsCurrentSubpath("");
-      setFsDisplayPath("");
-      setFsSelectedRelPath(null);
-      setFsOriginalContent("");
-      setFsEditedContent("");
-      setFsShowOriginal(false);
-      setFsError(null);
       return;
     }
     refreshConversations(selectedProjectId);
@@ -2980,7 +3038,7 @@ function App() {
     loadMemoryItems(selectedProjectId);
     loadProjectFiles(selectedProjectId, "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProjectId]);
+  }, [selectedProjectId, clearProjectState]);
 
   // ---------- When conversation changes, load its messages + usage ----------
 
@@ -3098,33 +3156,63 @@ function App() {
   ) => {
     const val = e.target.value;
     if (!val) {
+      clearProjectState();
       setSelectedProjectId(null);
-      setConversations([]);
-      setSelectedConversationId(null);
-      setMessages([]);
-      setProjectDocs([]);
-      setTasks([]);
-      setUsage(null);
-
-      setFileEditProposal(null);
-      setFileEditStatus(null);
-      setTerminalProposal(null);
-      setTerminalResult(null);
-      setTerminalError(null);
-
-      // Clear filesystem state too
-      setFsEntries([]);
-      setFsRoot(null);
-      setFsCurrentSubpath("");
-      setFsDisplayPath("");
-      setFsSelectedRelPath(null);
-      setFsOriginalContent("");
-      setFsEditedContent("");
-      setFsShowOriginal(false);
-      setFsError(null);
       return;
     }
+    clearProjectState();
     setSelectedProjectId(parseInt(val, 10));
+  };
+
+  const handleArchiveProject = async () => {
+    if (!selectedProjectId) {
+      addToast("No project selected.", "error");
+      return;
+    }
+    const projectName =
+      projects.find((p) => p.id === selectedProjectId)?.name || "this project";
+    const confirmed = window.confirm(
+      `Archive project "${projectName}"? It will be removed from the list but its data remains in your local DB.`
+    );
+    if (!confirmed) return;
+
+    setIsArchivingProject(true);
+    try {
+      const res = await fetch(`${BACKEND_BASE}/projects/${selectedProjectId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        console.error("Archive project failed:", res.status);
+        let detail = "";
+        try {
+          const err = await res.json();
+          if (err && typeof err.detail === "string") {
+            detail = err.detail;
+          }
+        } catch {
+          // ignore JSON parse errors
+        }
+        const message =
+          detail ||
+          (res.status === 404
+            ? "Project not found or already archived."
+            : `Failed to archive project (status ${res.status}).`);
+        addToast(message, "error");
+        return;
+      }
+
+      const remaining = projects.filter((p) => p.id !== selectedProjectId);
+      setProjects(remaining);
+      clearProjectState();
+      const fallbackId = remaining[0]?.id ?? null;
+      setSelectedProjectId(fallbackId);
+      addToast("Project archived.", "success");
+    } catch (e) {
+      console.error("Archive project threw:", e);
+      addToast("Unexpected error archiving project.", "error");
+    } finally {
+      setIsArchivingProject(false);
+    }
   };
 
   // ---------- Rename conversation handler ----------
@@ -3942,6 +4030,19 @@ function App() {
                 {selectedProject.description}
               </div>
             )}
+            <div className="project-actions">
+              <button
+                type="button"
+                className="btn-link small danger"
+                onClick={handleArchiveProject}
+                disabled={!selectedProjectId || isArchivingProject}
+                aria-label="Archive project"
+                title="Archive project"
+                data-testid="archive-project-button"
+              >
+                {isArchivingProject ? "Archiving…" : "Archive project"}
+              </button>
+            </div>
           </div>
 
           <div className="conversation-list">

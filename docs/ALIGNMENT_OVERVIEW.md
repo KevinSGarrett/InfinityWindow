@@ -9,6 +9,12 @@ This is a skim-friendly entry point for alignment and requirement tracking. For 
 
 ## Clusters
 
+### Project lifecycle & housekeeping — Status: Implemented
+- Scope: Project create/read/update plus **archive via DELETE `/projects/{id}`** (soft delete). Archived projects are hidden from `GET /projects` by default (opt-in `include_archived=true`); writes on archived projects may be rejected while reads/usage remain available.
+- Docs: `docs/REQUIREMENTS_CRM.md` (lifecycle cluster), `docs/TODO_CHECKLIST.md` (§1 Project lifecycle), `docs/PROGRESS.md` (2025-12-10 archive v1), `docs/USER_MANUAL.md` (§4.1 projects, §11 usage), `docs/API_REFERENCE.md` / `API_REFERENCE_UPDATED.md`, `docs/SYSTEM_OVERVIEW.md`.
+- Code: FastAPI DELETE `/projects/{id}` archive path in `backend/app/api/main.py`; frontend project list archive action (Agent #B branch).
+- Tests: API regression for delete/list archived projects; Playwright project-list archive flow; ISSUES_LOG entries `BE-PROJ-001` / `FE-PROJ-001`.
+
 ### Task-aware auto-mode routing — Status: Partial
 - Scope: Heuristic submode routing, telemetry counters, and a UI override are live; data-driven refinement and richer override surfaces remain.
 - Docs: `docs/TODO_CHECKLIST.md` (§2), `docs/PROGRESS.md` (2025-12-13 routing Phase 2), `docs/USER_MANUAL.md` (§5.3), `docs/SYSTEM_OVERVIEW.md` (§4.1).

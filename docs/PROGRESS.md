@@ -57,6 +57,11 @@ _Updated from `Hydration_File_002.txt`, `To_Do_List_001.txt`, and `Cursor_Chat_L
 - Docs updated (TODO_CHECKLIST, tasks/AUTOMATION.md, tasks/TEST_PLAN_TASKS.md, TEST_PLAN.md, TEST_REPORT_TEMPLATE.md, USAGE_TELEMETRY_DASHBOARD.md).
 - Outstanding to verify/fix: Usage tab filters/render (ISSUE-027/028/029), enforce `local_root_path` before fs/list (ISSUE-032), and tighten exception handling/raise-from warnings (ISSUE-041). Backend now emits model in task telemetry and accepts `auto_suggested` seeds.
 - 2025‑12‑11 follow-ups: Usage tab now refetches telemetry/usage on tab entry and conversation selection; fs/list validated with `local_root_path` set (`/projects/{id}/fs/list` 200 with entries). Pending: UI verification for Usage filters/list (ISSUE-042) and exception handler tightening (ISSUE-041).
+
+## 2025‑12‑10 – Project lifecycle & archive v1
+- Backend: `DELETE /projects/{id}` now archives (soft delete) instead of 405; `GET /projects` hides archived by default with `include_archived=true` opt-in; `GET /projects/{id}` returns archived rows for audit. Archived projects are read-only for new chats/ingests/tasks; existing conversations/tasks/docs/usage remain for reference.
+- Frontend: Project list adds an **Archive project** flow that calls the delete route and refreshes the list to hide archived projects; Usage tab remains stable when the active project is archived.
+- QA: API regression added for archive/list behavior; Playwright project-list archive path exercised alongside usage tab/telemetry checks. Retrieval debug endpoint `GET /conversations/{id}/debug/retrieval_context` returns 404 for missing conversations by design (non-bug).
 ## 2025‑12‑08 – API coverage additions + CI attempt
 
 - Added pytest API coverage for previously untested endpoints (folders, decisions, docs, memory, tasks, conversation messages/usage, debug telemetry) under `qa/tests_api/test_*`; uses TestClient with stub LLM plus isolated SQLite/Chroma fixtures (1536-dim stub embeddings) and a Hypothesis tag-normalization property.
