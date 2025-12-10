@@ -63,4 +63,6 @@ This log captures the significant issues encountered during development and QA, 
 | ISSUE-045 | 2025-12-12    | UI lint/accessibility warnings          | App.tsx still reports ARIA/inline-style lint warnings (labels/roles/inline styles). | Add labels/aria where missing and move inline styles to CSS; rerun lints. | Open |
 | DOC-AUTO-002 | 2025-12-10    | Docs / Autonomous TODO v2 alignment    | Docs lagged review-queue v2 behavior and telemetry; CRM/TODO/PROGRESS/AUTOMATION/USER_MANUAL/USAGE not aligned. | Updated CRM requirements, alignment overview, TODO checklist, PROGRESS entry, automation/usage/manual docs; ran `python -m pytest qa/tests_docs/test_docs_existence.py qa/tests_api/test_docs_status.py` (docs suite absent) and `make ci` with `LLM_MODE=stub`/`VECTORSTORE_MODE=stub`. | Resolved |
 
+| BE-RECOVERY-001 | 2025-12-10 | Repo / Backend | Legacy repo showed git/DB drift (e.g., missing projects.is_archived); restored clean copy from C:\InfinityWindow_Backup\019 into C:\InfinityWindow_Recovery, reinitialized git, and rebuilt SQLite from models. | /health and /projects return 200; tests: python -m pytest qa/tests_api -q --disable-warnings; LLM_MODE=stub VECTORSTORE_MODE=stub make ci. | Resolved |
+
 Add new rows as regressions appear so we retain institutional memory of how they were diagnosed and fixed.
