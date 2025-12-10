@@ -1077,6 +1077,37 @@ body {
   color: #b91c1c;
 }
 
+.suggestion-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: flex-end;
+  margin: 0.35rem 0;
+}
+
+.suggestion-filter {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.75rem;
+  color: #4b5563;
+  min-width: 140px;
+}
+
+.suggestion-filter select {
+  margin-top: 0.2rem;
+  padding: 0.28rem 0.55rem;
+  border-radius: 0.45rem;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  font-size: 0.82rem;
+}
+
+.suggestion-filter-toggle {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .suggestion-list {
   list-style: none;
   margin: 0;
@@ -1118,6 +1149,16 @@ body {
   color: #92400e;
 }
 
+.suggestion-pill.action-update {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.suggestion-pill.action-dedupe {
+  background: #ecfeff;
+  color: #0f766e;
+}
+
 .suggestion-confidence {
   font-size: 0.75rem;
   color: #6b7280;
@@ -1141,6 +1182,41 @@ body {
 
 .task-meta.suggestion-meta {
   margin-top: 0.1rem;
+}
+
+.suggestion-reason {
+  background: #f3f4f6;
+  border-radius: 0.55rem;
+  padding: 0.4rem 0.55rem;
+  color: #4b5563;
+  font-size: 0.82rem;
+  border-left: 3px solid #e5e7eb;
+}
+
+.suggestion-reason strong {
+  color: #111827;
+}
+
+.task-dependency-chip {
+  background: #e0f2fe;
+  color: #0369a1;
+  border-radius: 0.45rem;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.72rem;
+}
+
+.read-only-banner {
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  color: #92400e;
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.5rem;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.read-only-banner.subtle {
+  margin-top: 0.15rem;
 }
 
 /* RIGHT COLUMN – tabs, docs, ingestion, files, search */

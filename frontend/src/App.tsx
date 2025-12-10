@@ -18,6 +18,7 @@ type Project = {
   instruction_updated_at?: string | null;
   local_root_path?: string | null;
   pinned_note_text?: string | null;
+  is_archived?: boolean | null;
 };
 
 type Conversation = {
@@ -100,6 +101,13 @@ type TaskSuggestionPayload = {
   [key: string]: unknown;
 };
 
+type TaskSuggestionDependency = {
+  id?: number | string | null;
+  task_id?: number | string | null;
+  description?: string | null;
+  reason?: string | null;
+};
+
 type TaskTelemetryDetails = {
   model?: string | null;
   matched_text?: string | null;
@@ -118,6 +126,14 @@ type TaskSuggestion = {
   task_status?: string | null;
   task_priority?: string | null;
   task_blocked_reason?: string | null;
+  review_reason?: string | null;
+  queue_reason?: string | null;
+  auto_apply_reason?: string | null;
+  reason?: string | null;
+  priority?: string | null;
+  dependencies?: TaskSuggestionDependency[] | null;
+  dependency_ids?: Array<number | string> | null;
+  confidence_reason?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -411,6 +427,15 @@ function App() {
   );
   const [showAllTaskSuggestions, setShowAllTaskSuggestions] = useState(false);
   const [showSuggestionsPanel, setShowSuggestionsPanel] = useState(false);
+  const [suggestionActionFilter, setSuggestionActionFilter] =
+    useState<string>("all");
+  const [suggestionPriorityFilter, setSuggestionPriorityFilter] =
+    useState<string>("all");
+  const [suggestionHighPriorityFirst, setSuggestionHighPriorityFirst] =
+    useState<boolean>(false);
+  const [tasksReadOnlyReason, setTasksReadOnlyReason] = useState<string | null>(
+    null
+  );
   const [processingSuggestionIds, setProcessingSuggestionIds] = useState<
     Set<number>
   >(new Set());
@@ -719,9 +744,63 @@ function App() {
     [taskSuggestions]
   );
   const pendingSuggestionCount = pendingTaskSuggestions.length;
+  const filteredTaskSuggestions = useMemo(() => {
+    const actionFilter = suggestionActionFilter.toLowerCase();
+    const priorityFilter = suggestionPriorityFilter.toLowerCase();
+    const priorityRank: Record<string, number> = {
+      critical: 0,
+      high: 1,
+      normal: 2,
+      low: 3,
+    };
+    const normalizePriority = (value?: string | null) =>
+      (value || "normal").toLowerCase();
+
+    let result = pendingTaskSuggestions.filter((suggestion) => {
+      const action = (suggestion.action_type || "").toLowerCase();
+      if (actionFilter !== "all" && action !== actionFilter) {
+        return false;
+      }
+      const priority = normalizePriority(
+        suggestion.payload?.priority ||
+          suggestion.task_priority ||
+          suggestion.priority
+      );
+      if (
+        priorityFilter === "high" &&
+        priorityRank[priority] !== undefined &&
+        priorityRank[priority] > 1
+      ) {
+        return false;
+      }
+      return true;
+    });
+
+    if (suggestionHighPriorityFirst) {
+      result = [...result].sort((a, b) => {
+        const aPriority = normalizePriority(
+          a.payload?.priority || a.task_priority || a.priority
+        );
+        const bPriority = normalizePriority(
+          b.payload?.priority || b.task_priority || b.priority
+        );
+        const diff =
+          (priorityRank[aPriority] ?? 99) - (priorityRank[bPriority] ?? 99);
+        if (diff !== 0) return diff;
+        return (b.confidence ?? 0) - (a.confidence ?? 0);
+      });
+    }
+    return result;
+  }, [
+    pendingTaskSuggestions,
+    suggestionActionFilter,
+    suggestionPriorityFilter,
+    suggestionHighPriorityFirst,
+  ]);
+  const filteredSuggestionCount = filteredTaskSuggestions.length;
   const visibleTaskSuggestions = showAllTaskSuggestions
-    ? pendingTaskSuggestions
-    : pendingTaskSuggestions.slice(0, 3);
+    ? filteredTaskSuggestions
+    : filteredTaskSuggestions.slice(0, 3);
   const visibleDocs = showAllDocs ? projectDocs : projectDocs.slice(0, 5);
   const availableDecisionCategories = useMemo(() => {
     const categories = new Set<string>();
@@ -1706,6 +1785,23 @@ function App() {
     projects.find((p) => p.id === selectedProjectId) ?? null;
   const selectedConversation =
     conversations.find((c) => c.id === selectedConversationId) ?? null;
+  const isProjectMissing = selectedProjectId != null && selectedProject == null;
+  const projectReadOnlyReason = useMemo(() => {
+    if (selectedProject?.is_archived) {
+      return "Project is archived; tasks are read-only.";
+    }
+    if (isProjectMissing) {
+      return "Project is unavailable; tasks are read-only.";
+    }
+    return null;
+  }, [selectedProject, isProjectMissing]);
+
+  useEffect(() => {
+    setTasksReadOnlyReason(null);
+  }, [selectedProjectId]);
+
+  const tasksReadOnlyMessage = tasksReadOnlyReason || projectReadOnlyReason;
+  const isTasksReadOnly = Boolean(tasksReadOnlyMessage);
 
   // ---------- Helpers ----------
 
@@ -1804,13 +1900,35 @@ function App() {
       const res = await fetch(
         `${BACKEND_BASE}/projects/${projectId}/tasks/overview`
       );
-      if (!res.ok) throw new Error(`Failed with status ${res.status}`);
+      if (!res.ok) {
+        let detail = "";
+        try {
+          const body = await res.json();
+          if (body && typeof body.detail === "string") {
+            detail = body.detail;
+          }
+        } catch {
+          // ignore
+        }
+        if (res.status === 403 || res.status === 404) {
+          setTasksReadOnlyReason(
+            detail || "Project is read-only or unavailable."
+          );
+        }
+        throw new Error(
+          `Failed with status ${res.status}${detail ? `: ${detail}` : ""}`
+        );
+      }
       const data: TaskOverview = await res.json();
       setTasks(data.tasks || []);
       setTaskSuggestions(data.suggestions || []);
+      setTasksReadOnlyReason(null);
     } catch (e) {
       console.error("Fetching tasks overview failed:", e);
-      setTaskSuggestionError("Could not load tasks/suggestions.");
+      const message = e instanceof Error ? e.message : null;
+      setTaskSuggestionError(
+        message || "Could not load tasks/suggestions."
+      );
       setTasks([]);
       setTaskSuggestions([]);
     } finally {
@@ -3451,6 +3569,10 @@ function App() {
       alert("No project selected.");
       return;
     }
+    if (tasksReadOnlyMessage) {
+      addToast(tasksReadOnlyMessage, "error");
+      return;
+    }
     const desc = newTaskDescription.trim();
     if (!desc) {
       alert("Task description cannot be empty.");
@@ -3469,8 +3591,26 @@ function App() {
       });
 
       if (!res.ok) {
-        console.error("Create task failed:", res.status);
-        alert("Failed to create task. See backend logs.");
+        let detail = "";
+        try {
+          const body = await res.json();
+          if (body && typeof body.detail === "string") {
+            detail = body.detail;
+          }
+        } catch {
+          // ignore
+        }
+        if (res.status === 403 || res.status === 404) {
+          const message =
+            detail ||
+            tasksReadOnlyMessage ||
+            "Project is read-only or unavailable.";
+          setTasksReadOnlyReason(message);
+          addToast(message, "error");
+        } else {
+          console.error("Create task failed:", res.status);
+          alert("Failed to create task. See backend logs.");
+        }
         return;
       }
 
@@ -3485,6 +3625,10 @@ function App() {
   };
 
   const handleToggleTaskStatus = async (task: Task) => {
+    if (tasksReadOnlyMessage) {
+      addToast(tasksReadOnlyMessage, "error");
+      return;
+    }
     const newStatus = task.status === "done" ? "open" : "done";
     try {
       const res = await fetch(`${BACKEND_BASE}/tasks/${task.id}`, {
@@ -3494,8 +3638,26 @@ function App() {
       });
 
       if (!res.ok) {
-        console.error("Update task failed:", res.status);
-        alert("Failed to update task. See backend logs.");
+        let detail = "";
+        try {
+          const body = await res.json();
+          if (body && typeof body.detail === "string") {
+            detail = body.detail;
+          }
+        } catch {
+          // ignore
+        }
+        if (res.status === 403 || res.status === 404) {
+          const message =
+            detail ||
+            tasksReadOnlyMessage ||
+            "Project is read-only or unavailable.";
+          setTasksReadOnlyReason(message);
+          addToast(message, "error");
+        } else {
+          console.error("Update task failed:", res.status);
+          alert("Failed to update task. See backend logs.");
+        }
         return;
       }
 
@@ -3515,6 +3677,10 @@ function App() {
       addToast("Select a project first", "error");
       return;
     }
+    if (tasksReadOnlyMessage) {
+      addToast(tasksReadOnlyMessage, "error");
+      return;
+    }
     setSuggestionProcessing(suggestion.id, true);
     try {
       const res = await fetch(
@@ -3524,7 +3690,25 @@ function App() {
         }
       );
       if (!res.ok) {
-        throw new Error(`Status ${res.status}`);
+        let detail = "";
+        try {
+          const body = await res.json();
+          if (body && typeof body.detail === "string") {
+            detail = body.detail;
+          }
+        } catch {
+          // ignore
+        }
+        if (res.status === 403 || res.status === 404) {
+          const message =
+            detail ||
+            tasksReadOnlyMessage ||
+            "Project is read-only; cannot apply suggestions.";
+          setTasksReadOnlyReason(message);
+          addToast(message, "error");
+          return;
+        }
+        throw new Error(`Status ${res.status}${detail ? `: ${detail}` : ""}`);
       }
       await Promise.all([
         loadTasks(selectedProjectId),
@@ -3545,6 +3729,10 @@ function App() {
       addToast("Select a project first", "error");
       return;
     }
+    if (tasksReadOnlyMessage) {
+      addToast(tasksReadOnlyMessage, "error");
+      return;
+    }
     setSuggestionProcessing(suggestion.id, true);
     try {
       const res = await fetch(
@@ -3554,7 +3742,25 @@ function App() {
         }
       );
       if (!res.ok) {
-        throw new Error(`Status ${res.status}`);
+        let detail = "";
+        try {
+          const body = await res.json();
+          if (body && typeof body.detail === "string") {
+            detail = body.detail;
+          }
+        } catch {
+          // ignore
+        }
+        if (res.status === 403 || res.status === 404) {
+          const message =
+            detail ||
+            tasksReadOnlyMessage ||
+            "Project is read-only; cannot dismiss suggestions.";
+          setTasksReadOnlyReason(message);
+          addToast(message, "error");
+          return;
+        }
+        throw new Error(`Status ${res.status}${detail ? `: ${detail}` : ""}`);
       }
       await loadTasks(selectedProjectId);
       addToast("Suggestion dismissed", "success");
@@ -4669,6 +4875,15 @@ function App() {
                   </div>
                 </div>
                 <div className="tab-section-body">
+                  {tasksReadOnlyMessage && (
+                    <div
+                      className="read-only-banner"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      {tasksReadOnlyMessage}
+                    </div>
+                  )}
                   <div className="task-legend">
                     <span className="task-priority-chip priority-critical">
                       Critical
@@ -4685,27 +4900,30 @@ function App() {
                     </span>
                   </div>
                   <div className="tasks-new condensed">
-                <input
-                  className="tasks-input"
-                  type="text"
+                    <input
+                      className="tasks-input"
+                      type="text"
                       placeholder="Add a task..."
-                  value={newTaskDescription}
-                  onChange={(e) => setNewTaskDescription(e.target.value)}
-                  onKeyDown={handleNewTaskKeyDown}
-                />
-                <button
-                  className="btn-secondary small"
-                  type="button"
-                  onClick={handleAddTask}
-                  disabled={
-                    isSavingTask ||
-                    !newTaskDescription.trim() ||
-                    !selectedProjectId
-                  }
-                >
-                  Add
-                </button>
-              </div>
+                      value={newTaskDescription}
+                      onChange={(e) => setNewTaskDescription(e.target.value)}
+                      onKeyDown={handleNewTaskKeyDown}
+                      disabled={isTasksReadOnly || !selectedProjectId}
+                      aria-disabled={isTasksReadOnly || !selectedProjectId}
+                    />
+                    <button
+                      className="btn-secondary small"
+                      type="button"
+                      onClick={handleAddTask}
+                      disabled={
+                        isSavingTask ||
+                        !newTaskDescription.trim() ||
+                        !selectedProjectId ||
+                        isTasksReadOnly
+                      }
+                    >
+                      Add
+                    </button>
+                  </div>
                   <div className="tasks-list compact">
                 {selectedProjectId == null ? (
                   <div className="tasks-empty">No project selected.</div>
@@ -4724,6 +4942,7 @@ function App() {
                           checked={task.status === "done"}
                           aria-label={`Toggle status for ${task.description}`}
                           onChange={() => handleToggleTaskStatus(task)}
+                          disabled={isTasksReadOnly}
                         />
                           <div className="task-body">
                         <div
@@ -4799,7 +5018,7 @@ function App() {
                       >
                         Refresh telemetry
                       </button>
-                      {pendingSuggestionCount > 3 && (
+                      {filteredSuggestionCount > 3 && (
                         <button
                           type="button"
                           className="btn-link tiny"
@@ -4832,11 +5051,71 @@ function App() {
                         {taskSuggestionError}
                       </div>
                     )}
+                    {tasksReadOnlyMessage && (
+                      <div className="read-only-banner subtle" role="status">
+                        {tasksReadOnlyMessage} Review queue actions are disabled.
+                      </div>
+                    )}
+                    <div
+                      className="suggestion-filters"
+                      aria-label="Review queue filters"
+                    >
+                      <label className="suggestion-filter">
+                        <span>Action</span>
+                        <select
+                          data-testid="review-queue-filter-action"
+                          aria-label="Filter suggestions by action type"
+                          value={suggestionActionFilter}
+                          onChange={(e) =>
+                            setSuggestionActionFilter(e.target.value)
+                          }
+                        >
+                          <option value="all">All</option>
+                          <option value="add">Add</option>
+                          <option value="complete">Complete</option>
+                          <option value="update">Update</option>
+                          <option value="dedupe">Dedupe</option>
+                        </select>
+                      </label>
+                      <label className="suggestion-filter">
+                        <span>Priority</span>
+                        <select
+                          data-testid="review-queue-filter-priority"
+                          aria-label="Filter suggestions by priority"
+                          value={suggestionPriorityFilter}
+                          onChange={(e) =>
+                            setSuggestionPriorityFilter(e.target.value)
+                          }
+                        >
+                          <option value="all">All</option>
+                          <option value="high">Critical/High first</option>
+                        </select>
+                      </label>
+                      <label
+                        className="suggestion-filter suggestion-filter-toggle"
+                        htmlFor="suggestion-sort-toggle"
+                      >
+                        <span>High priority first</span>
+                        <input
+                          id="suggestion-sort-toggle"
+                          type="checkbox"
+                          aria-label="Sort review queue by priority"
+                          checked={suggestionHighPriorityFirst}
+                          onChange={(e) =>
+                            setSuggestionHighPriorityFirst(e.target.checked)
+                          }
+                        />
+                      </label>
+                    </div>
                     {isLoadingTaskSuggestions ? (
                       <div className="tasks-empty">Loading suggestions…</div>
                     ) : pendingSuggestionCount === 0 ? (
                       <div className="tasks-empty">
                         No pending suggestions right now.
+                      </div>
+                    ) : filteredSuggestionCount === 0 ? (
+                      <div className="tasks-empty">
+                        No suggestions match the current filters.
                       </div>
                     ) : (
                       <ul className="suggestion-list">
@@ -4844,14 +5123,43 @@ function App() {
                           const isProcessing = processingSuggestionIds.has(
                             suggestion.id
                           );
+                          const normalizedAction = (
+                            suggestion.action_type || ""
+                          ).toLowerCase();
                           const candidateDescription =
-                            suggestion.action_type === "add"
+                            normalizedAction === "add"
                               ? suggestion.payload?.description ||
                                 "(no description provided)"
-                              : `Mark "${suggestion.task_description || "task"}" as done.`;
-                          const confidencePercent = Math.round(
-                            suggestion.confidence * 100
-                          );
+                              : normalizedAction === "complete"
+                              ? `Mark "${
+                                  suggestion.task_description || "task"
+                                }" as done.`
+                              : normalizedAction === "update"
+                              ? suggestion.payload?.description ||
+                                suggestion.task_description ||
+                                "Update this task."
+                              : normalizedAction === "dedupe"
+                              ? suggestion.payload?.description ||
+                                suggestion.task_description ||
+                                "Review possible duplicate."
+                              : suggestion.payload?.description ||
+                                suggestion.task_description ||
+                                "Review suggested change.";
+                          const confidenceValue = Number.isFinite(
+                            suggestion.confidence
+                          )
+                            ? suggestion.confidence.toFixed(2)
+                            : "—";
+                          const actionLabel =
+                            normalizedAction === "add"
+                              ? "Add task"
+                              : normalizedAction === "complete"
+                              ? "Complete task"
+                              : normalizedAction === "update"
+                              ? "Update task"
+                              : normalizedAction === "dedupe"
+                              ? "Dedupe task"
+                              : suggestion.action_type || "Suggestion";
                           const derivedPriority =
                             suggestion.payload?.priority ||
                             suggestion.task_priority ||
@@ -4860,21 +5168,110 @@ function App() {
                             suggestion.payload?.blocked_reason ||
                             suggestion.task_blocked_reason ||
                             null;
+                          const dependencyCandidates =
+                            Array.isArray(
+                              (suggestion as TaskSuggestion & {
+                                dependencies?: TaskSuggestionDependency[];
+                              }).dependencies
+                            )
+                              ? (
+                                  suggestion as TaskSuggestion & {
+                                    dependencies?: TaskSuggestionDependency[];
+                                  }
+                                ).dependencies
+                              : Array.isArray(
+                                  (suggestion.payload as Record<string, unknown>)
+                                    ?.dependencies
+                                )
+                              ? (suggestion.payload as Record<string, unknown>)
+                                  .dependencies
+                              : Array.isArray(
+                                  (
+                                    suggestion as TaskSuggestion & {
+                                      dependency_ids?: Array<
+                                        number | string | null | undefined
+                                      >;
+                                    }
+                                  ).dependency_ids
+                                )
+                              ? (
+                                  suggestion as TaskSuggestion & {
+                                    dependency_ids?: Array<
+                                      number | string | null | undefined
+                                    >;
+                                  }
+                                ).dependency_ids
+                              : [];
+                          const dependencyLabels = (
+                            dependencyCandidates as Array<
+                              | TaskSuggestionDependency
+                              | string
+                              | number
+                              | null
+                              | undefined
+                            >
+                          )
+                            .map((dep) => {
+                              if (dep == null) return null;
+                              if (typeof dep === "object") {
+                                return (
+                                  dep.description ||
+                                  dep.reason ||
+                                  dep.id ||
+                                  (dep as { task_id?: number | string }).task_id ||
+                                  null
+                                );
+                              }
+                              return dep;
+                            })
+                            .filter(Boolean)
+                            .map((value) => `${value}`)
+                            .slice(0, 4);
+                          const explicitReason =
+                            suggestion.review_reason ||
+                            suggestion.queue_reason ||
+                            suggestion.auto_apply_reason ||
+                            suggestion.confidence_reason ||
+                            suggestion.reason ||
+                            (typeof suggestion.payload?.reason === "string"
+                              ? suggestion.payload.reason
+                              : null) ||
+                            (typeof suggestion.payload?.review_reason ===
+                            "string"
+                              ? suggestion.payload.review_reason
+                              : null);
+                          const derivedReason =
+                            explicitReason ||
+                            (blockedReason
+                              ? `Blocked: ${blockedReason}`
+                              : null) ||
+                            (dependencyLabels.length > 0
+                              ? `Blocked by ${dependencyLabels.length}${
+                                  dependencyLabels.length > 1
+                                    ? " dependencies"
+                                    : " dependency"
+                                }`
+                              : null) ||
+                            (suggestion.confidence < 0.6
+                              ? "Queued because confidence is low."
+                              : null);
+                          const reasonToShow = derivedReason
+                            ? derivedReason.trim()
+                            : null;
                           return (
                             <li
                               key={suggestion.id}
                               className="suggestion-item"
+                              data-testid="review-queue-item"
                             >
                               <div className="suggestion-heading">
                                 <span
-                                  className={`suggestion-pill action-${suggestion.action_type}`}
+                                  className={`suggestion-pill action-${normalizedAction}`}
                                 >
-                                  {suggestion.action_type === "add"
-                                    ? "Add task"
-                                    : "Complete task"}
+                                  {actionLabel}
                                 </span>
                                 <span className="suggestion-confidence">
-                                  {confidencePercent}% confidence
+                                  conf {confidenceValue}
                                 </span>
                               </div>
                               <div className="suggestion-description">
@@ -4891,7 +5288,24 @@ function App() {
                                   Blocked: {blockedReason}
                                   </span>
                                 )}
+                                {dependencyLabels.length > 0 &&
+                                  dependencyLabels.map((dep, index) => (
+                                    <span
+                                      key={`${suggestion.id}-dep-${dep}-${index}`}
+                                      className="task-dependency-chip"
+                                    >
+                                      Blocked by {dep}
+                                    </span>
+                                  ))}
                               </div>
+                              {reasonToShow && (
+                                <div
+                                  className="suggestion-reason"
+                                  data-testid="review-queue-reason"
+                                >
+                                  <strong>Review reason:</strong> {reasonToShow}
+                                </div>
+                              )}
                               <div className="suggestion-actions">
                                 <button
                                   type="button"
@@ -4899,7 +5313,7 @@ function App() {
                                   onClick={() =>
                                     handleApproveTaskSuggestion(suggestion)
                                   }
-                                  disabled={isProcessing}
+                                  disabled={isProcessing || isTasksReadOnly}
                                 >
                                   {isProcessing ? "Applying…" : "Approve"}
                                 </button>
@@ -4909,7 +5323,7 @@ function App() {
                                   onClick={() =>
                                     handleDismissTaskSuggestion(suggestion)
                                   }
-                                  disabled={isProcessing}
+                                  disabled={isProcessing || isTasksReadOnly}
                                 >
                                   {isProcessing ? "Working…" : "Dismiss"}
                                 </button>
