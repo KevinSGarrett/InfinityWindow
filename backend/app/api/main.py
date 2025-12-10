@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List, Dict, Deque, Any, Literal, cast, TYPE_CHECKING, Generator
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, model_validator
 from sqlalchemy import case
@@ -101,6 +101,8 @@ class ProjectRead(BaseModel):
     instruction_text: Optional[str] = None
     instruction_updated_at: Optional[datetime] = None
     pinned_note_text: Optional[str] = None
+    is_archived: bool = False
+    archived_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -580,11 +582,19 @@ def _tags_to_list(raw: Optional[str]) -> List[str]:
 # ---------- Helper: filesystem ----------
 
 
-def _ensure_project(db: Session, project_id: int) -> models.Project:
+def _ensure_project(
+    db: Session, project_id: int, allow_archived: bool = True
+) -> models.Project:
     project = db.get(models.Project, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found.")
+    if not allow_archived and getattr(project, "is_archived", False):
+        raise HTTPException(status_code=400, detail="Project is archived.")
     return project
+
+
+def _ensure_active_project(db: Session, project_id: int) -> models.Project:
+    return _ensure_project(db, project_id, allow_archived=False)
 
 
 def _ensure_conversation(
@@ -812,6 +822,8 @@ _AUTO_UPDATE_TASKS_AFTER_CHAT = (
     not in {"0", "false", "no", "off"}
 )
 
+_PROJECT_TELEMETRY: Dict[str, int] = {"archived": 0}
+
 
 def get_task_telemetry(reset: bool = False) -> Dict[str, int]:
     snapshot: Dict[str, Any] = dict(_TASK_TELEMETRY)
@@ -849,6 +861,19 @@ def reset_task_telemetry() -> None:
     for key in _TASK_TELEMETRY:
         _TASK_TELEMETRY[key] = 0
     _TASK_ACTION_HISTORY.clear()
+
+
+def get_project_telemetry(reset: bool = False) -> Dict[str, int]:
+    snapshot = dict(_PROJECT_TELEMETRY)
+    if reset:
+        reset_project_telemetry()
+        snapshot = dict(_PROJECT_TELEMETRY)
+    return snapshot
+
+
+def reset_project_telemetry() -> None:
+    for key in _PROJECT_TELEMETRY:
+        _PROJECT_TELEMETRY[key] = 0
 
 
 def _run_auto_update_with_retry(
@@ -2075,23 +2100,26 @@ def create_project(
 
 
 @app.get("/projects", response_model=list[ProjectRead])
-def list_projects(db: Session = Depends(get_db)):
+def list_projects(
+    include_archived: bool = False, db: Session = Depends(get_db)
+):
     """
-    List all projects.
+    List projects. Archived projects are hidden unless include_archived=true.
     """
-    projects = db.query(models.Project).order_by(models.Project.id).all()
+    query = db.query(models.Project)
+    if not include_archived:
+        query = query.filter(models.Project.is_archived.is_(False))
+    projects = query.order_by(models.Project.id).all()
     return projects
 
 
 @app.get("/projects/{project_id}", response_model=ProjectRead)
 def get_project(project_id: int, db: Session = Depends(get_db)):
     """
-    Fetch a single project by id.
+    Fetch a single project by id. Archived projects are still returned so
+    clients can inspect their metadata.
     """
-    project = db.get(models.Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found.")
-    return project
+    return _ensure_project(db, project_id)
 
 
 @app.patch("/projects/{project_id}", response_model=ProjectRead)
@@ -2124,6 +2152,20 @@ def update_project(
     _commit_with_retry(db)
     db.refresh(project)
     return project
+
+
+@app.delete("/projects/{project_id}", status_code=204)
+def archive_project(project_id: int, db: Session = Depends(get_db)):
+    """
+    Soft-archive a project. The record remains but is excluded from default lists.
+    """
+    project = _ensure_project(db, project_id)
+    if not project.is_archived:
+        project.is_archived = True
+        project.archived_at = datetime.now(timezone.utc)
+        _PROJECT_TELEMETRY["archived"] += 1
+        _commit_with_retry(db)
+    return Response(status_code=204)
 
 
 # ---------- Project instructions ----------
@@ -2731,11 +2773,7 @@ def create_conversation(
     """
     Create a new conversation under a given project.
     """
-    project = db.get(models.Project, payload.project_id)
-    if not project:
-        raise HTTPException(
-            status_code=404, detail="Project not found."
-        )
+    project = _ensure_active_project(db, payload.project_id)
 
     folder_id: Optional[int]
     if payload.folder_id is not None:
@@ -2894,9 +2932,7 @@ def create_task(
     """
     Create a new task for a project.
     """
-    project = db.get(models.Project, payload.project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found.")
+    _ensure_active_project(db, payload.project_id)
 
     priority = payload.priority or _infer_task_priority(payload.description)
     blocked_reason = payload.blocked_reason or _extract_blocked_reason(
@@ -2967,9 +3003,7 @@ def trigger_auto_update_tasks(
     Trigger automatic TODO extraction from the most recent conversation
     in a project. If no conversation exists, return a 400.
     """
-    project = db.get(models.Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found.")
+    _ensure_active_project(db, project_id)
 
     conversation = (
         db.query(models.Conversation)
@@ -3300,10 +3334,12 @@ def read_telemetry(reset: bool = False) -> Dict[str, Any]:
         task_snapshot["suggestions_error"] = str(e)
 
     ingestion_snapshot = get_ingest_telemetry(reset=reset)
+    project_snapshot = get_project_telemetry(reset=reset)
     return {
         "llm": llm_snapshot,
         "tasks": task_snapshot,
         "ingestion": ingestion_snapshot,
+        "projects": project_snapshot,
     }
 
 
@@ -3550,7 +3586,7 @@ def write_project_file(
     - content: full file contents (UTF-8).
     - create_dirs: if True, create missing parent directories.
     """
-    project = _ensure_project(db, project_id)
+    project = _ensure_active_project(db, project_id)
     root = _get_project_root(project)
     target = _safe_join(root, payload.file_path)
 
@@ -3606,7 +3642,7 @@ def ai_edit_project_file(
       - auto-apply (apply_changes=true).
     """
     # 1) Resolve project + root + file path
-    project = _ensure_project(db, project_id)
+    project = _ensure_active_project(db, project_id)
     root = _get_project_root(project)
     target = _safe_join(root, payload.file_path)
 
@@ -3809,7 +3845,7 @@ def create_ingestion_job_endpoint(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
-    project = _ensure_project(db, project_id)
+    project = _ensure_active_project(db, project_id)
     # Guard: require local_root_path for repo ingestions
     if not project.local_root_path:
         raise HTTPException(
@@ -3933,7 +3969,7 @@ def legacy_ingest(payload: dict, db: Session = Depends(get_db)):
     include = payload.get("include")
     name_prefix = payload.get("name_prefix", None)
 
-    project = _ensure_project(db, project_id)
+    project = _ensure_active_project(db, project_id)
     if not project.local_root_path:
         raise HTTPException(status_code=400, detail="Project local_root_path is not configured.")
 
@@ -3975,7 +4011,7 @@ def run_terminal_command(
     if payload.project_id is None:
         raise HTTPException(status_code=422, detail="project_id is required (path or body).")
 
-    project = _ensure_project(db, payload.project_id)
+    project = _ensure_active_project(db, payload.project_id)
     root = _get_project_root(project)
 
     # Resolve working directory
@@ -4095,24 +4131,16 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
             raise HTTPException(
                 status_code=404, detail="Conversation not found."
             )
-        project = db.get(models.Project, conversation.project_id)
-        if project is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Project associated with conversation not found.",
-            )
+        project = _ensure_active_project(db, conversation.project_id)
     else:
         # Use explicit project_id if provided
         if payload.project_id is not None:
-            project = db.get(models.Project, payload.project_id)
-            if project is None:
-                raise HTTPException(
-                    status_code=404, detail="Project not found."
-                )
+            project = _ensure_active_project(db, payload.project_id)
         else:
             # Get or create a default project
             project = (
                 db.query(models.Project)
+                .filter(models.Project.is_archived.is_(False))
                 .order_by(models.Project.id)
                 .first()
             )
@@ -4136,11 +4164,7 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
         db.refresh(conversation)
 
     if project is None:
-        project = db.get(models.Project, conversation.project_id)
-        if project is None:
-            raise HTTPException(
-                status_code=404, detail="Project not found for conversation."
-            )
+        project = _ensure_active_project(db, conversation.project_id)
 
     if conversation.folder_id:
         folder = db.get(models.ConversationFolder, conversation.folder_id)

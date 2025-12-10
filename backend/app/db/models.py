@@ -38,6 +38,8 @@ class Project(Base):
     pinned_note_text: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True
     )
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow
     )
