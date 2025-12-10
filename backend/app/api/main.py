@@ -23,9 +23,16 @@ from app.db.base import Base
 from app.db.session import engine, get_db, SessionLocal
 from app.db import models
 from app.llm import openai_client as openai_module
+from app.llm import retrieval_telemetry
 from app.llm.openai_client import generate_reply_from_history
 from app.llm.embeddings import get_embedding
 from app.llm.pricing import estimate_call_cost
+from app.llm.retrieval_strategies import (
+    RetrievalKind,
+    RetrievalProfile,
+    apply_profile_to_chroma_results,
+    get_retrieval_profile,
+)
 from app.vectorstore.chroma_store import (
     add_message_embedding,
     query_similar_messages,
@@ -3300,10 +3307,67 @@ def read_telemetry(reset: bool = False) -> Dict[str, Any]:
         task_snapshot["suggestions_error"] = str(e)
 
     ingestion_snapshot = get_ingest_telemetry(reset=reset)
+    retrieval_snapshot = retrieval_telemetry.get_retrieval_telemetry(reset=reset)
     return {
         "llm": llm_snapshot,
         "tasks": task_snapshot,
         "ingestion": ingestion_snapshot,
+        "retrieval": retrieval_snapshot,
+    }
+
+
+@app.get("/conversations/{conversation_id}/debug/retrieval_context")
+def debug_retrieval_context(
+    conversation_id: int, db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    conversation = db.get(models.Conversation, conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+
+    last_user_message = (
+        db.query(models.Message)
+        .filter(
+            models.Message.conversation_id == conversation_id,
+            models.Message.role.ilike("user"),
+        )
+        .order_by(models.Message.id.desc())
+        .first()
+    )
+    if last_user_message is None:
+        return {
+            "status": "no_retrieval",
+            "conversation_id": conversation_id,
+            "reason": "Conversation has no user messages.",
+        }
+
+    context = _build_retrieval_context(
+        db=db,
+        conversation=conversation,
+        user_message_text=last_user_message.content or "",
+    )
+    has_results = any(
+        (
+            context.get("messages"),
+            context.get("docs"),
+            context.get("memory"),
+        )
+    )
+    if not has_results:
+        return {
+            "status": "no_retrieval",
+            "conversation_id": conversation_id,
+            "message_id": last_user_message.id,
+            "reason": "Retrieval produced no results.",
+        }
+
+    return {
+        "conversation_id": conversation_id,
+        "message_id": last_user_message.id,
+        "profiles": context.get("profiles", {}),
+        "messages": context.get("messages", []),
+        "docs": context.get("docs", []),
+        "memory": context.get("memory", []),
+        "retrieval_context_text": context.get("context_text", ""),
     }
 
 
@@ -4067,6 +4131,218 @@ def list_terminal_history(project_id: int, db: Session = Depends(get_db)):
     return []
 
 
+# ---------- Retrieval helpers ----------
+
+
+def _profile_to_dict(profile: RetrievalProfile) -> Dict[str, Any]:
+    return {
+        "top_k": profile.top_k,
+        "score_threshold": profile.score_threshold,
+    }
+
+
+def _build_retrieval_context(
+    db: Session,
+    conversation: models.Conversation,
+    user_message_text: str,
+) -> Dict[str, Any]:
+    retrieval_context_text = ""
+    user_embedding = None
+
+    profiles: Dict[str, RetrievalProfile] = {
+        "messages": get_retrieval_profile(RetrievalKind.MESSAGES),
+        "docs": get_retrieval_profile(RetrievalKind.DOCS),
+        "memory": get_retrieval_profile(RetrievalKind.MEMORY),
+    }
+
+    message_entries: List[Dict[str, Any]] = []
+    doc_entries: List[Dict[str, Any]] = []
+    memory_entries: List[Dict[str, Any]] = []
+
+    try:
+        user_embedding = get_embedding(user_message_text)
+
+        # 4a) Similar messages in this project's conversation
+        msg_profile = profiles["messages"]
+        msg_results_raw = query_similar_messages(
+            project_id=conversation.project_id,
+            query_embedding=user_embedding,
+            conversation_id=conversation.id,
+            folder_id=conversation.folder_id,
+            n_results=msg_profile.top_k,
+        )
+        msg_results = apply_profile_to_chroma_results(msg_results_raw, msg_profile)
+        msg_docs_nested = msg_results.get("documents", [[]])
+        msg_metas_nested = msg_results.get("metadatas", [[]])
+        msg_scores_nested = msg_results.get("scores", [[]])
+        msg_docs = msg_docs_nested[0] if msg_docs_nested else []
+        msg_metas = msg_metas_nested[0] if msg_metas_nested else []
+        msg_scores = msg_scores_nested[0] if msg_scores_nested else []
+        retrieval_telemetry.record_retrieval_event(
+            RetrievalKind.MESSAGES.value, msg_profile.top_k, len(msg_docs)
+        )
+        for doc, meta, score in zip(msg_docs, msg_metas, msg_scores):
+            role = meta.get("role", "unknown")
+            message_entries.append(
+                {
+                    "role": role,
+                    "snippet": doc,
+                    "score": score,
+                }
+            )
+
+        # 4b) Similar document chunks in this project
+        doc_profile = profiles["docs"]
+        doc_results_raw = query_similar_document_chunks(
+            project_id=conversation.project_id,
+            query_embedding=user_embedding,
+            document_id=None,
+            n_results=doc_profile.top_k,
+        )
+        doc_results = apply_profile_to_chroma_results(doc_results_raw, doc_profile)
+        doc_docs_nested = doc_results.get("documents", [[]])
+        doc_metas_nested = doc_results.get("metadatas", [[]])
+        doc_scores_nested = doc_results.get("scores", [[]])
+        doc_docs = doc_docs_nested[0] if doc_docs_nested else []
+        doc_metas = doc_metas_nested[0] if doc_metas_nested else []
+        doc_scores = doc_scores_nested[0] if doc_scores_nested else []
+        doc_id_set = {
+            int(meta.get("document_id"))
+            for meta in doc_metas
+            if meta.get("document_id") is not None
+        }
+        doc_title_map: Dict[int, str] = {}
+        if doc_id_set:
+            docs = (
+                db.query(models.Document)
+                .filter(models.Document.id.in_(doc_id_set))
+                .all()
+            )
+            doc_title_map = {d.id: (d.name or f"Document {d.id}") for d in docs}
+        retrieval_telemetry.record_retrieval_event(
+            RetrievalKind.DOCS.value, doc_profile.top_k, len(doc_docs)
+        )
+        for doc_text, meta, score in zip(doc_docs, doc_metas, doc_scores):
+            document_id = meta.get("document_id")
+            chunk_index = meta.get("chunk_index")
+            title = (
+                doc_title_map.get(int(document_id))
+                if document_id is not None
+                else None
+            )
+            label = (
+                f"Document {document_id}"
+                if title is None
+                else f"Document {document_id} ({title})"
+            )
+            doc_entries.append(
+                {
+                    "document_id": document_id,
+                    "title": title or label,
+                    "chunk_index": chunk_index,
+                    "snippet": doc_text,
+                    "score": score,
+                    "label": label,
+                }
+            )
+
+        # 4c) Project memory items
+        mem_profile = profiles["memory"]
+        memory_results_raw = query_similar_memory_items(
+            project_id=conversation.project_id,
+            query_embedding=user_embedding,
+            n_results=mem_profile.top_k,
+        )
+        memory_results = apply_profile_to_chroma_results(
+            memory_results_raw, mem_profile
+        )
+        mem_ids_nested = memory_results.get("ids", [[]])
+        mem_docs_nested = memory_results.get("documents", [[]])
+        mem_metas_nested = memory_results.get("metadatas", [[]])
+        mem_scores_nested = memory_results.get("scores", [[]])
+        mem_ids = mem_ids_nested[0] if mem_ids_nested else []
+        mem_docs = mem_docs_nested[0] if mem_docs_nested else []
+        mem_metas = mem_metas_nested[0] if mem_metas_nested else []
+        mem_scores = mem_scores_nested[0] if mem_scores_nested else []
+
+        mem_id_ints = [
+            int(meta.get("memory_id", mid)) for mid, meta in zip(mem_ids, mem_metas)
+        ]
+        memory_items = {}
+        if mem_id_ints:
+            memory_items = {
+                item.id: item
+                for item in _active_memory_query(db, conversation.project_id)
+                .filter(models.MemoryItem.id.in_(mem_id_ints))
+                .all()
+            }
+        retrieval_telemetry.record_retrieval_event(
+            RetrievalKind.MEMORY.value, mem_profile.top_k, len(mem_docs)
+        )
+        for mid, doc, score in zip(mem_id_ints, mem_docs, mem_scores):
+            item = memory_items.get(mid)
+            if not item:
+                continue
+            memory_entries.append(
+                {
+                    "memory_id": mid,
+                    "title": item.title,
+                    "snippet": doc,
+                    "score": score,
+                }
+            )
+
+        context_parts: List[str] = []
+        if message_entries:
+            context_parts.append(
+                "Relevant past messages:\n"
+                + "\n\n".join(
+                    f"[{entry['role']} message] {entry['snippet']}"
+                    for entry in message_entries
+                )
+            )
+        if doc_entries:
+            context_parts.append(
+                "Relevant document excerpts:\n"
+                + "\n\n".join(
+                    f"[{entry['label']}, chunk {entry.get('chunk_index')}] "
+                    f"{entry['snippet']}"
+                    for entry in doc_entries
+                )
+            )
+        if memory_entries:
+            context_parts.append(
+                "Relevant project memories:\n"
+                + "\n\n".join(
+                    f"[Memory: {entry['title']}] {entry['snippet']}"
+                    for entry in memory_entries
+                )
+            )
+
+        if context_parts:
+            retrieval_context_text = (
+                "You have access to the following retrieved memory and document excerpts.\n"
+                "Use them to ground your answer to the user's latest question. "
+                "If anything conflicts with the user's most recent instructions, "
+                "follow the user.\n\n"
+                + "\n\n---\n\n".join(context_parts)
+            )
+
+    except Exception as e:  # noqa: BLE001
+        # Retrieval should never break the chat flow
+        print(f"[WARN] Retrieval failed: {e!r}")
+        user_embedding = None
+
+    return {
+        "context_text": retrieval_context_text,
+        "user_embedding": user_embedding,
+        "profiles": {k: _profile_to_dict(v) for k, v in profiles.items()},
+        "messages": message_entries,
+        "docs": doc_entries,
+        "memory": memory_entries,
+    }
+
+
 # ---------- Chat ----------
 
 
@@ -4163,130 +4439,11 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
     db.flush()  # ensures user_message gets an ID before we commit
 
     # 4) Retrieval: embed user message and pull relevant messages & docs
-    retrieval_context_text = ""
-    user_embedding = None
-
-    try:
-        user_embedding = get_embedding(payload.message)
-
-        # 4a) Similar messages in this project's conversation
-        msg_results = query_similar_messages(
-            project_id=conversation.project_id,
-            query_embedding=user_embedding,
-            conversation_id=conversation.id,
-            folder_id=conversation.folder_id,
-            n_results=5,
-        )
-
-        msg_docs_nested = msg_results.get("documents", [[]])
-        msg_metas_nested = msg_results.get("metadatas", [[]])
-        msg_docs = msg_docs_nested[0] if msg_docs_nested else []
-        msg_metas = msg_metas_nested[0] if msg_metas_nested else []
-
-        msg_snippets: List[str] = []
-        for doc, meta in zip(msg_docs, msg_metas):
-            role = meta.get("role", "unknown")
-            msg_snippets.append(f"[{role} message] {doc}")
-
-        # 4b) Similar document chunks in this project
-        doc_results = query_similar_document_chunks(
-            project_id=conversation.project_id,
-            query_embedding=user_embedding,
-            document_id=None,
-            n_results=5,
-        )
-
-        doc_docs_nested = doc_results.get("documents", [[]])
-        doc_metas_nested = doc_results.get("metadatas", [[]])
-        doc_docs = doc_docs_nested[0] if doc_docs_nested else []
-        doc_metas = doc_metas_nested[0] if doc_metas_nested else []
-
-        # Resolve document titles for the retrieved chunks so responses can
-        # surface doc names (not just ids).
-        doc_snippets: List[str] = []
-        doc_id_set = {
-            int(meta.get("document_id"))
-            for meta in doc_metas
-            if meta.get("document_id") is not None
-        }
-        doc_title_map: Dict[int, str] = {}
-        if doc_id_set:
-            docs = (
-                db.query(models.Document)
-                .filter(models.Document.id.in_(doc_id_set))
-                .all()
-            )
-            doc_title_map = {d.id: (d.name or f"Document {d.id}") for d in docs}
-
-        for doc_text, meta in zip(doc_docs, doc_metas):
-            document_id = meta.get("document_id")
-            chunk_index = meta.get("chunk_index")
-            title = doc_title_map.get(int(document_id)) if document_id is not None else None
-            label = (
-                f"Document {document_id}" if title is None else f"Document {document_id} ({title})"
-            )
-            doc_snippets.append(f"[{label}, chunk {chunk_index}] {doc_text}")
-
-        context_parts: List[str] = []
-        if msg_snippets:
-            context_parts.append(
-                "Relevant past messages:\n" + "\n\n".join(msg_snippets)
-            )
-        if doc_snippets:
-            context_parts.append(
-                "Relevant document excerpts:\n" + "\n\n".join(doc_snippets)
-            )
-
-        memory_results = query_similar_memory_items(
-            project_id=conversation.project_id,
-            query_embedding=user_embedding,
-            n_results=5,
-        )
-        mem_ids_nested = memory_results.get("ids", [[]])
-        mem_docs_nested = memory_results.get("documents", [[]])
-        mem_metas_nested = memory_results.get("metadatas", [[]])
-        mem_ids = mem_ids_nested[0] if mem_ids_nested else []
-        mem_docs = mem_docs_nested[0] if mem_docs_nested else []
-        mem_metas = mem_metas_nested[0] if mem_metas_nested else []
-
-        mem_id_ints = [
-            int(meta.get("memory_id", mid))
-            for mid, meta in zip(mem_ids, mem_metas)
-        ]
-        memory_items = {}
-        if mem_id_ints:
-            memory_items = {
-                item.id: item
-                for item in _active_memory_query(db, conversation.project_id)
-                .filter(models.MemoryItem.id.in_(mem_id_ints))
-                .all()
-            }
-
-        memory_snippets: List[str] = []
-        for mid, doc in zip(mem_id_ints, mem_docs):
-            item = memory_items.get(mid)
-            if not item:
-                continue
-            memory_snippets.append(f"[Memory: {item.title}] {doc}")
-
-        if memory_snippets:
-            context_parts.append(
-                "Relevant project memories:\n" + "\n\n".join(memory_snippets)
-            )
-
-        if context_parts:
-            retrieval_context_text = (
-                "You have access to the following retrieved memory and document excerpts.\n"
-                "Use them to ground your answer to the user's latest question. "
-                "If anything conflicts with the user's most recent instructions, "
-                "follow the user.\n\n"
-                + "\n\n---\n\n".join(context_parts)
-            )
-
-    except Exception as e:  # noqa: BLE001
-        # Retrieval should never break the chat flow
-        print(f"[WARN] Retrieval failed: {e!r}")
-        user_embedding = None
+    retrieval_context = _build_retrieval_context(
+        db=db, conversation=conversation, user_message_text=payload.message
+    )
+    retrieval_context_text = retrieval_context.get("context_text", "")
+    user_embedding = retrieval_context.get("user_embedding")
 
     # 5) Build the message list for OpenAI
     chat_history: List[Dict[str, str]] = []
