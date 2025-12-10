@@ -245,6 +245,49 @@ type MemoryItem = {
   updated_at: string;
 };
 
+type RetrievalProfileInfo = {
+  top_k?: number;
+  score_threshold?: number | null;
+};
+
+type RetrievalContextMessage = {
+  role?: string;
+  snippet: string;
+  score?: number | null;
+};
+
+type RetrievalContextDoc = {
+  document_id?: number | null;
+  title?: string | null;
+  label?: string | null;
+  chunk_index?: number | null;
+  snippet: string;
+  score?: number | null;
+};
+
+type RetrievalContextMemory = {
+  memory_id?: number | null;
+  title?: string | null;
+  snippet: string;
+  score?: number | null;
+};
+
+type RetrievalContextResult = {
+  conversationId: number;
+  messageId?: number | null;
+  status: "ok" | "no_retrieval";
+  reason?: string | null;
+  profiles?: {
+    messages?: RetrievalProfileInfo;
+    docs?: RetrievalProfileInfo;
+    memory?: RetrievalProfileInfo;
+  };
+  messages: RetrievalContextMessage[];
+  docs: RetrievalContextDoc[];
+  memory: RetrievalContextMemory[];
+  retrievalContextText?: string | null;
+};
+
 type RightTab =
   | "tasks"
   | "docs"
@@ -339,6 +382,13 @@ const formatDateTime = (value?: string | null): string | null => {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return null;
   return d.toLocaleString();
+};
+
+const truncateSnippet = (text: string, max: number = 120): string => {
+  if (!text) return "";
+  const trimmed = text.trim();
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, max)}...`;
 };
 
 // Allow overriding backend base via Vite env; default to localhost:8000.
@@ -449,6 +499,14 @@ function App() {
   const [usageExportJson, setUsageExportJson] = useState<string | null>(null);
   const [usageExportFormat, setUsageExportFormat] = useState<"json" | "csv" | null>(null);
   const [usageExportError, setUsageExportError] = useState<string | null>(null);
+  const [retrievalContext, setRetrievalContext] =
+    useState<RetrievalContextResult | null>(null);
+  const [retrievalContextError, setRetrievalContextError] =
+    useState<string | null>(null);
+  const [retrievalContextLoading, setRetrievalContextLoading] = useState(false);
+  const retrievalContextCache = useRef<Map<number, RetrievalContextResult>>(
+    new Map()
+  );
 
   // Project instructions
   const [projectInstructions, setProjectInstructions] = useState("");
@@ -596,6 +654,76 @@ function App() {
   const [showAllDecisions, setShowAllDecisions] = useState(false);
   const draftSeenRef = useRef<Set<number>>(new Set());
 
+  const fetchRetrievalContext = useCallback(
+    async (conversationId: number, force: boolean = false) => {
+      if (!force) {
+        const cached = retrievalContextCache.current.get(conversationId);
+        if (cached) {
+          setRetrievalContext(cached);
+          setRetrievalContextError(null);
+          setRetrievalContextLoading(false);
+          return;
+        }
+      }
+      setRetrievalContextLoading(true);
+      setRetrievalContextError(null);
+      try {
+        const res = await fetch(
+          `${BACKEND_BASE}/conversations/${conversationId}/debug/retrieval_context`
+        );
+        if (res.status === 404) {
+          const emptyResult: RetrievalContextResult = {
+            conversationId,
+            status: "no_retrieval",
+            reason: "No recent retrieval context for this conversation yet.",
+            profiles: {},
+            messages: [],
+            docs: [],
+            memory: [],
+            retrievalContextText: "",
+          };
+          retrievalContextCache.current.set(conversationId, emptyResult);
+          setRetrievalContext(emptyResult);
+          return;
+        }
+        if (!res.ok) {
+          console.error("Fetching retrieval context failed:", res.status);
+          setRetrievalContext(null);
+          setRetrievalContextError(
+            `Failed to load retrieval context (status ${res.status}).`
+          );
+          return;
+        }
+        const data = await res.json();
+        const normalized: RetrievalContextResult = {
+          conversationId: data.conversation_id ?? conversationId,
+          messageId: data.message_id ?? null,
+          status: data.status === "no_retrieval" ? "no_retrieval" : "ok",
+          reason: data.reason ?? null,
+          profiles: data.profiles ?? {},
+          messages: data.messages ?? [],
+          docs: data.docs ?? [],
+          memory: data.memory ?? [],
+          retrievalContextText: data.retrieval_context_text ?? "",
+        };
+        retrievalContextCache.current.set(conversationId, normalized);
+        setRetrievalContext(normalized);
+      } catch (e) {
+        console.error("Fetching retrieval context threw:", e);
+        const message = e instanceof Error ? e.message : null;
+        setRetrievalContext(null);
+        setRetrievalContextError(
+          message
+            ? `Failed to load retrieval context: ${message}`
+            : "Failed to load retrieval context."
+        );
+      } finally {
+        setRetrievalContextLoading(false);
+      }
+    },
+    []
+  );
+
   const stopRepoIngestionPolling = useCallback(() => {
     if (repoIngestionPollRef.current !== null) {
       window.clearInterval(repoIngestionPollRef.current);
@@ -618,6 +746,13 @@ function App() {
       }, 0);
     }
   }, [showCommandPalette]);
+
+  useEffect(() => {
+    retrievalContextCache.current.clear();
+    setRetrievalContext(null);
+    setRetrievalContextError(null);
+    setRetrievalContextLoading(false);
+  }, [selectedProjectId]);
 
   useEffect(() => {
     return () => {
@@ -645,6 +780,32 @@ function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProjectId, usageConversationId]);
+
+  const retrievalConversationId =
+    usageConversationId ?? selectedConversationId;
+
+  useEffect(() => {
+    if (rightTab !== "usage") return;
+    if (!retrievalConversationId) {
+      setRetrievalContext(null);
+      setRetrievalContextError(null);
+      setRetrievalContextLoading(false);
+      return;
+    }
+    const cached = retrievalContextCache.current.get(retrievalConversationId);
+    if (cached) {
+      setRetrievalContext(cached);
+      setRetrievalContextError(null);
+      setRetrievalContextLoading(false);
+      return;
+    }
+    setRetrievalContext(null);
+    fetchRetrievalContext(retrievalConversationId);
+  }, [
+    rightTab,
+    retrievalConversationId,
+    fetchRetrievalContext,
+  ]);
 
   const commandPaletteActions = useMemo(
     () => [
@@ -6790,6 +6951,182 @@ function App() {
                     </label>
                   </div>
                 </div>
+                {retrievalConversationId && (
+                  <section
+                    className="retrieval-context-card"
+                    aria-label="Retrieval context inspector"
+                    data-testid="retrieval-context-card"
+                  >
+                    <div className="retrieval-context-header">
+                      <div>
+                        <div className="retrieval-context-title">
+                          Retrieval context
+                        </div>
+                        <div className="retrieval-context-subtitle">
+                          Conversation #{retrievalConversationId}
+                          {retrievalContext?.messageId
+                            ? ` · Last user message #${retrievalContext.messageId}`
+                            : ""}
+                        </div>
+                      </div>
+                      <div className="retrieval-context-actions">
+                        <button
+                          type="button"
+                          className="btn-link small"
+                          onClick={() =>
+                            fetchRetrievalContext(
+                              retrievalConversationId,
+                              true
+                            )
+                          }
+                          disabled={retrievalContextLoading}
+                        >
+                          Refresh
+                        </button>
+                      </div>
+                    </div>
+                    {retrievalContextLoading ? (
+                      <div className="retrieval-context-hint">
+                        Loading retrieval context…
+                      </div>
+                    ) : retrievalContextError ? (
+                      <div
+                        className="retrieval-context-error"
+                        data-testid="retrieval-context-error"
+                      >
+                        {retrievalContextError}
+                      </div>
+                    ) : !retrievalContext ||
+                      retrievalContext.status === "no_retrieval" ? (
+                      <div className="retrieval-context-empty">
+                        No recent retrieval context for this conversation yet.
+                      </div>
+                    ) : (
+                      <div className="retrieval-context-body">
+                        <div
+                          className="retrieval-context-counts"
+                          data-testid="retrieval-context-counts"
+                        >
+                          <span className="retrieval-context-chip">
+                            Messages: {retrievalContext.messages.length}
+                          </span>
+                          <span className="retrieval-context-chip">
+                            Docs: {retrievalContext.docs.length}
+                          </span>
+                          <span className="retrieval-context-chip">
+                            Memory: {retrievalContext.memory.length}
+                          </span>
+                        </div>
+                        <div className="retrieval-profile-meta">
+                          {retrievalContext.profiles?.messages && (
+                            <span>
+                              Msg k={retrievalContext.profiles.messages.top_k}
+                            </span>
+                          )}
+                          {retrievalContext.profiles?.docs && (
+                            <span>
+                              Docs k={retrievalContext.profiles.docs.top_k}
+                            </span>
+                          )}
+                          {retrievalContext.profiles?.memory && (
+                            <span>
+                              Memory k={retrievalContext.profiles.memory.top_k}
+                            </span>
+                          )}
+                        </div>
+                        <div className="retrieval-context-lists">
+                          <div
+                            className="retrieval-context-list"
+                            data-testid="retrieval-context-messages"
+                          >
+                            <div className="retrieval-context-list-title">
+                              Messages
+                            </div>
+                            {retrievalContext.messages.length === 0 ? (
+                              <div className="retrieval-context-empty">
+                                No messages retrieved.
+                              </div>
+                            ) : (
+                              retrievalContext.messages.map((msg, idx) => (
+                                <div
+                                  key={`msg-${idx}`}
+                                  className="retrieval-context-item"
+                                >
+                                  <strong>
+                                    {(msg.role || "message").toUpperCase()}
+                                    {msg.score != null
+                                      ? ` (${msg.score.toFixed(2)})`
+                                      : ""}
+                                    :
+                                  </strong>{" "}
+                                  {truncateSnippet(msg.snippet)}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                          <div
+                            className="retrieval-context-list"
+                            data-testid="retrieval-context-docs"
+                          >
+                            <div className="retrieval-context-list-title">
+                              Docs
+                            </div>
+                            {retrievalContext.docs.length === 0 ? (
+                              <div className="retrieval-context-empty">
+                                No documents retrieved.
+                              </div>
+                            ) : (
+                              retrievalContext.docs.map((doc, idx) => (
+                                <div
+                                  key={`doc-${idx}`}
+                                  className="retrieval-context-item"
+                                >
+                                  <strong>
+                                    {doc.label || doc.title || "Document"}
+                                    {doc.score != null
+                                      ? ` (${doc.score.toFixed(2)})`
+                                      : ""}
+                                    :
+                                  </strong>{" "}
+                                  {truncateSnippet(doc.snippet)}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                          <div
+                            className="retrieval-context-list"
+                            data-testid="retrieval-context-memory"
+                          >
+                            <div className="retrieval-context-list-title">
+                              Memory
+                            </div>
+                            {retrievalContext.memory.length === 0 ? (
+                              <div className="retrieval-context-empty">
+                                No memory items retrieved.
+                              </div>
+                            ) : (
+                              retrievalContext.memory.map((mem, idx) => (
+                                <div
+                                  key={`mem-${idx}`}
+                                  className="retrieval-context-item"
+                                >
+                                  <strong>
+                                    {mem.title || "Memory"}
+                                    {mem.score != null
+                                      ? ` (${mem.score.toFixed(2)})`
+                                      : ""}
+                                    :
+                                  </strong>{" "}
+                                  {truncateSnippet(mem.snippet)}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </section>
+                )}
                 {usageConversationId == null ? (
                   <div className="usage-empty">
                     Select a conversation to view usage analytics.
