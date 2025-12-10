@@ -23,6 +23,7 @@ import app.db.session as db_session  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db import models  # noqa: E402
 from app.vectorstore import chroma_store  # noqa: E402
+from app.llm import retrieval_telemetry  # noqa: E402
 
 BACKEND_DIR = Path(__file__).resolve().parents[2] / "backend"
 LOCAL_ROOT = str(Path(__file__).resolve().parents[2])
@@ -106,6 +107,7 @@ def _reset_state(_temp_db_and_chroma: dict) -> Iterator[None]:
     Base.metadata.create_all(bind=engine)
     chroma_store._reset_chroma_persistence(clear_data=True)
     main.reset_task_telemetry()
+    retrieval_telemetry.reset_retrieval_telemetry()
     yield
 
 
