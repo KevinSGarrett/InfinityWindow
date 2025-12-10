@@ -1,0 +1,1280 @@
+﻿[
+    {
+        "path":  ".gitignore",
+        "size":  286,
+        "writeTimeUtc":  "2025-11-26T02:21:52.9907724Z",
+        "sha256":  "DF96ABFCEE2D5E0ECE6C3455F0253FCC49A7570E41D6322B37F277AA21B76269"
+    },
+    {
+        "path":  "backend\\.env",
+        "size":  492,
+        "writeTimeUtc":  "2025-11-29T20:56:17.7492449Z",
+        "sha256":  "168EA0261647C08BD56A41EB6F56B1819B11B71E71B4DAAEBE26A25C909D79B7"
+    },
+    {
+        "path":  "backend\\.pytest_cache\\.gitignore",
+        "size":  39,
+        "writeTimeUtc":  "2025-11-30T22:37:20.9478244Z",
+        "sha256":  "E7C6BB30148CF667606DCD63E7CA77ACAA3CFB0C8303BF09E6419E1E1669DC6D"
+    },
+    {
+        "path":  "backend\\.pytest_cache\\CACHEDIR.TAG",
+        "size":  191,
+        "writeTimeUtc":  "2025-11-30T22:37:20.9478244Z",
+        "sha256":  "37DC88EF9A0ABEDDBE81053A6DD8FDFB13AFB613045EA1EB4A5C815A74A3BDE4"
+    },
+    {
+        "path":  "backend\\.pytest_cache\\README.md",
+        "size":  310,
+        "writeTimeUtc":  "2025-11-30T22:37:20.9478244Z",
+        "sha256":  "420E808D79A6C25D3CDA0AF33BC4782314A14949866682C68CE8149E89B66B70"
+    },
+    {
+        "path":  "backend\\.pytest_cache\\v\\cache\\nodeids",
+        "size":  2,
+        "writeTimeUtc":  "2025-12-01T02:43:31.9976701Z",
+        "sha256":  "4F53CDA18C2BAA0C0354BB5F9A3ECBE5ED12AB4D8E11BA873C2F11161202B945"
+    },
+    {
+        "path":  "backend\\app\\__init__.py",
+        "size":  0,
+        "writeTimeUtc":  "2025-11-25T23:30:35.4930381Z",
+        "sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+    },
+    {
+        "path":  "backend\\app\\__pycache__\\__init__.cpython-312.pyc",
+        "size":  138,
+        "writeTimeUtc":  "2025-11-25T23:31:47.0912092Z",
+        "sha256":  "1B1CDDA3192FA5E1D64DB2ABE7C5CC666926897C861AB089DC6262BC71737B7C"
+    },
+    {
+        "path":  "backend\\app\\api\\__init__.py",
+        "size":  0,
+        "writeTimeUtc":  "2025-11-25T23:30:35.5326453Z",
+        "sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+    },
+    {
+        "path":  "backend\\app\\api\\__pycache__\\__init__.cpython-312.pyc",
+        "size":  142,
+        "writeTimeUtc":  "2025-11-25T23:31:47.0927233Z",
+        "sha256":  "594A99BBA604FAF843E947FB18EB7949BC9AB66510F469BC7E66ABCD5636C43E"
+    },
+    {
+        "path":  "backend\\app\\api\\__pycache__\\docs.cpython-312.pyc",
+        "size":  5341,
+        "writeTimeUtc":  "2025-11-26T20:45:22.6589353Z",
+        "sha256":  "0F6CADE3CDCB845A7AB7D2608D06DDA9B6E56DE44F52C306E11087992BFAA665"
+    },
+    {
+        "path":  "backend\\app\\api\\__pycache__\\github.cpython-312.pyc",
+        "size":  2906,
+        "writeTimeUtc":  "2025-11-27T00:55:33.3132695Z",
+        "sha256":  "FE67F7417AE79B35097F56F75D91DDD4FA2B0808B78EF7FABBFA43078F04CDE0"
+    },
+    {
+        "path":  "backend\\app\\api\\__pycache__\\main.cpython-312.pyc",
+        "size":  133314,
+        "writeTimeUtc":  "2025-12-05T05:46:17.2892034Z",
+        "sha256":  "20A6D8D363790B0258216FE30D74230812EE49E3C03B65DD7B4CC89CE285BAEF"
+    },
+    {
+        "path":  "backend\\app\\api\\__pycache__\\search.cpython-312.pyc",
+        "size":  9181,
+        "writeTimeUtc":  "2025-12-01T22:52:33.4596959Z",
+        "sha256":  "3738D2B07A09D9B2E23141C97825D8F781A9BB599A57986ACC65D4BB2A9BDC4A"
+    },
+    {
+        "path":  "backend\\app\\api\\docs.py",
+        "size":  4277,
+        "writeTimeUtc":  "2025-11-26T20:45:19.8053679Z",
+        "sha256":  "E1B6499D06EBA1BCE08E89D24938AC1BE2EE1D2D0B97B1AF273735BDCC82B805"
+    },
+    {
+        "path":  "backend\\app\\api\\github.py",
+        "size":  2074,
+        "writeTimeUtc":  "2025-11-27T00:55:09.8767297Z",
+        "sha256":  "20FE7805C694EB13104DDBB59D4356B02559918D7400CA047A597176CFC09715"
+    },
+    {
+        "path":  "backend\\app\\api\\main.py",
+        "size":  121698,
+        "writeTimeUtc":  "2025-12-05T06:44:08.6842134Z",
+        "sha256":  "F960FF15629E26BE29621A3419BF2F5E906C9D878FC14BDD601DB4C0CE626B0D"
+    },
+    {
+        "path":  "backend\\app\\api\\search.py",
+        "size":  8769,
+        "writeTimeUtc":  "2025-12-01T22:51:06.8858742Z",
+        "sha256":  "E8FDDB02324CF9F105573C8D219C981039972ABF49F23C61A735C14170BFED3F"
+    },
+    {
+        "path":  "backend\\app\\db\\__init__.py",
+        "size":  0,
+        "writeTimeUtc":  "2025-11-26T01:25:56.8889949Z",
+        "sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+    },
+    {
+        "path":  "backend\\app\\db\\__pycache__\\__init__.cpython-312.pyc",
+        "size":  141,
+        "writeTimeUtc":  "2025-11-26T01:27:41.1267969Z",
+        "sha256":  "444B464B7B7652482B0C5E7B7536EA064C895FF151D1980F076057BF79AFEFF0"
+    },
+    {
+        "path":  "backend\\app\\db\\__pycache__\\base.cpython-312.pyc",
+        "size":  440,
+        "writeTimeUtc":  "2025-11-26T01:27:41.1359459Z",
+        "sha256":  "50EBA48FDACB44A6306C7BB2FCF0905424DD9C5575EEDDD87C1BD0BADB483D4E"
+    },
+    {
+        "path":  "backend\\app\\db\\__pycache__\\models.cpython-312.pyc",
+        "size":  18625,
+        "writeTimeUtc":  "2025-12-04T06:35:40.1878981Z",
+        "sha256":  "BC82DF507E957F6FED6573B917C2D9F3B0A6AE8EA20D04B3659C0916ED6131AE"
+    },
+    {
+        "path":  "backend\\app\\db\\__pycache__\\session.cpython-312.pyc",
+        "size":  1768,
+        "writeTimeUtc":  "2025-12-05T00:03:51.2602172Z",
+        "sha256":  "EFDC131D3032B995D5C126504A7A7DF50758B318A89256517C7347DCF3E28290"
+    },
+    {
+        "path":  "backend\\app\\db\\base.py",
+        "size":  153,
+        "writeTimeUtc":  "2025-11-26T01:26:44.1773964Z",
+        "sha256":  "2DD3FAF718FCDEEE1DAE9E0100A84197625D7716F8C361C5E1F49AF9BD17D951"
+    },
+    {
+        "path":  "backend\\app\\db\\models.py",
+        "size":  17979,
+        "writeTimeUtc":  "2025-12-04T06:35:38.3196394Z",
+        "sha256":  "582D222E6D0C8418EC233C4E37D3FF7017206C6B30317670976A2DFF3D93DBD2"
+    },
+    {
+        "path":  "backend\\app\\db\\session.py",
+        "size":  1693,
+        "writeTimeUtc":  "2025-12-05T00:03:49.9692510Z",
+        "sha256":  "E4ECDB07D6421AE7F35E27E32843A6450F1C234D445F970C0660FCE7FF063C34"
+    },
+    {
+        "path":  "backend\\app\\ingestion\\__init__.py",
+        "size":  0,
+        "writeTimeUtc":  "2025-11-26T04:15:51.2438538Z",
+        "sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+    },
+    {
+        "path":  "backend\\app\\ingestion\\__pycache__\\__init__.cpython-312.pyc",
+        "size":  148,
+        "writeTimeUtc":  "2025-11-26T06:08:43.7269690Z",
+        "sha256":  "44D833DD7A8B4E4B7869C5EA55FCE5C904521A267CA04FF6092BAB17BA302DA0"
+    },
+    {
+        "path":  "backend\\app\\ingestion\\__pycache__\\docs_ingestor.cpython-312.pyc",
+        "size":  5339,
+        "writeTimeUtc":  "2025-12-05T04:20:10.4436379Z",
+        "sha256":  "9FDDC5084F00DBCBD9A535F831EA845C2C4A6900B4F1D01F35CF2224098F0BC1"
+    },
+    {
+        "path":  "backend\\app\\ingestion\\__pycache__\\github_ingestor.cpython-312.pyc",
+        "size":  12328,
+        "writeTimeUtc":  "2025-12-04T19:13:23.7234597Z",
+        "sha256":  "8CD982148B7324C7326540925B4B86998AA04B8B18E04872D02FF780FB60B086"
+    },
+    {
+        "path":  "backend\\app\\ingestion\\__pycache__\\job_runner.cpython-312.pyc",
+        "size":  2642,
+        "writeTimeUtc":  "2025-12-04T07:14:03.2217246Z",
+        "sha256":  "5EE5F34ECC292C8613B309502B74A48F4D9169B880E165EB5F87CDC9CC623A18"
+    },
+    {
+        "path":  "backend\\app\\ingestion\\docs_ingestor.py",
+        "size":  4809,
+        "writeTimeUtc":  "2025-12-05T04:19:50.8012615Z",
+        "sha256":  "6EE6137B3F22111BEFCC6B018C600DBE8EC04623D620A71572E4D872D0797507"
+    },
+    {
+        "path":  "backend\\app\\ingestion\\github_ingestor.py",
+        "size":  12035,
+        "writeTimeUtc":  "2025-12-04T19:13:20.5633272Z",
+        "sha256":  "FC860CDFAC16B274A4F2EFC8BC326D07842F939E9DC43EAE4DABD97DCD951FE4"
+    },
+    {
+        "path":  "backend\\app\\llm\\__init__.py",
+        "size":  0,
+        "writeTimeUtc":  "2025-11-26T01:44:34.3859687Z",
+        "sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+    },
+    {
+        "path":  "backend\\app\\llm\\__pycache__\\__init__.cpython-312.pyc",
+        "size":  142,
+        "writeTimeUtc":  "2025-11-26T01:45:23.1154746Z",
+        "sha256":  "757587CE09AAA6B81E4462A296B1F234FD4AA94501A943BEE508515D730CB9C6"
+    },
+    {
+        "path":  "backend\\app\\llm\\__pycache__\\embeddings.cpython-312.pyc",
+        "size":  5321,
+        "writeTimeUtc":  "2025-12-04T04:53:30.8956170Z",
+        "sha256":  "789F1F5379C4C8492886902FE0CC4FF15064943F97DA73F2AA56AE102590DD4C"
+    },
+    {
+        "path":  "backend\\app\\llm\\__pycache__\\openai_client.cpython-312.pyc",
+        "size":  15573,
+        "writeTimeUtc":  "2025-12-03T03:31:14.8648850Z",
+        "sha256":  "40D191CD2DE61AF1C7FA7076ABD9FAA1C79490C337ABA343834FA1E41072509A"
+    },
+    {
+        "path":  "backend\\app\\llm\\__pycache__\\pricing.cpython-312.pyc",
+        "size":  1492,
+        "writeTimeUtc":  "2025-11-30T04:01:15.8515387Z",
+        "sha256":  "FEBE94693EFEEDBBB717F6ACF7077215DBE1EF9A21859CA87C7B58CD44B387E7"
+    },
+    {
+        "path":  "backend\\app\\llm\\embeddings.py",
+        "size":  4766,
+        "writeTimeUtc":  "2025-12-04T04:53:26.5995782Z",
+        "sha256":  "3A8A7B8A939ED3EC93C5D11E21CD22D713B101BD02B81E027B6A106AC3B5D210"
+    },
+    {
+        "path":  "backend\\app\\llm\\openai_client.py",
+        "size":  17445,
+        "writeTimeUtc":  "2025-12-02T22:35:19.5995645Z",
+        "sha256":  "00A61E99BA1B99FF7570BBF4D9D32C15E96481D5B9D1997580383FC6FE5A8A21"
+    },
+    {
+        "path":  "backend\\app\\llm\\pricing.py",
+        "size":  1243,
+        "writeTimeUtc":  "2025-11-30T04:00:39.7658730Z",
+        "sha256":  "66E63986924219865CD32D884587A0C16C6D25322CC53879CF2582E51C000CDE"
+    },
+    {
+        "path":  "backend\\app\\vectorstore\\__init__.py",
+        "size":  0,
+        "writeTimeUtc":  "2025-11-26T02:16:40.0810212Z",
+        "sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+    },
+    {
+        "path":  "backend\\app\\vectorstore\\__pycache__\\__init__.cpython-312.pyc",
+        "size":  150,
+        "writeTimeUtc":  "2025-11-26T02:17:37.9913471Z",
+        "sha256":  "5E6ECF0DC00047B91C9DC8E2B6E5EB21A4F0B8F7A67E26B87E72B40DB13709EE"
+    },
+    {
+        "path":  "backend\\app\\vectorstore\\__pycache__\\chroma_store.cpython-312.pyc",
+        "size":  7786,
+        "writeTimeUtc":  "2025-12-05T05:09:06.4648106Z",
+        "sha256":  "732004E4F36CC16E18452990598F0A795ACBC04A523EBECA448EAF9B3A49A8DC"
+    },
+    {
+        "path":  "backend\\app\\vectorstore\\chroma_store.py",
+        "size":  10199,
+        "writeTimeUtc":  "2025-12-05T06:44:08.6826892Z",
+        "sha256":  "3A52E4AE5BE3520AD9814CCFF6BBCE979E6B9B5CC539D45265F6BF920E1FB24F"
+    },
+    {
+        "path":  "backend\\chroma_data.bak.20251203\\3e97db9f-1c44-48c8-897f-be71e494470e\\data_level0.bin",
+        "size":  628400,
+        "writeTimeUtc":  "2025-12-02T14:25:45.4471330Z",
+        "sha256":  "CDB10C9819BC83D674BD2F418FE810D90BC18AAA6FDA1667C720B9FD49BA257D"
+    },
+    {
+        "path":  "backend\\chroma_data.bak.20251203\\3e97db9f-1c44-48c8-897f-be71e494470e\\header.bin",
+        "size":  100,
+        "writeTimeUtc":  "2025-12-02T14:25:45.4455970Z",
+        "sha256":  "B081BE2C2276A57E995075C7DE2F3CB25E903798AAC36D98042045533AB28F7D"
+    },
+    {
+        "path":  "backend\\chroma_data.bak.20251203\\3e97db9f-1c44-48c8-897f-be71e494470e\\length.bin",
+        "size":  400,
+        "writeTimeUtc":  "2025-12-02T14:25:45.4471330Z",
+        "sha256":  "D89159A61595BF296F17E61C615238C70535029D15E79372D09DE6FE4F6BD51D"
+    },
+    {
+        "path":  "backend\\chroma_data.bak.20251203\\3e97db9f-1c44-48c8-897f-be71e494470e\\link_lists.bin",
+        "size":  0,
+        "writeTimeUtc":  "2025-12-02T14:25:45.4455970Z",
+        "sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+    },
+    {
+        "path":  "backend\\chroma_data.bak.20251203\\4a90261f-b378-412a-92c8-5eb95cb516ca\\data_level0.bin",
+        "size":  628400,
+        "writeTimeUtc":  "2025-12-02T14:58:03.9353857Z",
+        "sha256":  "C630403E96A885F55EEC01D729BB2FD9459B2C51CE8B4A5C56DEB3FB78FA532B"
+    },
+    {
+        "path":  "backend\\chroma_data.bak.20251203\\4a90261f-b378-412a-92c8-5eb95cb516ca\\header.bin",
+        "size":  100,
+        "writeTimeUtc":  "2025-12-02T14:58:03.9353857Z",
+        "sha256":  "B081BE2C2276A57E995075C7DE2F3CB25E903798AAC36D98042045533AB28F7D"
+    },
+    {
+        "path":  "backend\\chroma_data.bak.20251203\\4a90261f-b378-412a-92c8-5eb95cb516ca\\length.bin",
+        "size":  400,
+        "writeTimeUtc":  "2025-12-02T14:58:03.9353857Z",
+        "sha256":  "3F050C03DB510013B837653C8D43CA7D8AE5B489CC5CE4808922997ABEC7EFD3"
+    },
+    {
+        "path":  "backend\\chroma_data.bak.20251203\\4a90261f-b378-412a-92c8-5eb95cb516ca\\link_lists.bin",
+        "size":  0,
+        "writeTimeUtc":  "2025-12-02T14:58:03.9353857Z",
+        "sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+    },
+    {
+        "path":  "backend\\chroma_data.bak.20251203\\b9aead41-a3be-4cbc-bd0e-a40b2afc6c2b\\data_level0.bin",
+        "size":  628400,
+        "writeTimeUtc":  "2025-12-02T14:25:45.5226550Z",
+        "sha256":  "BFA559E95675C49B44AA7BF1042325EB57A271D7FA38A6F3AF4E14AE5DE31A8D"
+    },
+    {
+        "path":  "backend\\chroma_data.bak.20251203\\b9aead41-a3be-4cbc-bd0e-a40b2afc6c2b\\header.bin",
+        "size":  100,
+        "writeTimeUtc":  "2025-12-02T14:25:45.5211342Z",
+        "sha256":  "B081BE2C2276A57E995075C7DE2F3CB25E903798AAC36D98042045533AB28F7D"
+    },
+    {
+        "path":  "backend\\chroma_data.bak.20251203\\b9aead41-a3be-4cbc-bd0e-a40b2afc6c2b\\length.bin",
+        "size":  400,
+        "writeTimeUtc":  "2025-12-02T14:25:45.5226550Z",
+        "sha256":  "2B5FA690C6358DD23983A0841D5416275E8323E4C4D5DD35392A11B3E1EFC850"
+    },
+    {
+        "path":  "backend\\chroma_data.bak.20251203\\b9aead41-a3be-4cbc-bd0e-a40b2afc6c2b\\link_lists.bin",
+        "size":  0,
+        "writeTimeUtc":  "2025-12-02T14:25:45.5211342Z",
+        "sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+    },
+    {
+        "path":  "backend\\chroma_data.bak.20251203\\chroma.sqlite3",
+        "size":  892928,
+        "writeTimeUtc":  "2025-12-02T15:07:42.7722218Z",
+        "sha256":  "10E7DA32773A0E70C6BF5B8172C8393C126BF70FFD8B6AD2EEBA8213926991D5"
+    },
+    {
+        "path":  "backend\\chroma_data\\08640e8b-ec50-42e2-823b-c5a7fbfc9a06\\header.bin",
+        "size":  100,
+        "writeTimeUtc":  "2025-12-05T05:27:08.2609400Z",
+        "sha256":  "822402A6C20BD835553B82B9F78776595548094DED708A70090F10C67D21DB0D"
+    },
+    {
+        "path":  "backend\\chroma_data\\08640e8b-ec50-42e2-823b-c5a7fbfc9a06\\index_metadata.pickle",
+        "size":  4009150,
+        "writeTimeUtc":  "2025-12-05T05:27:08.9648737Z",
+        "sha256":  "8D2A6C5CD8AFAEFD4E83E20B99DADC9A93490322865D04DD1DDDCC85393B653D"
+    },
+    {
+        "path":  "backend\\chroma_data\\08640e8b-ec50-42e2-823b-c5a7fbfc9a06\\length.bin",
+        "size":  497296,
+        "writeTimeUtc":  "2025-12-05T05:27:08.7007035Z",
+        "sha256":  "E845CB9245AF9781989068CC481F24E50D204784F6F20EB9EBE45BDE2F73F250"
+    },
+    {
+        "path":  "backend\\chroma_data\\08640e8b-ec50-42e2-823b-c5a7fbfc9a06\\link_lists.bin",
+        "size":  1059724,
+        "writeTimeUtc":  "2025-12-05T05:27:08.9393402Z",
+        "sha256":  "517D9FF27F58F4C917533C56BD5091C1C49680469EE7D3C06CC1EF0698AA7105"
+    },
+    {
+        "path":  "backend\\chroma_data\\3c08b98a-c64a-430e-a9e7-282acb5611f7\\data_level0.bin",
+        "size":  628400,
+        "writeTimeUtc":  "2025-12-05T06:06:35.3496083Z",
+        "sha256":  "F648552BA50719D9C4937FE18C1F7CC3FFD207114A576B1E91A6D25A2F5F2753"
+    },
+    {
+        "path":  "backend\\chroma_data\\3c08b98a-c64a-430e-a9e7-282acb5611f7\\header.bin",
+        "size":  100,
+        "writeTimeUtc":  "2025-12-05T06:06:35.3480692Z",
+        "sha256":  "B081BE2C2276A57E995075C7DE2F3CB25E903798AAC36D98042045533AB28F7D"
+    },
+    {
+        "path":  "backend\\chroma_data\\3c08b98a-c64a-430e-a9e7-282acb5611f7\\length.bin",
+        "size":  400,
+        "writeTimeUtc":  "2025-12-05T06:06:35.3496083Z",
+        "sha256":  "A3A793B064D0EE9DC303B69E6B71317DB84E1F87EC61146CCEE3C7A8ADBBE60B"
+    },
+    {
+        "path":  "backend\\chroma_data\\3c08b98a-c64a-430e-a9e7-282acb5611f7\\link_lists.bin",
+        "size":  0,
+        "writeTimeUtc":  "2025-12-05T06:06:35.3480692Z",
+        "sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+    },
+    {
+        "path":  "backend\\chroma_data\\bc15304e-0063-4885-bd72-d00015e86162\\data_level0.bin",
+        "size":  628400,
+        "writeTimeUtc":  "2025-12-05T05:51:41.0286117Z",
+        "sha256":  "340E590A37E7EBB20F900E63E153BDBE8CC59AAB7EB72C109AF33FD0E2894623"
+    },
+    {
+        "path":  "backend\\chroma_data\\bc15304e-0063-4885-bd72-d00015e86162\\header.bin",
+        "size":  100,
+        "writeTimeUtc":  "2025-12-05T05:51:41.0280917Z",
+        "sha256":  "B081BE2C2276A57E995075C7DE2F3CB25E903798AAC36D98042045533AB28F7D"
+    },
+    {
+        "path":  "backend\\chroma_data\\bc15304e-0063-4885-bd72-d00015e86162\\length.bin",
+        "size":  400,
+        "writeTimeUtc":  "2025-12-05T05:51:41.0286117Z",
+        "sha256":  "6726BBE3023C56D8C0C11067F6313F61C1D1B07F7591BD0324DEABA42F5CFB37"
+    },
+    {
+        "path":  "backend\\chroma_data\\bc15304e-0063-4885-bd72-d00015e86162\\link_lists.bin",
+        "size":  0,
+        "writeTimeUtc":  "2025-12-05T05:51:41.0280917Z",
+        "sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+    },
+    {
+        "path":  "backend\\infinitywindow.db.bak.20251203",
+        "size":  368640,
+        "writeTimeUtc":  "2025-12-03T03:31:17.8752415Z",
+        "sha256":  "68F1A35999F5824CC82C42ED4C41DFA5416EC21463C8101D405D810C8C34F906"
+    },
+    {
+        "path":  "backend\\infinitywindow.db.bak.20251204-013259",
+        "size":  46563328,
+        "writeTimeUtc":  "2025-12-04T06:18:13.9121344Z",
+        "sha256":  ""
+    },
+    {
+        "path":  "backend\\infinitywindow.db-shm",
+        "size":  65536,
+        "writeTimeUtc":  "2025-12-05T04:57:10.8592917Z",
+        "sha256":  "992B61E8BB7164D49924AB4ABF54EE5161E2A5401A77D6A367DF574B9E334D4C"
+    },
+    {
+        "path":  "backend\\infinitywindow.db-wal",
+        "size":  32774632,
+        "writeTimeUtc":  "2025-12-05T07:03:29.1846772Z",
+        "sha256":  ""
+    },
+    {
+        "path":  "backend\\README.md",
+        "size":  293,
+        "writeTimeUtc":  "2025-11-26T00:26:05.1122648Z",
+        "sha256":  "25F3217FBF6953E1E9FD7314D948F694281E0701A045E1B29D4C4EDA0B66C06F"
+    },
+    {
+        "path":  "backend\\requirements.txt",
+        "size":  108,
+        "writeTimeUtc":  "2025-11-26T20:44:28.9208347Z",
+        "sha256":  "EF38CC2774DFDB735DE0D49E32C5F79A2BF6FBA2299C9E4425BB0107161D733B"
+    },
+    {
+        "path":  "backupdb\\001\\infinitywindow.db",
+        "size":  208896,
+        "writeTimeUtc":  "2025-12-01T22:17:33.5962977Z",
+        "sha256":  "C1EB35C7C93DC822169176D01916DEFEF092E81FA5E7C5302358B2E2B1181AE2"
+    },
+    {
+        "path":  "backupdb\\002\\infinitywindow.db",
+        "size":  163840,
+        "writeTimeUtc":  "2025-12-01T22:36:44.7786095Z",
+        "sha256":  "5DBA056F2379B2AF51121357783950034391B3C5A0BB88D81AFD7E32122D8D2F"
+    },
+    {
+        "path":  "Cursor_Chat_Log.md",
+        "size":  12332754,
+        "writeTimeUtc":  "2025-12-02T00:25:52.9298347Z",
+        "sha256":  ""
+    },
+    {
+        "path":  "Cursor_Chat_Log_002.md",
+        "size":  13892782,
+        "writeTimeUtc":  "2025-12-02T01:15:00.4017854Z",
+        "sha256":  ""
+    },
+    {
+        "path":  "docs\\AGENT_GUIDE.md",
+        "size":  5765,
+        "writeTimeUtc":  "2025-12-03T21:42:04.7441042Z",
+        "sha256":  "282667583906D376FE64B0779AD678BDB64AE674DCF2A7898C1A026FB07E1246"
+    },
+    {
+        "path":  "docs\\API_REFERENCE.md",
+        "size":  9400,
+        "writeTimeUtc":  "2025-12-04T07:25:27.5837852Z",
+        "sha256":  "22F71F2E231CFC02AC20F30A498A84E016BB884517CEC884F703D1E120E0D515"
+    },
+    {
+        "path":  "docs\\AUTOMATED_INGESTION_TESTS.md",
+        "size":  10085,
+        "writeTimeUtc":  "2025-12-05T00:25:56.3829149Z",
+        "sha256":  "CBAF32A590648C3DF1103EAB4B28BA20BFA5AB5D8D779BB31AC6EE567A55332A"
+    },
+    {
+        "path":  "docs\\AUTOPILOT_EXAMPLES.md",
+        "size":  10277,
+        "writeTimeUtc":  "2025-12-03T22:35:55.0179164Z",
+        "sha256":  "37478C487764453DB5590544031EC7714DF5333EDB8322C5026A3D44AE8DA0AE"
+    },
+    {
+        "path":  "docs\\AUTOPILOT_IMPLEMENTATION_CHECKLIST.md",
+        "size":  16427,
+        "writeTimeUtc":  "2025-12-04T05:34:23.2592100Z",
+        "sha256":  "007624DCD979B93018E794912CE9D8A59B78A9E96CE47F6328C8109939BB8E1B"
+    },
+    {
+        "path":  "docs\\AUTOPILOT_LEARNING.md",
+        "size":  9576,
+        "writeTimeUtc":  "2025-12-03T22:35:23.4108769Z",
+        "sha256":  "3E6E80924CEAEF4C197EA5501540A8380797D13D22AF374A6E921A31460C2729"
+    },
+    {
+        "path":  "docs\\AUTOPILOT_LIMITATIONS.md",
+        "size":  8162,
+        "writeTimeUtc":  "2025-12-03T22:35:39.6658457Z",
+        "sha256":  "A46A6340730DE39E4A78C57BC1013409A6BD9EE65064DB607B48B648447EFFA6"
+    },
+    {
+        "path":  "docs\\AUTOPILOT_PLAN.md",
+        "size":  11878,
+        "writeTimeUtc":  "2025-12-03T22:35:06.1056578Z",
+        "sha256":  "44D0FAB76C444DD2AEC5FB791A76E681BBE1A56CA36827B70A8D21224FB527B8"
+    },
+    {
+        "path":  "docs\\CHANGELOG.md",
+        "size":  7422,
+        "writeTimeUtc":  "2025-12-04T18:23:15.9220848Z",
+        "sha256":  "5E20DBAD93A8DA3146BE3C3A9FC69A84F4B8CA4B6C846B3B484FCE347E3B07C5"
+    },
+    {
+        "path":  "docs\\CONFIG_ENV.md",
+        "size":  6986,
+        "writeTimeUtc":  "2025-12-04T05:07:33.8995453Z",
+        "sha256":  "85AE06A5326E61B56C79F7537A0720D1C770984D48118BDB211C9DC7ED521389"
+    },
+    {
+        "path":  "docs\\DECISIONS_LOG.md",
+        "size":  6575,
+        "writeTimeUtc":  "2025-12-04T05:34:23.2576806Z",
+        "sha256":  "D79259D8AF62F31DE2393F2B904DD0803062A22F01C3BEABBED1FDD48DDCE3C6"
+    },
+    {
+        "path":  "docs\\DEV_GUIDE.md",
+        "size":  6622,
+        "writeTimeUtc":  "2025-12-03T21:49:56.5677877Z",
+        "sha256":  "BAF754BCDCAA8322CF602EA9E1201220CD95AFEB11505DA101209C1CEAA7864E"
+    },
+    {
+        "path":  "docs\\HYDRATION_2025-12-02.md",
+        "size":  10726,
+        "writeTimeUtc":  "2025-12-04T07:28:46.9111966Z",
+        "sha256":  "9CF1D873F44ABB98951FA2268B14D2130CA4C3CB76BC727244DFCED2F83F5ACF"
+    },
+    {
+        "path":  "docs\\INGESTION_E2E_TEST_ISSUES.md",
+        "size":  8466,
+        "writeTimeUtc":  "2025-12-05T05:38:03.7267352Z",
+        "sha256":  "9F611BA299267A83C880F05CFF13323BE860A20242E3B5DDEA28B3E28EBA1ECE"
+    },
+    {
+        "path":  "docs\\INGESTION_TEST_FIXES_2025-12-04.md",
+        "size":  5923,
+        "writeTimeUtc":  "2025-12-04T20:06:33.4648740Z",
+        "sha256":  "F2050977DFAB6CF47B1FCD7D50C0CA23849A444DBF318EF7FCF239E33D5135C0"
+    },
+    {
+        "path":  "docs\\ISSUES_LOG.md",
+        "size":  4568,
+        "writeTimeUtc":  "2025-12-05T00:57:43.1997303Z",
+        "sha256":  "386DCBFB1C4ECCEB86C2732B8F7B340DEB2255A58E5448DCC396ABD6D16D8F7E"
+    },
+    {
+        "path":  "docs\\MANUAL_TEST_GUIDE_INGESTION.md",
+        "size":  25148,
+        "writeTimeUtc":  "2025-12-05T05:38:07.9256756Z",
+        "sha256":  "DD264947DA087B11F77AC271DDAAFB3800B9882B428786A86D43D2E205E5046D"
+    },
+    {
+        "path":  "docs\\MANUAL_TEST_RESULTS_TEMPLATE.md",
+        "size":  8327,
+        "writeTimeUtc":  "2025-12-05T00:25:56.3829149Z",
+        "sha256":  "B7A0BD2569D410445151FF76A4BC4623C9CFD9E1413E0FDA9100A438FED4877F"
+    },
+    {
+        "path":  "docs\\MODEL_MATRIX.md",
+        "size":  13967,
+        "writeTimeUtc":  "2025-12-04T05:13:52.8298214Z",
+        "sha256":  "F5655F40796446E0A4A017A3EE07A987316651D22C1A4E127A6E5B1A67C35E04"
+    },
+    {
+        "path":  "docs\\OPERATIONS_RUNBOOK.md",
+        "size":  8237,
+        "writeTimeUtc":  "2025-12-04T18:35:23.5582652Z",
+        "sha256":  "FD0556FC2B95A322C38D175B4954858A62DB82D269C725D3501BE8F8C30A16EF"
+    },
+    {
+        "path":  "docs\\PROGRESS.md",
+        "size":  24492,
+        "writeTimeUtc":  "2025-12-05T06:44:16.0997382Z",
+        "sha256":  "339B9AFB7F9C1DC03385EACFC2C09CF33495EBB192B496F15DA1AFBEA1C4E991"
+    },
+    {
+        "path":  "docs\\README.md",
+        "size":  6722,
+        "writeTimeUtc":  "2025-12-03T21:36:37.8813341Z",
+        "sha256":  "C1D75850B4FCD855D9C2EC992592F533C624FDAF3CD6BF78C16C43E79D3AAEFE"
+    },
+    {
+        "path":  "docs\\RELEASE_PROCESS.md",
+        "size":  3546,
+        "writeTimeUtc":  "2025-12-03T21:47:04.0714874Z",
+        "sha256":  "83D05DBF9059EDADD42BDC05392AFD44C71185935E5984E1D0C1CF0DF120EE43"
+    },
+    {
+        "path":  "docs\\RIGHT_COLUMN_UI_PLAN.md",
+        "size":  14110,
+        "writeTimeUtc":  "2025-12-04T07:28:23.3641305Z",
+        "sha256":  "E0A54BE6DCA2FFA9A6E06383BAF59A0BED6274E03DD6CF35C38803468FA0C2DF"
+    },
+    {
+        "path":  "docs\\SECURITY_PRIVACY.md",
+        "size":  4955,
+        "writeTimeUtc":  "2025-12-03T21:48:47.1046334Z",
+        "sha256":  "EB5C239BFC64669D4E5706DF6793DF686343AB3BC048A470D97E295723F0700D"
+    },
+    {
+        "path":  "docs\\SYSTEM_MATRIX.md",
+        "size":  25183,
+        "writeTimeUtc":  "2025-12-04T07:26:37.3224776Z",
+        "sha256":  "76C1B326D8B93EFB64F2D2198DAE03E9C53A8D74E61FCAF27546C459763FFCA4"
+    },
+    {
+        "path":  "docs\\SYSTEM_OVERVIEW.md",
+        "size":  20052,
+        "writeTimeUtc":  "2025-12-04T07:25:56.7123357Z",
+        "sha256":  "A580359F5D561C0EEBFCEDFDF13327ADFE031A9B53EE91E62FEDB5D1B9DB421B"
+    },
+    {
+        "path":  "docs\\TEST_PLAN.md",
+        "size":  36731,
+        "writeTimeUtc":  "2025-12-05T06:44:08.6842134Z",
+        "sha256":  "F456315449F478D8A084A509156D9AFF664FE673DACE7425DFF73FE15A18EA23"
+    },
+    {
+        "path":  "docs\\TEST_REPORT_2025-12-02.md",
+        "size":  14099,
+        "writeTimeUtc":  "2025-12-02T22:44:23.9108504Z",
+        "sha256":  "00D2A75FE53ED6269E3574011AAF0E69B16DED18135B1F1750BC3D45A1DBC892"
+    },
+    {
+        "path":  "docs\\TEST_REPORT_2025-12-03.md",
+        "size":  3766,
+        "writeTimeUtc":  "2025-12-03T03:05:56.9339377Z",
+        "sha256":  "7B71D8D67BF5BAD106DC939CBE8B218F7AAED36EE91FEA915A5826290E7CA0DF"
+    },
+    {
+        "path":  "docs\\TEST_REPORT_2025-12-04.md",
+        "size":  4929,
+        "writeTimeUtc":  "2025-12-04T18:20:34.8684789Z",
+        "sha256":  "F43AA9DB67C8B419DAC02D8DCF12E8D1AD13AC16E32D2BD6C5608D114A2B7056"
+    },
+    {
+        "path":  "docs\\TEST_REPORT_TEMPLATE.md",
+        "size":  11196,
+        "writeTimeUtc":  "2025-12-04T18:35:23.5582652Z",
+        "sha256":  "24E206002A4DF390EB269BF43996CF8EF0368660F26477529C9E2A7C5500C6F7"
+    },
+    {
+        "path":  "docs\\TODO_CHECKLIST.md",
+        "size":  8432,
+        "writeTimeUtc":  "2025-12-04T07:52:24.9470872Z",
+        "sha256":  "0CCB73BA5206B5684DE72909BEE98395807E996984EAA366630FD0B9270B9F2A"
+    },
+    {
+        "path":  "docs\\USER_MANUAL.md",
+        "size":  31134,
+        "writeTimeUtc":  "2025-12-04T07:26:58.3351500Z",
+        "sha256":  "EA5ED748D0C0D8D16812F102CA3DDEE41816D462FEAF891FFEAFC8CE26B2365E"
+    },
+    {
+        "path":  "frontend\\.gitignore",
+        "size":  253,
+        "writeTimeUtc":  "2025-11-28T21:48:42.0361445Z",
+        "sha256":  "FE718E7BABB14F3CBAD2D97F08889B9CE5215ED3FE0E43B2B8CFBFB3B9B844E8"
+    },
+    {
+        "path":  "frontend\\eslint.config.js",
+        "size":  616,
+        "writeTimeUtc":  "2025-11-28T21:48:42.0977401Z",
+        "sha256":  "4EFE97B16D1200FAC0EAF07AA00930A8668B1F96A0BE1891ACE8C1E712FF0CCB"
+    },
+    {
+        "path":  "frontend\\index.html",
+        "size":  357,
+        "writeTimeUtc":  "2025-11-28T21:49:11.2022658Z",
+        "sha256":  "02FCA592953C4BCB3D520BC34802F74EA3956B66F8EBEEF2E44F484F0EA3616C"
+    },
+    {
+        "path":  "frontend\\package.json",
+        "size":  856,
+        "writeTimeUtc":  "2025-12-02T14:11:14.3851898Z",
+        "sha256":  "0D8DD76094AB2ADCD2D72230DF8D25326AD21A4DB6F23ED0EAFBEDDEC803334B"
+    },
+    {
+        "path":  "frontend\\package-lock.json",
+        "size":  108634,
+        "writeTimeUtc":  "2025-12-02T14:51:47.7938879Z",
+        "sha256":  "913594C611442FEEFFA3D853F6A70B4F124B2D3485C522D6A7DF49077DA5B2B1"
+    },
+    {
+        "path":  "frontend\\playwright.config.ts",
+        "size":  684,
+        "writeTimeUtc":  "2025-12-05T01:24:19.4284856Z",
+        "sha256":  "F05EDDE1AE92CD89E727E3838D2CB619A5C64E5167C8E95101F0009E3713456F"
+    },
+    {
+        "path":  "frontend\\public\\vite.svg",
+        "size":  1497,
+        "writeTimeUtc":  "2025-11-28T21:48:42.2299234Z",
+        "sha256":  "4A748AFD443918BB16591C834C401DAE33E87861AB5DBAD0811C3A3B4A9214FB"
+    },
+    {
+        "path":  "frontend\\README.md",
+        "size":  2555,
+        "writeTimeUtc":  "2025-11-28T21:48:42.1817955Z",
+        "sha256":  "F58B5B17F83DB63C09A9F2C059EC435AC8A3FEB66F9337391ED5F3F62CFF4E63"
+    },
+    {
+        "path":  "frontend\\src\\App.css",
+        "size":  43349,
+        "writeTimeUtc":  "2025-12-04T07:24:29.2384548Z",
+        "sha256":  "5CBCFA571C2F0B0E18D04C3EB15101FDDDE9C4517B08CB58D96BE6DE0805DC31"
+    },
+    {
+        "path":  "frontend\\src\\App.tsx",
+        "size":  219330,
+        "writeTimeUtc":  "2025-12-05T04:16:25.6296455Z",
+        "sha256":  "937F1FD5C680E05ABDEB544012D057A95F673EE950580F818F671C8F59B43A10"
+    },
+    {
+        "path":  "frontend\\src\\assets\\react.svg",
+        "size":  4126,
+        "writeTimeUtc":  "2025-11-28T21:48:42.2097457Z",
+        "sha256":  "35EF61ED53B323AE94A16A8EC659B3D0AF3880698791133F23B084085AB1C2E5"
+    },
+    {
+        "path":  "frontend\\src\\index.css",
+        "size":  1154,
+        "writeTimeUtc":  "2025-11-28T21:48:42.0666772Z",
+        "sha256":  "BDBA2919116E9B72AC06558F88371DC4C80FB0196DA6403D239E0FB085250892"
+    },
+    {
+        "path":  "frontend\\src\\main.tsx",
+        "size":  230,
+        "writeTimeUtc":  "2025-11-28T21:48:42.2611770Z",
+        "sha256":  "6E9E5807FCBD48B75A96DB5CBEF36C996262196BE42E6D4760DC86BABBE61AD2"
+    },
+    {
+        "path":  "frontend\\tests\\files-tab.spec.ts",
+        "size":  1838,
+        "writeTimeUtc":  "2025-12-02T15:04:22.7993029Z",
+        "sha256":  "D1F158CDC1E5CF7767C49033E3CA0D376B3D4F847D5973297D735B2B75D4D2CA"
+    },
+    {
+        "path":  "frontend\\tests\\helpers\\api.ts",
+        "size":  4019,
+        "writeTimeUtc":  "2025-12-05T04:16:38.1694800Z",
+        "sha256":  "C44862F0C28AE567783BC2BFA9385B02DF90B956A2C60DA7A66109BC08F62DBB"
+    },
+    {
+        "path":  "frontend\\tests\\ingestion-e2e.spec.ts",
+        "size":  22718,
+        "writeTimeUtc":  "2025-12-05T05:28:01.0469026Z",
+        "sha256":  "0A513F32B66DF9D89946A2CB3A68E5979C755714C8E096076279FC6807686AA7"
+    },
+    {
+        "path":  "frontend\\tests\\notes-memory.spec.ts",
+        "size":  2961,
+        "writeTimeUtc":  "2025-12-02T15:07:29.2048937Z",
+        "sha256":  "285B56B06B4D3B21363C0C9E94B935A3CC582DC9C40B06CBB436812512DA4CB6"
+    },
+    {
+        "path":  "frontend\\tests\\right-column.spec.ts",
+        "size":  582,
+        "writeTimeUtc":  "2025-12-02T14:11:14.3851898Z",
+        "sha256":  "D893DC03ED018BCFD50821D670C2009A0707F8CD471494E5F1EE3C3E9FE6F1A3"
+    },
+    {
+        "path":  "frontend\\tests\\tasks-suggestions.spec.ts",
+        "size":  2341,
+        "writeTimeUtc":  "2025-12-03T01:09:34.2078975Z",
+        "sha256":  "717DA358B3F388728FC8775F798875F731BC4EC0352EE366CB98C9FE244AFE43"
+    },
+    {
+        "path":  "frontend\\tests\\ui-chat-smoke.spec.ts",
+        "size":  4063,
+        "writeTimeUtc":  "2025-12-05T06:23:48.0029732Z",
+        "sha256":  "3DAAC93D6579E3F0A1EC71F846382314400A263CB05F6CD1B1AE293219AEFD8A"
+    },
+    {
+        "path":  "frontend\\tests\\ui-extended.spec.ts",
+        "size":  8257,
+        "writeTimeUtc":  "2025-12-05T06:44:08.6842134Z",
+        "sha256":  "6482E8B53B91DE880A362FEEB0206671B90BC0F55E56F018ECE3ADEEAECAAAC6"
+    },
+    {
+        "path":  "frontend\\tests\\ui-smoke.spec.ts",
+        "size":  2684,
+        "writeTimeUtc":  "2025-12-05T06:02:57.3925254Z",
+        "sha256":  "9292FF626F63FF973BE5196CB04B69FF872C85789FD7CC14EF16B7AA98BF9708"
+    },
+    {
+        "path":  "frontend\\tsconfig.app.json",
+        "size":  732,
+        "writeTimeUtc":  "2025-11-28T21:48:42.1552532Z",
+        "sha256":  "922BC5BFB41BDC0768023B2487D54B3AE23C587D999024D4F32CDE879AE6F4D8"
+    },
+    {
+        "path":  "frontend\\tsconfig.json",
+        "size":  119,
+        "writeTimeUtc":  "2025-11-28T21:48:42.1618820Z",
+        "sha256":  "770B4140BBB581E2DFD9EA9946FFC9C75A1D86BA7D2DB5F77C83E37CBDF9D808"
+    },
+    {
+        "path":  "frontend\\tsconfig.node.json",
+        "size":  653,
+        "writeTimeUtc":  "2025-11-28T21:48:42.1690259Z",
+        "sha256":  "C3DD0FB522FEBA3596713F51B95BD53D781D845D24AEDBFA2AC093D8B39C5120"
+    },
+    {
+        "path":  "frontend\\vite.config.ts",
+        "size":  161,
+        "writeTimeUtc":  "2025-11-28T21:48:42.2550130Z",
+        "sha256":  "4D36DB3522A7B2DD10E0936E1004373C7EE65F10F7CD7920CD76410459C15A45"
+    },
+    {
+        "path":  "Hydration_File_001.txt",
+        "size":  23666,
+        "writeTimeUtc":  "2025-11-30T17:37:21.9867243Z",
+        "sha256":  "4FA37E132CE28E7A89177E6E101C4D84D101A6078AAB5764DA07DC291DB1F1C9"
+    },
+    {
+        "path":  "Hydration_File_002.txt",
+        "size":  33880,
+        "writeTimeUtc":  "2025-12-01T03:59:13.1259145Z",
+        "sha256":  "17DBF1BCBC09CFEBE66960B30A4B3E04884835FD7F8DBAE3E4613B28D5AABA9C"
+    },
+    {
+        "path":  "infinitywindow.db",
+        "size":  290816,
+        "writeTimeUtc":  "2025-12-04T18:21:24.0783782Z",
+        "sha256":  "034B5DCD230D9D10DFBB9BAA00636C5905B49B0B6E42420145EA674AB0619CAB"
+    },
+    {
+        "path":  "iw_test_plan\\00_README.md",
+        "size":  1702,
+        "writeTimeUtc":  "2025-12-05T13:13:56.0000000Z",
+        "sha256":  "F191B3AB4C42FC6A9635D414488EDFF0E4BCE9794B4C671EB83FD9121E3D63B2"
+    },
+    {
+        "path":  "iw_test_plan\\01_strategy.md",
+        "size":  2255,
+        "writeTimeUtc":  "2025-12-05T13:13:56.0000000Z",
+        "sha256":  "B997247C3632B1D0876C339438E9DBB6D69EF29BEE666DF4487496C7C8D3D092"
+    },
+    {
+        "path":  "iw_test_plan\\02_traceability_matrix.csv",
+        "size":  1453,
+        "writeTimeUtc":  "2025-12-05T13:13:56.0000000Z",
+        "sha256":  "730580EFC49CE479CA3D88186699FD028A256A455992FAB338F4B36D1CC1984D"
+    },
+    {
+        "path":  "iw_test_plan\\03_test_suites.md",
+        "size":  999,
+        "writeTimeUtc":  "2025-12-05T13:13:56.0000000Z",
+        "sha256":  "DD4EB9ABD1169D019DF0896D77018E993458980DB263EC424EC9ABDBFD079472"
+    },
+    {
+        "path":  "iw_test_plan\\04_test_cases_core.md",
+        "size":  1634,
+        "writeTimeUtc":  "2025-12-05T13:13:56.0000000Z",
+        "sha256":  "8E8A548A46316BE8443703273850D9C8288430573A1C23E2399DF1AF6210E457"
+    },
+    {
+        "path":  "iw_test_plan\\05_test_cases_ingestion_search.md",
+        "size":  1167,
+        "writeTimeUtc":  "2025-12-05T13:13:56.0000000Z",
+        "sha256":  "823703F1DEE9A49B65495B72E91F4F002329D26BAB5C597D45A469EF38ED6C31"
+    },
+    {
+        "path":  "iw_test_plan\\06_test_cases_files_terminal.md",
+        "size":  1345,
+        "writeTimeUtc":  "2025-12-05T13:13:56.0000000Z",
+        "sha256":  "3FFD84A51DC8B38F28A4F1ABFCC672330A139ED4B4D0303A59D8D88117022ED1"
+    },
+    {
+        "path":  "iw_test_plan\\07_test_cases_memory_notes_decisions.md",
+        "size":  846,
+        "writeTimeUtc":  "2025-12-05T13:13:56.0000000Z",
+        "sha256":  "531B72B75C034292451CC8AC5062206D4E440F6B2F789F8C40E84D0DE5B56CC1"
+    },
+    {
+        "path":  "iw_test_plan\\08_test_cases_ui_accessibility.md",
+        "size":  1141,
+        "writeTimeUtc":  "2025-12-05T13:13:56.0000000Z",
+        "sha256":  "B0FAE018197F68B4E8C0167B2FB5ABAAB980C0ED9F841AA4F3A96AEF6EA95D45"
+    },
+    {
+        "path":  "iw_test_plan\\09_security_threat_model_and_tests.md",
+        "size":  1361,
+        "writeTimeUtc":  "2025-12-05T13:13:56.0000000Z",
+        "sha256":  "BE0C6F3AD9E0BC6FCF038CE0A7C9F8C2EAA3B0BE7E615979C435D4A324922871"
+    },
+    {
+        "path":  "iw_test_plan\\10_performance_and_scale.md",
+        "size":  1031,
+        "writeTimeUtc":  "2025-12-05T13:13:56.0000000Z",
+        "sha256":  "97C563D371C3090B6E0BFEF4198B37FF90E36F401EEF227B00BE878A7E5EC2C1"
+    },
+    {
+        "path":  "iw_test_plan\\11_resilience_and_recovery.md",
+        "size":  780,
+        "writeTimeUtc":  "2025-12-05T13:13:56.0000000Z",
+        "sha256":  "4DA9198A8912489120408728EB0ED0C0160B8A9010080C4021FB1FD8ACF554DD"
+    },
+    {
+        "path":  "iw_test_plan\\12_release_gates_and_ci.md",
+        "size":  636,
+        "writeTimeUtc":  "2025-12-05T13:13:56.0000000Z",
+        "sha256":  "EB94F2797A6249FA5B12E8E532D289A26784905AE2E31B70825BF02D5140FEB5"
+    },
+    {
+        "path":  "iw_test_plan\\13_test_data_fixtures.json",
+        "size":  698,
+        "writeTimeUtc":  "2025-12-05T13:13:56.0000000Z",
+        "sha256":  "9BD11C7376ACAF6FFE647859B98606E0176523B4155C80538EC9B901E6B67076"
+    },
+    {
+        "path":  "iw_test_plan\\14_playwright_spec_templates.ts",
+        "size":  876,
+        "writeTimeUtc":  "2025-12-05T13:13:56.0000000Z",
+        "sha256":  "21588C8CC402E5AFE65A541D0B2C65C2191C90CDB12F165E3F0566DDAC6C44F5"
+    },
+    {
+        "path":  "iw_test_plan\\15_pytest_skeletons\\test_api_chat_routing.py",
+        "size":  369,
+        "writeTimeUtc":  "2025-12-05T13:13:56.0000000Z",
+        "sha256":  "3798D6117C50DD7ED628086B51B3B044F3034FDC8C2545A9923F647A90E1D317"
+    },
+    {
+        "path":  "iw_test_plan\\15_pytest_skeletons\\test_api_projects.py",
+        "size":  599,
+        "writeTimeUtc":  "2025-12-05T13:13:56.0000000Z",
+        "sha256":  "114056EA40200AF7D5B59F75E16BAAFEEB1278F61022FBC5F0EC618AA6DF671F"
+    },
+    {
+        "path":  "iw_test_plan\\15_pytest_skeletons\\test_ingestion_e2e.py",
+        "size":  342,
+        "writeTimeUtc":  "2025-12-05T13:13:56.0000000Z",
+        "sha256":  "3489DAC91ABE7FF519C18A363BC4D46F36C368028CAD8D5DE671C875940EE417"
+    },
+    {
+        "path":  "iw_test_plan\\16_llm_eval_harness.md",
+        "size":  776,
+        "writeTimeUtc":  "2025-12-05T13:13:56.0000000Z",
+        "sha256":  "B4657DC33A7A9AD27565D36E90727B1AE66ECD66E8858D9D4ACDFE0174DE4849"
+    },
+    {
+        "path":  "iw_test_plan\\17_checklists.md",
+        "size":  580,
+        "writeTimeUtc":  "2025-12-05T13:13:56.0000000Z",
+        "sha256":  "D93EFE769B9F0A6E40B63D916D5938F2561151DDDD4DB720194B814426C62ACB"
+    },
+    {
+        "path":  "iw_test_plan\\18_bug_bash_playbook.md",
+        "size":  412,
+        "writeTimeUtc":  "2025-12-05T13:13:56.0000000Z",
+        "sha256":  "335877FF869709AC3239D1C5B1EF69FBF86B8D201513933DFFA7A11A940387A8"
+    },
+    {
+        "path":  "package-lock.json",
+        "size":  93,
+        "writeTimeUtc":  "2025-12-02T14:39:01.0905042Z",
+        "sha256":  "AE341CD458D3FCEBFFC78C696DCA283BFD5C072DF561BE03F79FE0F1BF9D2262"
+    },
+    {
+        "path":  "Presentation_Outline.txt",
+        "size":  15906,
+        "writeTimeUtc":  "2025-12-02T19:05:28.2190593Z",
+        "sha256":  "EE938FC3BA53B151047DD6C252CDB006135953F4290C0691C8238B2C9FE744FA"
+    },
+    {
+        "path":  "Project_Plan_001_ORIGINAL.txt",
+        "size":  27422,
+        "writeTimeUtc":  "2025-11-25T22:31:18.9455323Z",
+        "sha256":  "15F4CAA9BBB96E706583730AAF8043698BBC28C21CCDAA026CE92D051EB1DA5A"
+    },
+    {
+        "path":  "Project_Plan_002_NEW_FEATURES.txt",
+        "size":  12098,
+        "writeTimeUtc":  "2025-11-30T00:14:22.3017653Z",
+        "sha256":  "186B07AA594FFDBFD8A00496E62C36869261F57E5F92B06AB0B1A67E4CC55105"
+    },
+    {
+        "path":  "Project_Plan_003_UPDATED.txt",
+        "size":  11285,
+        "writeTimeUtc":  "2025-11-30T00:21:36.8196534Z",
+        "sha256":  "4192EE0F183CEDF06387CB709E996CF6898262B79C82DDCB43DEC590BBDC5D9E"
+    },
+    {
+        "path":  "qa\\__init__.py",
+        "size":  66,
+        "writeTimeUtc":  "2025-12-02T14:04:17.3226755Z",
+        "sha256":  "6733BE806BA28EAE1D96AF1348C292DCF07C2523CFC40E081E5F54C9B66D4D62"
+    },
+    {
+        "path":  "qa\\__pycache__\\__init__.cpython-312.pyc",
+        "size":  200,
+        "writeTimeUtc":  "2025-12-04T05:23:08.4715471Z",
+        "sha256":  "DF8544549D56AB8C025E0FFC7936B6BAEA964532C0557ECFC93FA66FEE140648"
+    },
+    {
+        "path":  "qa\\__pycache__\\_utils.cpython-312.pyc",
+        "size":  2371,
+        "writeTimeUtc":  "2025-12-04T05:23:08.5022127Z",
+        "sha256":  "80DB007BCCB3B22D2DEBB41BDD4376C71B8D0E361FA33CFE273662A720DC03F9"
+    },
+    {
+        "path":  "qa\\__pycache__\\ingestion_e2e_test.cpython-312.pyc",
+        "size":  34524,
+        "writeTimeUtc":  "2025-12-05T03:08:05.6243221Z",
+        "sha256":  "FE609DBE16D24085F9A523B6DDC9639C48276097B8079F0B1DC4D16ACBEEFAC3"
+    },
+    {
+        "path":  "qa\\__pycache__\\ingestion_probe.cpython-312.pyc",
+        "size":  6259,
+        "writeTimeUtc":  "2025-12-04T18:20:57.0785186Z",
+        "sha256":  "ECC13CCBD531F2802ED2397716684259C1F35C08F8CB5E5EBDF63A2EEDA6F009"
+    },
+    {
+        "path":  "qa\\__pycache__\\message_search_probe.cpython-312.pyc",
+        "size":  3402,
+        "writeTimeUtc":  "2025-12-04T05:23:08.4961137Z",
+        "sha256":  "D6BD14F42FD2956B3C3417B6BA943059BA65F4106139C696E686E80DA2D1D526"
+    },
+    {
+        "path":  "qa\\__pycache__\\mode_routing_probe.cpython-312.pyc",
+        "size":  5918,
+        "writeTimeUtc":  "2025-12-04T05:23:49.2536338Z",
+        "sha256":  "526E56B21457B3398B2559084E3519D4280C795AB00F5C5C77BEC1E92054C784"
+    },
+    {
+        "path":  "qa\\__pycache__\\run_smoke.cpython-312.pyc",
+        "size":  1629,
+        "writeTimeUtc":  "2025-12-04T06:05:04.9061834Z",
+        "sha256":  "CF0DE71E75FC1F98153E50028BACC7415F9C98A2821839339F92E1FB847B989D"
+    },
+    {
+        "path":  "qa\\__pycache__\\tasks_autoloop_probe.cpython-312.pyc",
+        "size":  5728,
+        "writeTimeUtc":  "2025-12-04T06:06:23.6467979Z",
+        "sha256":  "47026E51537E0B30103682DCF80E2E94A9F893FE828FEA86BD6BF242070047BC"
+    },
+    {
+        "path":  "qa\\_utils.py",
+        "size":  1289,
+        "writeTimeUtc":  "2025-12-02T14:04:27.0854423Z",
+        "sha256":  "3BC7DC95247F272CBF7D179328B886BC36D316302D1858A2A2E1732566E0D264"
+    },
+    {
+        "path":  "qa\\config\\playwright.config.ts",
+        "size":  727,
+        "writeTimeUtc":  "2025-12-05T14:47:14.2801752Z",
+        "sha256":  "A7D0D8FC899A4B633C774511E3C50005CA951E3C7761DF8A79472A8A020CA796"
+    },
+    {
+        "path":  "qa\\config\\pytest.ini",
+        "size":  56,
+        "writeTimeUtc":  "2025-12-05T14:47:01.8310339Z",
+        "sha256":  "7421C7C4A81081A044CD811EBA6CB88A47AD2650F1623B870E23F9657F2DC249"
+    },
+    {
+        "path":  "qa\\harness\\llm_stub.py",
+        "size":  742,
+        "writeTimeUtc":  "2025-12-05T14:47:26.8375734Z",
+        "sha256":  "2F8F43293F23C985FF07C0E9FD6E0C633CCD52D08BEF478BE3F334EFC28F5794"
+    },
+    {
+        "path":  "qa\\harness\\telemetry.py",
+        "size":  891,
+        "writeTimeUtc":  "2025-12-05T14:47:39.5614997Z",
+        "sha256":  "1E0A2E510522EF87F77F7BE1AE8E1C7572C57A399AAFE7233B5F14924350C64E"
+    },
+    {
+        "path":  "qa\\ingestion_e2e_test.py",
+        "size":  34331,
+        "writeTimeUtc":  "2025-12-05T04:17:02.6711250Z",
+        "sha256":  "F2B3F38DD59D53B0F388C2901FE29EB6F017B253F70E0AEEE54B25FA35C84A84"
+    },
+    {
+        "path":  "qa\\ingestion_probe.py",
+        "size":  4760,
+        "writeTimeUtc":  "2025-12-04T15:37:35.2387592Z",
+        "sha256":  "2BB23E6E202A6435B68A3C93D02746E329101DB91ABA96F7AED9FAC279BD5740"
+    },
+    {
+        "path":  "qa\\message_search_probe.py",
+        "size":  2152,
+        "writeTimeUtc":  "2025-12-02T14:04:40.3664012Z",
+        "sha256":  "F1E3AE4F216D9297E103D3137186C252DCE73E8836E3FC14DF77770405DA271A"
+    },
+    {
+        "path":  "qa\\mode_routing_probe.py",
+        "size":  5310,
+        "writeTimeUtc":  "2025-12-02T14:05:38.3371033Z",
+        "sha256":  "43549D3970B7FC2DC977FABED92A4288C6238A6A2B977B829E400518ED19B9BC"
+    },
+    {
+        "path":  "qa\\README.md",
+        "size":  1926,
+        "writeTimeUtc":  "2025-12-04T07:29:21.4219486Z",
+        "sha256":  "FEC971AABEBBBAAA97040B7C6C1E3A3C6B7723BB6803303EB6FEF9165D2E39E6"
+    },
+    {
+        "path":  "qa\\run_smoke.py",
+        "size":  1090,
+        "writeTimeUtc":  "2025-12-04T06:03:00.3888490Z",
+        "sha256":  "82B38372D16AC131207BAE3DAD3BE4A2CEC2C9809144A6C41E333BF93BE37965"
+    },
+    {
+        "path":  "qa\\tasks_autoloop_probe.py",
+        "size":  3739,
+        "writeTimeUtc":  "2025-12-04T06:06:07.0772117Z",
+        "sha256":  "0D398C5FA66693FABB2C9C801B0793BB6620E286145C9A67D6DF6F096B75551C"
+    },
+    {
+        "path":  "qa\\tests_api\\conftest.py",
+        "size":  2141,
+        "writeTimeUtc":  "2025-12-05T14:51:03.2054653Z",
+        "sha256":  "AD7901C2EA4D01749BEF3A8356449D8C348A193D3DC6BEF487FFC3CBAFFB9A24"
+    },
+    {
+        "path":  "qa\\tests_api\\test_api_chat_routing.py",
+        "size":  1400,
+        "writeTimeUtc":  "2025-12-05T14:52:57.6448613Z",
+        "sha256":  "94C0F69724DEED3D38907FDC1F1192EFE37A116632459B526C0068871ED29EA7"
+    },
+    {
+        "path":  "qa\\tests_api\\test_api_projects.py",
+        "size":  1731,
+        "writeTimeUtc":  "2025-12-05T14:52:11.3213880Z",
+        "sha256":  "F8B46D254DB0631D85F4059950D6EAD75DEDE35E8AE30B18357DBE89F9984737"
+    },
+    {
+        "path":  "qa\\tests_api\\test_ingestion_e2e.py",
+        "size":  1580,
+        "writeTimeUtc":  "2025-12-05T14:53:10.7410164Z",
+        "sha256":  "48C5F81199B5ED6EB444C8B9B487070D1A01B0FB58F8AF386E6B39DDCFC72777"
+    },
+    {
+        "path":  "qa\\tests_api\\test_security.py",
+        "size":  983,
+        "writeTimeUtc":  "2025-12-05T14:53:32.0297756Z",
+        "sha256":  "2C622790D6C79EAAF8160B94E908DE6EFDA36DCEFB149DB261CEBA47C93DEC40"
+    },
+    {
+        "path":  "qa\\tests_e2e\\14_playwright_spec_templates.ts",
+        "size":  3185,
+        "writeTimeUtc":  "2025-12-05T14:55:37.1273076Z",
+        "sha256":  "72F1B00A4DA32988D1BCA21687C8B62A94720CFC41E5A4D5C8AF898FC7541B19"
+    },
+    {
+        "path":  "README.md",
+        "size":  9187,
+        "writeTimeUtc":  "2025-12-02T15:38:18.6882855Z",
+        "sha256":  "0CB3CD67696645999C08217E20CCC3D50C2A4F918C56FCA829E105E3C7FF8243"
+    },
+    {
+        "path":  "sample_upload.txt",
+        "size":  124,
+        "writeTimeUtc":  "2025-11-26T20:46:32.4881767Z",
+        "sha256":  "ABF7F3E2570138FD7C5344D4ECCCD6F0A42AC55C6FF80708431864F9EB7FBE4E"
+    },
+    {
+        "path":  "scratch\\README.md",
+        "size":  12791,
+        "writeTimeUtc":  "2025-11-30T04:03:08.7521454Z",
+        "sha256":  "8B57FC6A9CF2729B827BBA347573F57C8726F6CCAF2446B737D7ADFB1B6D262A"
+    },
+    {
+        "path":  "scratch\\test-notes.txt",
+        "size":  484,
+        "writeTimeUtc":  "2025-12-05T00:14:50.5263598Z",
+        "sha256":  "8312F88E87EAB020390A4FB0CD8107DCAF1425E939A52BA3AA611073191D42DE"
+    },
+    {
+        "path":  "smoke_api_output.txt",
+        "size":  5499,
+        "writeTimeUtc":  "2025-12-05T05:52:53.4648210Z",
+        "sha256":  "C52BE8FFE7B99851AA7D95A2CB9A3220BA7EBA5C312FAD8891C25A9B847418BD"
+    },
+    {
+        "path":  "tmp_project.json",
+        "size":  105,
+        "writeTimeUtc":  "2025-12-02T02:53:07.7971081Z",
+        "sha256":  "16B4C3284B9DCE11A0FDD7F7573B0C42F00374F69E9126536E9AA2429D7B12CE"
+    },
+    {
+        "path":  "To_Do_List_001.txt",
+        "size":  19647,
+        "writeTimeUtc":  "2025-12-01T03:34:17.2096326Z",
+        "sha256":  "C2423F06172E0AFFD0C9DF3EF5C71CA4DB587370561D736FE1D017E5E3624CE6"
+    },
+    {
+        "path":  "tools\\reset_qa_env.py",
+        "size":  4136,
+        "writeTimeUtc":  "2025-12-02T08:16:18.5403766Z",
+        "sha256":  "37FCADCF5346CB0752F332F1C62C95914AE9919389D4F66E698BB00F55EB67F3"
+    },
+    {
+        "path":  "Updated_Project_Plans\\Updated_Project_Plan_2.txt",
+        "size":  38956,
+        "writeTimeUtc":  "2025-12-04T02:05:40.3189041Z",
+        "sha256":  "7646A011A8BA5130073E2653AEF0B184FB5F385BC71454FF9C5E46B5A2315030"
+    },
+    {
+        "path":  "Updated_Project_Plans\\Updated_Project_Plan_2_AUTOPILOT_EXAMPLES.txt",
+        "size":  10600,
+        "writeTimeUtc":  "2025-12-04T02:01:39.3582007Z",
+        "sha256":  "3F35968F401715D5194C581430B35BDDC7EBDCC221133E3E56D6A81DEC6BE894"
+    },
+    {
+        "path":  "Updated_Project_Plans\\Updated_Project_Plan_2_AUTOPILOT_LEARNING.txt",
+        "size":  18765,
+        "writeTimeUtc":  "2025-12-04T02:03:39.7284127Z",
+        "sha256":  "9D9B70083912EC3A7417C97C443B113535B68CC91762AF16297AFAF6C1815714"
+    },
+    {
+        "path":  "Updated_Project_Plans\\Updated_Project_Plan_2_AUTOPILOT_LIMITATIONS.txt",
+        "size":  8779,
+        "writeTimeUtc":  "2025-12-04T02:02:01.8516960Z",
+        "sha256":  "01A2217B4F0D03B9507B2B87925783F8802CBD9157CC00D9F34CBF1E74DC5371"
+    },
+    {
+        "path":  "Updated_Project_Plans\\Updated_Project_Plan_2_Ingestion_Plan.txt",
+        "size":  18396,
+        "writeTimeUtc":  "2025-12-04T02:02:33.7446552Z",
+        "sha256":  "F0DF69A84B4C796F169BC732BB5DF927716227B8AE0BCE7109AB87DA239CBEED"
+    },
+    {
+        "path":  "Updated_Project_Plans\\Updated_Project_Plan_2_Model_Matrix.txt",
+        "size":  18204,
+        "writeTimeUtc":  "2025-12-04T02:02:52.0332596Z",
+        "sha256":  "A66BCEDDBE1DDCCB4852CAB375CD5524276DEBFA7092F80F405BA0D584A42E7C"
+    },
+    {
+        "path":  "Updated_Project_Plans\\Updated_Project_Plan_2_Phase3_4.txt",
+        "size":  24636,
+        "writeTimeUtc":  "2025-12-04T02:01:07.8957019Z",
+        "sha256":  "280BB5F9EAB17E3191F21A8A111C88EF38302D49A6446C1067096A06C7C68C5F"
+    },
+    {
+        "path":  "Updated_Project_Plans\\Updated_Project_Plan_2_Worker_Manager_Playbook.txt",
+        "size":  22366,
+        "writeTimeUtc":  "2025-12-04T02:03:24.5714913Z",
+        "sha256":  "0022F20CE38004E608F4477D9CBA4BCC59D9276587F9DAE9F8BF708CE4DEDADA"
+    },
+    {
+        "path":  "User_Manual.txt",
+        "size":  27774,
+        "writeTimeUtc":  "2025-12-02T22:11:31.5199163Z",
+        "sha256":  "5D5C15E00AC470D1C6A6ED32244E6521F68B9674B1448F1647ABEEDCBC975EF3"
+    }
+]

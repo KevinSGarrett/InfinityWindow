@@ -1,0 +1,4 @@
+# file: C:\InfinityWindow\backend\app\ingestion\github_ingestor.py
+# hypothesis_version: 6.148.7
+
+[0.0, '*.css', '*.html', '*.js', '*.json', '*.md', '*.py', '*.ts', '*.tsx', '*.txt', '*.yaml', '*.yml', '.', '.git', '.idea', '.vscode', 'Cancelled by user', '__pycache__', 'build', 'bytes_processed', 'cancel_requested', 'cancelled', 'completed', 'dist', 'failed', 'files_processed', 'files_skipped', 'ignore', 'include_globs', 'jobs_cancelled', 'jobs_completed', 'jobs_failed', 'jobs_started', 'name_prefix', 'node_modules', 'num_chunks', 'num_documents', 'num_files', 'num_files_discovered', 'pending', 'processed_bytes', 'project_id', 'relative_path', 'repo', 'root_path', 'running', 'sha', 'size', 'text', 'total_bytes', 'utf-8']

@@ -1,0 +1,70 @@
+{
+  "timestamp": "2025-12-04T14:43:55.588993",
+  "project_id": 37,
+  "repo_path": "C:\\InfinityWindow",
+  "summary": {
+    "total": 7,
+    "passed": 4,
+    "failed": 3
+  },
+  "results": [
+    {
+      "test_name": "B-Docs-01: Basic Ingestion",
+      "passed": false,
+      "details": "Test failed: Job 29 did not complete within 600.0 seconds",
+      "timestamp": "2025-12-04T14:40:25.115985",
+      "duration_seconds": 602.1409409046173,
+      "errors": [
+        "Job 29 did not complete within 600.0 seconds"
+      ]
+    },
+    {
+      "test_name": "B-Docs-02: Hash-Based Skipping",
+      "passed": false,
+      "details": "Test failed: HTTPConnectionPool(host='127.0.0.1', port=8000): Max retries exceeded with url: /projects (Caused by ResponseError('too many 500 error responses'))",
+      "timestamp": "2025-12-04T14:42:02.001315",
+      "duration_seconds": 96.88532996177673,
+      "errors": [
+        "HTTPConnectionPool(host='127.0.0.1', port=8000): Max retries exceeded with url: /projects (Caused by ResponseError('too many 500 error responses'))"
+      ]
+    },
+    {
+      "test_name": "B-Docs-03: Progress Metrics",
+      "passed": false,
+      "details": "Test failed: HTTPConnectionPool(host='127.0.0.1', port=8000): Max retries exceeded with url: /projects/37/ingestion_jobs (Caused by ResponseError('too many 500 error responses'))",
+      "timestamp": "2025-12-04T14:43:40.642250",
+      "duration_seconds": 98.64093542098999,
+      "errors": [
+        "HTTPConnectionPool(host='127.0.0.1', port=8000): Max retries exceeded with url: /projects/37/ingestion_jobs (Caused by ResponseError('too many 500 error responses'))"
+      ]
+    },
+    {
+      "test_name": "B-Docs-04: Job Cancellation",
+      "passed": true,
+      "details": "Cancel endpoint works (job completed after cancel requested - race condition)",
+      "timestamp": "2025-12-04T14:43:50.545433",
+      "duration_seconds": 9.903183221817017
+    },
+    {
+      "test_name": "B-Docs-05: Job History",
+      "passed": true,
+      "details": "Found 2 jobs in history",
+      "timestamp": "2025-12-04T14:43:50.550079",
+      "duration_seconds": 0.004645586013793945
+    },
+    {
+      "test_name": "B-Docs-06: Error Handling",
+      "passed": true,
+      "details": "Error handled correctly: Root path is not a directory: C:\\NonExistentDirectory12345",
+      "timestamp": "2025-12-04T14:43:50.560098",
+      "duration_seconds": 0.010019540786743164
+    },
+    {
+      "test_name": "B-Docs-07: Telemetry",
+      "passed": true,
+      "details": "Telemetry tracking works: jobs_started 2 -> 3, files_processed: 96",
+      "timestamp": "2025-12-04T14:43:55.588993",
+      "duration_seconds": 5.028894662857056
+    }
+  ]
+}

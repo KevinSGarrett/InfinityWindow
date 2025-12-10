@@ -1,0 +1,1894 @@
+{
+  "fastapi_endpoints": [
+    {
+      "method": "POST",
+      "path": "/docs/text",
+      "file": "backend\\app\\api\\docs.py",
+      "line": 67,
+      "handler": "create_text_document"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/{project_id}/docs/text",
+      "file": "backend\\app\\api\\docs.py",
+      "line": 106,
+      "handler": "create_project_text_document"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/{project_id}/docs",
+      "file": "backend\\app\\api\\docs.py",
+      "line": 189,
+      "handler": "list_project_documents"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/{project_id}/docs",
+      "file": "backend\\app\\api\\docs.py",
+      "line": 210,
+      "handler": "create_project_document"
+    },
+    {
+      "method": "GET",
+      "path": "/docs/{doc_id}",
+      "file": "backend\\app\\api\\docs.py",
+      "line": 233,
+      "handler": "get_document"
+    },
+    {
+      "method": "PATCH",
+      "path": "/docs/{doc_id}",
+      "file": "backend\\app\\api\\docs.py",
+      "line": 241,
+      "handler": "patch_document"
+    },
+    {
+      "method": "DELETE",
+      "path": "/docs/{doc_id}",
+      "file": "backend\\app\\api\\docs.py",
+      "line": 259,
+      "handler": "delete_document"
+    },
+    {
+      "method": "POST",
+      "path": "/ingest_local_repo",
+      "file": "backend\\app\\api\\github.py",
+      "line": 35,
+      "handler": "ingest_local_repo_endpoint"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "file": "backend\\app\\api\\main.py",
+      "line": 1848,
+      "handler": "health"
+    },
+    {
+      "method": "POST",
+      "path": "/projects",
+      "file": "backend\\app\\api\\main.py",
+      "line": 1863,
+      "handler": "create_project"
+    },
+    {
+      "method": "GET",
+      "path": "/projects",
+      "file": "backend\\app\\api\\main.py",
+      "line": 1899,
+      "handler": "list_projects"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/{project_id}",
+      "file": "backend\\app\\api\\main.py",
+      "line": 1908,
+      "handler": "get_project"
+    },
+    {
+      "method": "PATCH",
+      "path": "/projects/{project_id}",
+      "file": "backend\\app\\api\\main.py",
+      "line": 1919,
+      "handler": "update_project"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/{project_id}/instructions",
+      "file": "backend\\app\\api\\main.py",
+      "line": 1957,
+      "handler": "get_project_instructions"
+    },
+    {
+      "method": "PUT",
+      "path": "/projects/{project_id}/instructions",
+      "file": "backend\\app\\api\\main.py",
+      "line": 1974,
+      "handler": "update_project_instructions"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/{project_id}/decisions",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2002,
+      "handler": "list_project_decisions"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/{project_id}/decisions",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2023,
+      "handler": "create_project_decision"
+    },
+    {
+      "method": "PATCH",
+      "path": "/decisions/{decision_id}",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2082,
+      "handler": "update_project_decision"
+    },
+    {
+      "method": "DELETE",
+      "path": "/decisions/{decision_id}",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2126,
+      "handler": "delete_project_decision"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/{project_id}/conversation_folders",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2167,
+      "handler": "list_conversation_folders"
+    },
+    {
+      "method": "POST",
+      "path": "/conversation_folders",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2186,
+      "handler": "create_conversation_folder"
+    },
+    {
+      "method": "PATCH",
+      "path": "/conversation_folders/{folder_id}",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2218,
+      "handler": "update_conversation_folder"
+    },
+    {
+      "method": "DELETE",
+      "path": "/conversation_folders/{folder_id}",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2254,
+      "handler": "delete_conversation_folder"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/{project_id}/memory",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2340,
+      "handler": "list_memory_items"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/{project_id}/memory",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2357,
+      "handler": "create_memory_item"
+    },
+    {
+      "method": "GET",
+      "path": "/memory_items/{memory_id}",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2426,
+      "handler": "get_memory_item"
+    },
+    {
+      "method": "PATCH",
+      "path": "/memory_items/{memory_id}",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2435,
+      "handler": "update_memory_item"
+    },
+    {
+      "method": "DELETE",
+      "path": "/memory_items/{memory_id}",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2513,
+      "handler": "delete_memory_item"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/{project_id}/conversations",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2528,
+      "handler": "list_project_conversations"
+    },
+    {
+      "method": "POST",
+      "path": "/conversations",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2549,
+      "handler": "create_conversation"
+    },
+    {
+      "method": "PATCH",
+      "path": "/conversations/{conversation_id}",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2583,
+      "handler": "rename_conversation"
+    },
+    {
+      "method": "GET",
+      "path": "/conversations/{conversation_id}/messages",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2621,
+      "handler": "list_conversation_messages"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/{project_id}/tasks",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2650,
+      "handler": "list_project_tasks"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/{project_id}/tasks",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2690,
+      "handler": "create_task_for_project"
+    },
+    {
+      "method": "POST",
+      "path": "/tasks",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2711,
+      "handler": "create_task"
+    },
+    {
+      "method": "PATCH",
+      "path": "/tasks/{task_id}",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2741,
+      "handler": "update_task"
+    },
+    {
+      "method": "DELETE",
+      "path": "/tasks/{task_id}",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2770,
+      "handler": "delete_task"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/{project_id}/auto_update_tasks",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2783,
+      "handler": "trigger_auto_update_tasks"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/{project_id}/task_suggestions",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2828,
+      "handler": "list_task_suggestions"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/{project_id}/tasks/overview",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2850,
+      "handler": "list_tasks_with_suggestions"
+    },
+    {
+      "method": "POST",
+      "path": "/task_suggestions/{suggestion_id}/approve",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2890,
+      "handler": "approve_task_suggestion"
+    },
+    {
+      "method": "POST",
+      "path": "/task_suggestions/{suggestion_id}/dismiss",
+      "file": "backend\\app\\api\\main.py",
+      "line": 2975,
+      "handler": "dismiss_task_suggestion"
+    },
+    {
+      "method": "GET",
+      "path": "/conversations/{conversation_id}/usage",
+      "file": "backend\\app\\api\\main.py",
+      "line": 3032,
+      "handler": "get_conversation_usage"
+    },
+    {
+      "method": "GET",
+      "path": "/debug/telemetry",
+      "file": "backend\\app\\api\\main.py",
+      "line": 3090,
+      "handler": "read_telemetry"
+    },
+    {
+      "method": "POST",
+      "path": "/debug/seed_task_action",
+      "file": "backend\\app\\api\\main.py",
+      "line": 3144,
+      "handler": "seed_task_action"
+    },
+    {
+      "method": "POST",
+      "path": "/debug/task_suggestions/seed",
+      "file": "backend\\app\\api\\main.py",
+      "line": 3195,
+      "handler": "seed_task_suggestion"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/{project_id}/fs/list",
+      "file": "backend\\app\\api\\main.py",
+      "line": 3265,
+      "handler": "list_project_files"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/{project_id}/fs/read",
+      "file": "backend\\app\\api\\main.py",
+      "line": 3314,
+      "handler": "read_project_file"
+    },
+    {
+      "method": "PUT",
+      "path": "/projects/{project_id}/fs/write",
+      "file": "backend\\app\\api\\main.py",
+      "line": 3355,
+      "handler": "write_project_file"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/{project_id}/fs/ai_edit",
+      "file": "backend\\app\\api\\main.py",
+      "line": 3401,
+      "handler": "ai_edit_project_file"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/{project_id}/ingestion_jobs",
+      "file": "backend\\app\\api\\main.py",
+      "line": 3601,
+      "handler": "create_ingestion_job_endpoint"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/{project_id}/ingestion_jobs/{job_id}",
+      "file": "backend\\app\\api\\main.py",
+      "line": 3669,
+      "handler": "read_ingestion_job_endpoint"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/{project_id}/ingestion_jobs",
+      "file": "backend\\app\\api\\main.py",
+      "line": 3684,
+      "handler": "list_ingestion_jobs_endpoint"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/{project_id}/ingestion_jobs/{job_id}/cancel",
+      "file": "backend\\app\\api\\main.py",
+      "line": 3705,
+      "handler": "cancel_ingestion_job_endpoint"
+    },
+    {
+      "method": "POST",
+      "path": "/ingest",
+      "file": "backend\\app\\api\\main.py",
+      "line": 3723,
+      "handler": "legacy_ingest"
+    },
+    {
+      "method": "POST",
+      "path": "/terminal/run",
+      "file": "backend\\app\\api\\main.py",
+      "line": 3754,
+      "handler": "run_terminal_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/{project_id}/terminal/run",
+      "file": "backend\\app\\api\\main.py",
+      "line": 3842,
+      "handler": "run_terminal_command_scoped"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/{project_id}/terminal/history",
+      "file": "backend\\app\\api\\main.py",
+      "line": 3855,
+      "handler": "list_terminal_history"
+    },
+    {
+      "method": "POST",
+      "path": "/chat",
+      "file": "backend\\app\\api\\main.py",
+      "line": 3869,
+      "handler": "chat"
+    },
+    {
+      "method": "POST",
+      "path": "/messages",
+      "file": "backend\\app\\api\\search.py",
+      "line": 53,
+      "handler": "search_messages"
+    },
+    {
+      "method": "POST",
+      "path": "/docs",
+      "file": "backend\\app\\api\\search.py",
+      "line": 203,
+      "handler": "search_docs"
+    },
+    {
+      "method": "POST",
+      "path": "/memory",
+      "file": "backend\\app\\api\\search.py",
+      "line": 319,
+      "handler": "search_memory"
+    }
+  ],
+  "sqlalchemy_models": [
+    {
+      "name": "Project",
+      "tablename": "projects",
+      "fields": [],
+      "file": "backend\\app\\db\\models.py",
+      "line": 22
+    },
+    {
+      "name": "Conversation",
+      "tablename": "conversations",
+      "fields": [],
+      "file": "backend\\app\\db\\models.py",
+      "line": 87
+    },
+    {
+      "name": "Message",
+      "tablename": "messages",
+      "fields": [],
+      "file": "backend\\app\\db\\models.py",
+      "line": 121
+    },
+    {
+      "name": "Document",
+      "tablename": "documents",
+      "fields": [],
+      "file": "backend\\app\\db\\models.py",
+      "line": 148
+    },
+    {
+      "name": "DocumentSection",
+      "tablename": "document_sections",
+      "fields": [],
+      "file": "backend\\app\\db\\models.py",
+      "line": 176
+    },
+    {
+      "name": "DocumentChunk",
+      "tablename": "document_chunks",
+      "fields": [],
+      "file": "backend\\app\\db\\models.py",
+      "line": 200
+    },
+    {
+      "name": "Task",
+      "tablename": "tasks",
+      "fields": [],
+      "file": "backend\\app\\db\\models.py",
+      "line": 222
+    },
+    {
+      "name": "TaskSuggestion",
+      "tablename": "task_suggestions",
+      "fields": [],
+      "file": "backend\\app\\db\\models.py",
+      "line": 246
+    },
+    {
+      "name": "UsageRecord",
+      "tablename": "usage_records",
+      "fields": [],
+      "file": "backend\\app\\db\\models.py",
+      "line": 275
+    },
+    {
+      "name": "ProjectDecision",
+      "tablename": "project_decisions",
+      "fields": [],
+      "file": "backend\\app\\db\\models.py",
+      "line": 309
+    },
+    {
+      "name": "ConversationFolder",
+      "tablename": "conversation_folders",
+      "fields": [],
+      "file": "backend\\app\\db\\models.py",
+      "line": 347
+    },
+    {
+      "name": "MemoryItem",
+      "tablename": "memory_items",
+      "fields": [],
+      "file": "backend\\app\\db\\models.py",
+      "line": 374
+    },
+    {
+      "name": "IngestionJob",
+      "tablename": "ingestion_jobs",
+      "fields": [],
+      "file": "backend\\app\\db\\models.py",
+      "line": 422
+    },
+    {
+      "name": "FileIngestionState",
+      "tablename": "file_ingestion_state",
+      "fields": [],
+      "file": "backend\\app\\db\\models.py",
+      "line": 451
+    }
+  ],
+  "llm_wiring": [
+    {
+      "keyword": "intent",
+      "line": 72,
+      "text": "The heuristic (len / 4) is intentionally simple; it just ensures we don't",
+      "file": "backend\\app\\llm\\embeddings.py"
+    },
+    {
+      "keyword": "_DEFAULT_MODELS",
+      "line": 38,
+      "text": "_DEFAULT_MODELS: Dict[str, str] = {",
+      "file": "backend\\app\\llm\\openai_client.py"
+    },
+    {
+      "keyword": "_DEFAULT_MODELS",
+      "line": 111,
+      "text": "2) Built\u2011in defaults in _DEFAULT_MODELS",
+      "file": "backend\\app\\llm\\openai_client.py"
+    },
+    {
+      "keyword": "_DEFAULT_MODELS",
+      "line": 122,
+      "text": "if mode_normalized in _DEFAULT_MODELS:",
+      "file": "backend\\app\\llm\\openai_client.py"
+    },
+    {
+      "keyword": "_DEFAULT_MODELS",
+      "line": 123,
+      "text": "return _DEFAULT_MODELS[mode_normalized]",
+      "file": "backend\\app\\llm\\openai_client.py"
+    },
+    {
+      "keyword": "_DEFAULT_MODELS",
+      "line": 126,
+      "text": "return os.getenv(\"OPENAI_MODEL_AUTO\", _DEFAULT_MODELS[\"auto\"])",
+      "file": "backend\\app\\llm\\openai_client.py"
+    },
+    {
+      "keyword": "_DEFAULT_MODELS",
+      "line": 491,
+      "text": "\"OPENAI_MODEL_AUTO\", _DEFAULT_MODELS.get(\"auto\", \"gpt-4.1\")",
+      "file": "backend\\app\\llm\\openai_client.py"
+    },
+    {
+      "keyword": "_DEFAULT_MODELS",
+      "line": 497,
+      "text": "safety_net = os.getenv(\"OPENAI_MODEL_FAST\", _DEFAULT_MODELS.get(\"fast\"))",
+      "file": "backend\\app\\llm\\openai_client.py"
+    }
+  ],
+  "services": [
+    {
+      "path": "backend\\app\\services\\blueprints.py",
+      "exists": false
+    },
+    {
+      "path": "backend\\app\\services\\workers.py",
+      "exists": false
+    },
+    {
+      "path": "backend\\app\\services\\manager.py",
+      "exists": false
+    },
+    {
+      "path": "backend\\app\\services\\alignment.py",
+      "exists": false
+    },
+    {
+      "path": "backend\\app\\llm\\context_builder.py",
+      "exists": false
+    },
+    {
+      "path": "backend\\app\\services\\snapshot.py",
+      "exists": false
+    },
+    {
+      "path": "backend\\app\\services\\conversation_summaries.py",
+      "exists": false
+    },
+    {
+      "path": "backend\\app\\services\\blueprint_understanding.py",
+      "exists": false
+    },
+    {
+      "path": "backend\\app\\services\\blueprint_diff.py",
+      "exists": false
+    },
+    {
+      "path": "backend\\app\\services\\runs.py",
+      "exists": false
+    },
+    {
+      "path": "backend\\app\\llm\\intent_classifier.py",
+      "exists": false
+    }
+  ],
+  "frontend_ui_signals": [
+    {
+      "keyword": "tasks",
+      "line": 96,
+      "text": "type TaskSuggestion = {",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 114,
+      "text": "tasks: Task[];",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 115,
+      "text": "suggestions: TaskSuggestion[];",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 181,
+      "text": "tasks: {",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 198,
+      "text": "suggestions?: TaskSuggestion[];",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 235,
+      "text": "| \"tasks\"",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 271,
+      "text": "type TerminalRunResult = {",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "runs",
+      "line": 331,
+      "text": "// For QA runs we set VITE_API_BASE; fallback remains 8000.",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 331,
+      "text": "// For QA runs we set VITE_API_BASE; fallback remains 8000.",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 388,
+      "text": "// Project tasks",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 389,
+      "text": "const [tasks, setTasks] = useState<Task[]>([]);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 392,
+      "text": "const [taskSuggestions, setTaskSuggestions] = useState<TaskSuggestion[]>([]);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 393,
+      "text": "const [isLoadingTaskSuggestions, setIsLoadingTaskSuggestions] =",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 395,
+      "text": "const [taskSuggestionError, setTaskSuggestionError] = useState<string | null>(",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 398,
+      "text": "const [showAllTaskSuggestions, setShowAllTaskSuggestions] = useState(false);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 496,
+      "text": "const [isRunningTerminalCommand, setIsRunningTerminalCommand] =",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 499,
+      "text": "useState<TerminalRunResult | null>(null);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 505,
+      "text": "const [isRunningManualTerminal, setIsRunningManualTerminal] =",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 561,
+      "text": "const [rightTab, setRightTab] = useState<RightTab>(\"tasks\");",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 573,
+      "text": "const [showAllTasks, setShowAllTasks] = useState(false);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 631,
+      "text": "id: \"go-tasks\",",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 632,
+      "text": "label: \"Switch to Tasks tab\",",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 633,
+      "text": "action: () => setRightTab(\"tasks\"),",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 695,
+      "text": "const visibleTasks = showAllTasks ? tasks : tasks.slice(0, 5);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 696,
+      "text": "const pendingTaskSuggestions = useMemo(",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 697,
+      "text": "() => taskSuggestions.filter((s) => s.status === \"pending\"),",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 698,
+      "text": "[taskSuggestions]",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 700,
+      "text": "const pendingSuggestionCount = pendingTaskSuggestions.length;",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 701,
+      "text": "const visibleTaskSuggestions = showAllTaskSuggestions",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 702,
+      "text": "? pendingTaskSuggestions",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 703,
+      "text": ": pendingTaskSuggestions.slice(0, 3);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 873,
+      "text": "if (!telemetry?.tasks?.recent_actions) return [];",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 875,
+      "text": "telemetry.tasks.recent_actions.forEach((a) => {",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 900,
+      "text": "if (!telemetry?.tasks.recent_actions) return [];",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 902,
+      "text": "return telemetry.tasks.recent_actions.filter((a) => {",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 936,
+      "text": "telemetry?.tasks.recent_actions?.reduce(",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 941,
+      "text": "const confidenceBuckets = telemetry?.tasks.confidence_buckets;",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 950,
+      "text": "<span>Routing & tasks telemetry</span>",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1003,
+      "text": "<div className=\"usage-telemetry-title\">Fallbacks & tasks</div>",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1018,
+      "text": "<span className=\"usage-label\">Tasks auto-added</span>",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1020,
+      "text": "{telemetry.tasks.auto_added}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1024,
+      "text": "<span className=\"usage-label\">Tasks auto-completed</span>",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1026,
+      "text": "{telemetry.tasks.auto_completed}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1030,
+      "text": "<span className=\"usage-label\">Tasks auto-deduped</span>",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1032,
+      "text": "{telemetry.tasks.auto_deduped}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1039,
+      "text": "{telemetry.tasks.confidence_stats ? (",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1044,
+      "text": "{telemetry.tasks.confidence_stats.min}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1050,
+      "text": "{telemetry.tasks.confidence_stats.max}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1056,
+      "text": "{telemetry.tasks.confidence_stats.avg}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1062,
+      "text": "{telemetry.tasks.confidence_stats.count}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1071,
+      "text": "{telemetry.tasks.confidence_buckets && (",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1076,
+      "text": "{telemetry.tasks.confidence_buckets.lt_0_4}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1085,
+      "text": "(telemetry.tasks.confidence_buckets.lt_0_4 /",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1097,
+      "text": "{telemetry.tasks.confidence_buckets[\"0_4_0_7\"]}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1106,
+      "text": "(telemetry.tasks.confidence_buckets[\"0_4_0_7\"] /",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1118,
+      "text": "{telemetry.tasks.confidence_buckets.gte_0_7}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1127,
+      "text": "(telemetry.tasks.confidence_buckets.gte_0_7 /",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1268,
+      "text": "loadTasks(selectedProjectId);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1443,
+      "text": "const loadTasks = async (projectId: number) => {",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1444,
+      "text": "setIsLoadingTaskSuggestions(true);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1445,
+      "text": "setTaskSuggestionError(null);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1448,
+      "text": "`${BACKEND_BASE}/projects/${projectId}/tasks/overview`",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1452,
+      "text": "setTasks(data.tasks || []);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1453,
+      "text": "setTaskSuggestions(data.suggestions || []);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1455,
+      "text": "console.error(\"Fetching tasks overview failed:\", e);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1456,
+      "text": "setTaskSuggestionError(\"Could not load tasks/suggestions.\");",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1457,
+      "text": "setTasks([]);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1458,
+      "text": "setTaskSuggestions([]);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1460,
+      "text": "setIsLoadingTaskSuggestions(false);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1701,
+      "text": "const res = await fetch(`${BACKEND_BASE}/tasks`, {",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 1715,
+      "text": "await loadTasks(selectedProjectId);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2277,
+      "text": "const handleRunTerminalProposal = async () => {",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2287,
+      "text": "alert(\"No AI terminal command proposal to run.\");",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2291,
+      "text": "setIsRunningTerminalCommand(true);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2302,
+      "text": "const res = await fetch(`${BACKEND_BASE}/terminal/run`, {",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2309,
+      "text": "console.error(\"Terminal run failed:\", res.status);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2319,
+      "text": "setTerminalError(detail || \"Failed to run terminal command.\");",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2323,
+      "text": "const data: TerminalRunResult = await res.json();",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2332,
+      "text": "let truncated = false;",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2337,
+      "text": "\"\\n...[stdout truncated]...\";",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2338,
+      "text": "truncated = true;",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2352,
+      "text": "if (truncated) {",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2354,
+      "text": "\"\\n\\n(Note: stdout was truncated when sending it back to you in this message.)\";",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2359,
+      "text": "console.error(\"Terminal run threw:\", e);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2360,
+      "text": "setTerminalError(\"Unexpected error while running terminal command.\");",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2362,
+      "text": "setIsRunningTerminalCommand(false);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2366,
+      "text": "const handleRunManualTerminalCommand = async () => {",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2372,
+      "text": "alert(\"Enter a terminal command to run.\");",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2382,
+      "text": "setIsRunningManualTerminal(true);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2393,
+      "text": "const res = await fetch(`${BACKEND_BASE}/terminal/run`, {",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2400,
+      "text": "console.error(\"Manual terminal run failed:\", res.status);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2411,
+      "text": "detail || \"Failed to run manual terminal command.\"",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2416,
+      "text": "const data: TerminalRunResult = await res.json();",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2434,
+      "text": "let truncated = false;",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2438,
+      "text": "stdoutSnippet.slice(0, MAX_STDOUT) + \"\\n...[stdout truncated]...\";",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2439,
+      "text": "truncated = true;",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2453,
+      "text": "if (truncated) {",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2455,
+      "text": "\"\\n\\n(Note: stdout was truncated when sending it back to you in this message.)\";",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2461,
+      "text": "console.error(\"Manual terminal run threw:\", e);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2463,
+      "text": "\"Unexpected error while running manual terminal command.\"",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 2467,
+      "text": "setIsRunningManualTerminal(false);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 2496,
+      "text": "loadTasks(firstId);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 2521,
+      "text": "setRightTab(\"tasks\");",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 2573,
+      "text": "// ---------- When project changes, load its conversations + docs + tasks + files ----------",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 2580,
+      "text": "setTasks([]);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 2581,
+      "text": "setTaskSuggestions([]);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 2582,
+      "text": "setTaskSuggestionError(null);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 2583,
+      "text": "setIsLoadingTaskSuggestions(false);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 2615,
+      "text": "loadTasks(selectedProjectId);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 2745,
+      "text": "setTasks([]);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 3101,
+      "text": "const res = await fetch(`${BACKEND_BASE}/tasks`, {",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 3117,
+      "text": "await loadTasks(selectedProjectId);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 3126,
+      "text": "const handleToggleTaskStatus = async (task: Task) => {",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 3129,
+      "text": "const res = await fetch(`${BACKEND_BASE}/tasks/${task.id}`, {",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 3142,
+      "text": "await loadTasks(selectedProjectId);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 3150,
+      "text": "const handleApproveTaskSuggestion = async (",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 3151,
+      "text": "suggestion: TaskSuggestion",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 3169,
+      "text": "loadTasks(selectedProjectId),",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 3180,
+      "text": "const handleDismissTaskSuggestion = async (",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 3181,
+      "text": "suggestion: TaskSuggestion",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 3198,
+      "text": "await loadTasks(selectedProjectId);",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4130,
+      "text": "\"right-tab\" + (rightTab === \"tasks\" ? \" active\" : \"\")",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4132,
+      "text": "onClick={() => setRightTab(\"tasks\")}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4134,
+      "text": "Tasks",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4210,
+      "text": "{rightTab === \"tasks\" && (",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4215,
+      "text": "<span className=\"tab-section-title\">Project tasks</span>",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4216,
+      "text": "<span className=\"tab-pill\">{tasks.length}</span>",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4223,
+      "text": "onClick={() => loadTasks(selectedProjectId)}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4228,
+      "text": "{tasks.length > 5 && (",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4232,
+      "text": "onClick={() => setShowAllTasks((prev) => !prev)}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4234,
+      "text": "{showAllTasks ? \"Show less\" : \"Show more\"}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4270,
+      "text": "<div className=\"tasks-new condensed\">",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4272,
+      "text": "className=\"tasks-input\"",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4292,
+      "text": "<div className=\"tasks-list compact\">",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4294,
+      "text": "<div className=\"tasks-empty\">No project selected.</div>",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4295,
+      "text": ") : tasks.length === 0 ? (",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4296,
+      "text": "<div className=\"tasks-empty\">",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4297,
+      "text": "No tasks yet. Add one above.",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4301,
+      "text": "{visibleTasks.map((task) => {",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4308,
+      "text": "onChange={() => handleToggleTaskStatus(task)}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4372,
+      "text": "onClick={() => loadTasks(selectedProjectId)}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4389,
+      "text": "setShowAllTaskSuggestions((prev) => !prev)",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4392,
+      "text": "{showAllTaskSuggestions ? \"Show less\" : \"Show more\"}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4401,
+      "text": "<span>{telemetry?.tasks.auto_added ?? \"\u2014\"}</span>",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4405,
+      "text": "<span>{telemetry?.tasks.auto_completed ?? \"\u2014\"}</span>",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4409,
+      "text": "<span>{telemetry?.tasks.auto_suggested ?? \"\u2014\"}</span>",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4412,
+      "text": "{taskSuggestionError && (",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4414,
+      "text": "{taskSuggestionError}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4417,
+      "text": "{isLoadingTaskSuggestions ? (",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4418,
+      "text": "<div className=\"tasks-empty\">Loading suggestions\u2026</div>",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4420,
+      "text": "<div className=\"tasks-empty\">",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4425,
+      "text": "{visibleTaskSuggestions.map((suggestion) => {",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4482,
+      "text": "handleApproveTaskSuggestion(suggestion)",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 4492,
+      "text": "handleDismissTaskSuggestion(suggestion)",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 4645,
+      "text": "{repoIngestionJob.status === \"running\" && (",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 5942,
+      "text": "Select a project to run manual commands.",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 5966,
+      "text": "placeholder=\"Enter a command to run (PowerShell / cmd syntax)...\"",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 5987,
+      "text": "onClick={handleRunManualTerminalCommand}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 5989,
+      "text": "isRunningManualTerminal ||",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 5993,
+      "text": "{isRunningManualTerminal",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 5994,
+      "text": "? \"Running\u2026\"",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 5995,
+      "text": ": \"Run command\"}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 6061,
+      "text": "onClick={handleRunTerminalProposal}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 6062,
+      "text": "disabled={isRunningTerminalCommand}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 6064,
+      "text": "{isRunningTerminalCommand",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 6065,
+      "text": "? \"Running\u2026\"",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 6066,
+      "text": ": \"Run command\"}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 6088,
+      "text": "No terminal command has been run yet from this UI.",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 6145,
+      "text": "Commands you run manually will be listed here.",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "run",
+      "line": 6170,
+      "text": "\"Loaded command into manual runner\",",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 6329,
+      "text": "{telemetry.tasks.auto_added ?? \"\u2014\"}",
+      "file": "frontend\\src\\App.tsx"
+    },
+    {
+      "keyword": "tasks",
+      "line": 6335,
+      "text": "{telemetry.tasks.auto_completed ?? \"\u2014\"}",
+      "file": "frontend\\src\\App.tsx"
+    }
+  ],
+  "tests": {
+    "qa": [
+      "qa\\__init__.py",
+      "qa\\_utils.py",
+      "qa\\harness\\llm_stub.py",
+      "qa\\harness\\telemetry.py",
+      "qa\\ingestion_e2e_test.py",
+      "qa\\ingestion_probe.py",
+      "qa\\message_search_probe.py",
+      "qa\\mode_routing_probe.py",
+      "qa\\run_smoke.py",
+      "qa\\tasks_autoloop_probe.py",
+      "qa\\tests_api\\conftest.py",
+      "qa\\tests_api\\test_api_chat_routing.py",
+      "qa\\tests_api\\test_api_projects.py",
+      "qa\\tests_api\\test_chat_tasks_autopilot.py",
+      "qa\\tests_api\\test_chat_tasks_noisy.py",
+      "qa\\tests_api\\test_ingestion_e2e.py",
+      "qa\\tests_api\\test_security.py",
+      "qa\\tests_e2e\\test_chat_search_tasks.py"
+    ],
+    "frontend": [
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\all-errors.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\anyunknown.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\array.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\async-parsing.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\async-refinements.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\base.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\bigint.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\branded.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\catch.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\coerce.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\complex.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\custom.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\date.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\deepmasking.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\default.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\description.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\discriminated-unions.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\enum.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\error.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\firstparty.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\firstpartyschematypes.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\function.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\generics.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\instanceof.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\intersection.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\language-server.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\literal.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\map.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\masking.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\mocker.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\nan.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\nativeEnum.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\nullable.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\number.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\object-augmentation.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\object-in-es5-env.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\object.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\optional.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\parseUtil.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\parser.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\partials.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\pickomit.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\pipeline.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\preprocess.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\primitive.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\promise.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\readonly.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\record.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\recursive.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\refine.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\safeparse.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\set.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\standard-schema.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\string.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\transformer.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\tuple.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\unions.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\validations.test.ts",
+      "frontend\\node_modules\\zod\\src\\v3\\tests\\void.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\anyunknown.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\array.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\assignability.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\async-parsing.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\async-refinements.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\base.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\bigint.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\brand.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\catch.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\coalesce.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\codec-examples.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\codec.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\coerce.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\continuability.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\custom.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\date.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\datetime.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\default.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\describe-meta-checks.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\description.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\discriminated-unions.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\enum.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\error-utils.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\error.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\file.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\firstparty.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\function.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\generics.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\hash.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\index.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\instanceof.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\intersection.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\json.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\lazy.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\literal.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\map.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\nan.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\nested-refine.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\nonoptional.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\nullable.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\number.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\object.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\optional.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\partial.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\pickomit.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\pipe.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\prefault.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\preprocess.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\primitive.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\promise.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\prototypes.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\readonly.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\record.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\recursive-types.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\refine.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\registries.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\set.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\standard-schema.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\string-formats.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\string.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\stringbool.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\template-literal.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\to-json-schema.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\transform.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\tuple.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\union.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\url.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\validations.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\classic\\tests\\void.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\core\\tests\\extend.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\core\\tests\\index.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\core\\tests\\locales\\be.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\core\\tests\\locales\\en.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\core\\tests\\locales\\es.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\core\\tests\\locales\\he.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\core\\tests\\locales\\nl.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\core\\tests\\locales\\ru.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\core\\tests\\locales\\tr.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\core\\tests\\record-constructor.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\core\\tests\\recursive-tuples.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\mini\\tests\\assignability.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\mini\\tests\\brand.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\mini\\tests\\checks.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\mini\\tests\\codec.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\mini\\tests\\computed.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\mini\\tests\\error.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\mini\\tests\\functions.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\mini\\tests\\index.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\mini\\tests\\number.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\mini\\tests\\object.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\mini\\tests\\prototypes.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\mini\\tests\\recursive-types.test.ts",
+      "frontend\\node_modules\\zod\\src\\v4\\mini\\tests\\string.test.ts"
+    ]
+  },
+  "docs": [
+    {
+      "path": "docs\\SYSTEM_OVERVIEW.md",
+      "exists": true
+    },
+    {
+      "path": "docs\\SYSTEM_MATRIX.md",
+      "exists": true
+    },
+    {
+      "path": "docs\\API_REFERENCE.md",
+      "exists": true
+    },
+    {
+      "path": "docs\\USER_MANUAL.md",
+      "exists": true
+    },
+    {
+      "path": "docs\\DEV_GUIDE.md",
+      "exists": true
+    },
+    {
+      "path": "docs\\OPERATIONS_RUNBOOK.md",
+      "exists": true
+    },
+    {
+      "path": "docs\\TEST_PLAN.md",
+      "exists": true
+    },
+    {
+      "path": "docs\\MODEL_MATRIX.md",
+      "exists": true
+    },
+    {
+      "path": "docs\\AUTOPILOT_PLAN.md",
+      "exists": true
+    },
+    {
+      "path": "docs\\AUTOPILOT_LIMITATIONS.md",
+      "exists": true
+    },
+    {
+      "path": "docs\\AUTOPILOT_LEARNING.md",
+      "exists": true
+    },
+    {
+      "path": "docs\\AUTOPILOT_EXAMPLES.md",
+      "exists": true
+    }
+  ]
+}

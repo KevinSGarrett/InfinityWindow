@@ -1,0 +1,56 @@
+diff --git a/backend/app/llm/openai_client.py b/backend/app/llm/openai_client.py
+--- a/backend/app/llm/openai_client.py
++++ b/backend/app/llm/openai_client.py
+@@
+ _DEFAULT_MODELS: Dict[str, str] = {
+     "auto": "gpt-4.1",
+     "fast": "gpt-4.1-mini",
+     "deep": "gpt-5.1",
+     "budget": "gpt-4.1-nano",
+     "research": "o3-deep-research",
+     "code": "gpt-5.1-codex",
+ }
++
++# Role-based routing (env overrides first, then defaults) — adds no behavior change to chat modes
++_ROLE_ENV_VARS: Dict[str, str] = {
++    "summary": "OPENAI_MODEL_SUMMARY",
++    "snapshot": "OPENAI_MODEL_SNAPSHOT",
++    "blueprint": "OPENAI_MODEL_BLUEPRINT",
++    "plan_tasks": "OPENAI_MODEL_PLAN_TASKS",
++    "manager": "OPENAI_MODEL_MANAGER",
++    "worker_code": "OPENAI_MODEL_WORKER_CODE",
++    "worker_test": "OPENAI_MODEL_WORKER_TEST",
++    "worker_doc": "OPENAI_MODEL_WORKER_DOC",
++    "alignment": "OPENAI_MODEL_ALIGNMENT",
++    "intent": "OPENAI_MODEL_INTENT",
++    "research_deep": "OPENAI_MODEL_RESEARCH_DEEP",
++}
++
++_ROLE_DEFAULT_MODELS: Dict[str, str] = {
++    "summary": "gpt-4.1-nano",
++    "snapshot": "gpt-4.1-mini",
++    "blueprint": "gpt-4.1-mini",
++    "plan_tasks": "gpt-5-mini",
++    "manager": "gpt-5.1",
++    "worker_code": "gpt-5.1",
++    "worker_test": "gpt-4.1-mini",
++    "worker_doc": "gpt-4.1-mini",
++    "alignment": "gpt-4.1-nano",
++    "intent": "gpt-4.1-nano",
++    "research_deep": "o3-deep-research",
++}
++
++
++def get_model_for_role(role: str) -> str:
++    env_var = _ROLE_ENV_VARS.get(role)
++    if env_var:
++        override = os.getenv(env_var)
++        if override:
++            return override
++    return _ROLE_DEFAULT_MODELS.get(role, _DEFAULT_MODELS["auto"])
++
++
++def call_model_for_role(role: str, messages: List[Dict[str, str]], **kwargs) -> str:
++    model = get_model_for_role(role)
++    return _call_model(messages=messages, model=model, **kwargs)
+

@@ -1,0 +1,24 @@
+﻿{
+    "status":  "restart-ok",
+    "conversations":  {
+                          "value":  [
+                                        {
+                                            "id":  1,
+                                            "project_id":  1,
+                                            "title":  "Auto Ping Setup: Target Clarification",
+                                            "folder_id":  null,
+                                            "folder_name":  null,
+                                            "folder_color":  null
+                                        },
+                                        {
+                                            "id":  2,
+                                            "project_id":  1,
+                                            "title":  "Chat conversation",
+                                            "folder_id":  null,
+                                            "folder_name":  null,
+                                            "folder_color":  null
+                                        }
+                                    ],
+                          "Count":  2
+                      }
+}

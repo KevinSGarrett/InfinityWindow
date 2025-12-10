@@ -1,0 +1,60 @@
+diff --git a/backend/app/api/main.py b/backend/app/api/main.py
+--- a/backend/app/api/main.py
++++ b/backend/app/api/main.py
+@@
+-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
++from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
+@@
+ SAFE_WRITE_METHODS = {"PUT", "POST", "PATCH"}
++
++# Autopilot terminal safety: allowlist + forbidden substrings
++SAFE_COMMAND_PREFIXES = [
++    "pytest",
++    "python -m pytest",
++    "python -m qa.run_smoke",
++    "npm test",
++    "npm run build",
++    "npm run lint",
++]
++FORBIDDEN_SUBSTRINGS = [" rm ", " rm-", " del ", " format ", " shutdown", " reboot", " git push"]
+@@
+ def run_terminal_command(
+     payload: TerminalRunPayload,
+     db: Session = Depends(get_db),
+ ):
+@@
+-    try:
+-        result = subprocess.run(
+-            payload.command,
+-            shell=True,
+-            cwd=str(workdir),
+-            capture_output=True,
+-            text=True,
+-            timeout=timeout,
+-            check=True,
+-        )
++    # Safety: block forbidden commands and gate non-allowlisted commands
++    cmd_lower = f" {payload.command.lower()} "
++    for forbidden in FORBIDDEN_SUBSTRINGS:
++        if forbidden.strip() in cmd_lower:
++            raise HTTPException(
++                status_code=400,
++                detail=f"Command contains forbidden substring: '{forbidden.strip()}'",
++            )
++    if not any(cmd_lower.strip().startswith(prefix) for prefix in SAFE_COMMAND_PREFIXES):
++        raise HTTPException(
++            status_code=400,
++            detail="Command not in safe allowlist; requires explicit approval path.",
++        )
++
++    try:
++        result = subprocess.run(
++            payload.command,
++            shell=True,
++            cwd=str(workdir),
++            capture_output=True,
++            text=True,
++            timeout=timeout,
++            check=True,
++        )
+

@@ -1,0 +1,7 @@
+QA checklist (terminal safety patch)
+1) Call /terminal/run with "rm -rf ." -> expect 400 forbidden substring.
+2) Call /terminal/run with "npm test" when project root exists -> expect 200 and command runs.
+3) Call /terminal/run with "ls" -> expect 400 not in allowlist.
+4) Verify commands are still confined to project local_root_path (existing behavior).
+5) Run smoke: python -m qa.run_smoke (should still pass).
+

@@ -1,0 +1,4 @@
+# file: C:\InfinityWindow\backend\app\vectorstore\chroma_store.py
+# hypothesis_version: 6.148.7
+
+[5000, '$and', '$eq', 'add document chunks', 'add memory embedding', 'chroma_data', 'chunk_id', 'chunk_index', 'conversation_id', 'description', 'docs', 'document_id', 'folder_id', 'memory_id', 'memory_items', 'message_id', 'messages', 'project_id', 'role', 'title']

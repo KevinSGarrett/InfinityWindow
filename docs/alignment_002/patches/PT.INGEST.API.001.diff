@@ -1,0 +1,56 @@
+diff --git a/backend/app/api/main.py b/backend/app/api/main.py
+--- a/backend/app/api/main.py
++++ b/backend/app/api/main.py
+@@
+ @app.get("/projects/{project_id}/fs/read")
+ def read_project_file(
+     project_id: int,
+-    file_path: Optional[str] = None,
+-    subpath: Optional[str] = None,
++    file_path: Optional[str] = None,
++    subpath: Optional[str] = None,
++    start_line: Optional[int] = None,
++    end_line: Optional[int] = None,
+     db: Session = Depends(get_db),
+ ):
+@@
+-    try:
+-        content = target.read_text(encoding="utf-8")
+-    except UnicodeDecodeError:
+-        raise HTTPException(
+-            status_code=400,
+-            detail="File is not valid UTF-8 text; cannot be read as text.",
+-        )
++    try:
++        content = target.read_text(encoding="utf-8")
++    except UnicodeDecodeError:
++        raise HTTPException(
++            status_code=400,
++            detail="File is not valid UTF-8 text; cannot be read as text.",
++        )
++
++    # Optional windowed reads to conserve tokens for workers/agents
++    if start_line is not None or end_line is not None:
++        if start_line is not None and start_line < 1:
++            raise HTTPException(status_code=400, detail="start_line must be >= 1")
++        if end_line is not None and end_line is not None and end_line < 1:
++            raise HTTPException(status_code=400, detail="end_line must be >= 1")
++        lines = content.splitlines()
++        lo = max(1, start_line or 1)
++        hi = end_line or len(lines)
++        if lo > hi:
++            raise HTTPException(
++                status_code=400, detail="start_line cannot be greater than end_line"
++            )
++        sliced = lines[lo - 1 : hi]
++        content = "\n".join(sliced)
+@@
+     return {
+         "root": str(root),
+         "path": str(target.relative_to(root)),
+-        "content": content,
++        "content": content,
++        "start_line": start_line,
++        "end_line": end_line,
+     }
+

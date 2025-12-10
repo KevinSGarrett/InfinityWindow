@@ -1,0 +1,23 @@
+path: backend/app/api/main.py
+lines: 3753-3838
+
+@app.post("/terminal/run")
+def run_terminal_command(
+    payload: TerminalRunPayload,
+    db: Session = Depends(get_db),
+):
+    """
+    Run a shell command for a given project, safely constrained under
+    that project's local_root_path.
+
+    Body:
+    {
+      "project_id": 1,
+      "cwd": "backend",       # optional, relative to project root
+      "command": "git status",
+      "timeout_seconds": 60
+    }
+    """
+    if payload.project_id is None:
+        raise HTTPException(status_code=422, detail="project_id is required (path or body).")
+

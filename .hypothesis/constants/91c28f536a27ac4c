@@ -1,0 +1,4 @@
+# file: C:\InfinityWindow\qa\harness\llm_stub.py
+# hypothesis_version: 6.148.7
+
+[0.0, 'cost', 'mode', 'reply', 'tokens_in', 'tokens_out', 'utf-8']

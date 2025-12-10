@@ -1,0 +1,7 @@
+QA checklist (files alias routes)
+1) GET /projects/{id}/files/content for an existing file -> matches /fs/read response.
+2) POST /projects/{id}/files/apply_edit to update a file -> matches /fs/write behavior.
+3) Error cases: missing file returns 404 via alias.
+4) Verify original /fs/read and /fs/write still work.
+5) Run python -m qa.run_smoke to ensure no regressions.
+

@@ -1,0 +1,64 @@
+{
+  "timestamp": "2025-12-04T13:41:14.938884",
+  "project_id": 14,
+  "repo_path": "C:\\InfinityWindow",
+  "summary": {
+    "total": 7,
+    "passed": 6,
+    "failed": 1
+  },
+  "results": [
+    {
+      "test_name": "B-Docs-01: Basic Ingestion",
+      "passed": true,
+      "details": "Processed 95/95 files in 274.4s",
+      "timestamp": "2025-12-04T13:40:52.389864",
+      "duration_seconds": 274.35066509246826
+    },
+    {
+      "test_name": "B-Docs-02: Hash-Based Skipping",
+      "passed": true,
+      "details": "Skipped: No files to process (likely already ingested)",
+      "timestamp": "2025-12-04T13:40:57.413188",
+      "duration_seconds": 5.023323059082031
+    },
+    {
+      "test_name": "B-Docs-03: Progress Metrics",
+      "passed": true,
+      "details": "Progress metrics updated correctly: 0 -> 10 -> 10",
+      "timestamp": "2025-12-04T13:41:07.454269",
+      "duration_seconds": 10.041081666946411
+    },
+    {
+      "test_name": "B-Docs-04: Job Cancellation",
+      "passed": false,
+      "details": "Test failed: Expected cancelled, got completed",
+      "timestamp": "2025-12-04T13:41:09.893478",
+      "duration_seconds": 2.439208507537842,
+      "errors": [
+        "Expected cancelled, got completed"
+      ]
+    },
+    {
+      "test_name": "B-Docs-05: Job History",
+      "passed": true,
+      "details": "Found 4 jobs in history",
+      "timestamp": "2025-12-04T13:41:09.898131",
+      "duration_seconds": 0.004653453826904297
+    },
+    {
+      "test_name": "B-Docs-06: Error Handling",
+      "passed": true,
+      "details": "Error handled correctly: Root path is not a directory: C:\\NonExistentDirectory12345",
+      "timestamp": "2025-12-04T13:41:09.908385",
+      "duration_seconds": 0.010254144668579102
+    },
+    {
+      "test_name": "B-Docs-07: Telemetry",
+      "passed": true,
+      "details": "Telemetry tracking works: jobs_started 4 -> 5",
+      "timestamp": "2025-12-04T13:41:14.938884",
+      "duration_seconds": 5.030499219894409
+    }
+  ]
+}

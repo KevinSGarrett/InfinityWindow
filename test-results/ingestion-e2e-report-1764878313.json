@@ -1,0 +1,61 @@
+{
+  "timestamp": "2025-12-04T13:58:33.571764",
+  "project_id": 28,
+  "repo_path": "C:\\InfinityWindow",
+  "summary": {
+    "total": 7,
+    "passed": 7,
+    "failed": 0
+  },
+  "results": [
+    {
+      "test_name": "B-Docs-01: Basic Ingestion",
+      "passed": true,
+      "details": "Processed 103/103 files in 266.2s",
+      "timestamp": "2025-12-04T13:58:11.194933",
+      "duration_seconds": 266.17137479782104
+    },
+    {
+      "test_name": "B-Docs-02: Hash-Based Skipping",
+      "passed": true,
+      "details": "Skipped: No files to process (likely already ingested)",
+      "timestamp": "2025-12-04T13:58:16.212700",
+      "duration_seconds": 5.0162436962127686
+    },
+    {
+      "test_name": "B-Docs-03: Progress Metrics",
+      "passed": true,
+      "details": "Progress metrics updated correctly: 0 -> 10 -> 10",
+      "timestamp": "2025-12-04T13:58:26.242044",
+      "duration_seconds": 10.029343605041504
+    },
+    {
+      "test_name": "B-Docs-04: Job Cancellation",
+      "passed": true,
+      "details": "Cancel endpoint works (job completed after cancel requested - race condition)",
+      "timestamp": "2025-12-04T13:58:28.520549",
+      "duration_seconds": 2.2785048484802246
+    },
+    {
+      "test_name": "B-Docs-05: Job History",
+      "passed": true,
+      "details": "Found 4 jobs in history",
+      "timestamp": "2025-12-04T13:58:28.525716",
+      "duration_seconds": 0.004651784896850586
+    },
+    {
+      "test_name": "B-Docs-06: Error Handling",
+      "passed": true,
+      "details": "Error handled correctly: Root path is not a directory: C:\\NonExistentDirectory12345",
+      "timestamp": "2025-12-04T13:58:28.539110",
+      "duration_seconds": 0.011809349060058594
+    },
+    {
+      "test_name": "B-Docs-07: Telemetry",
+      "passed": true,
+      "details": "Telemetry tracking works: jobs_started 4 -> 5",
+      "timestamp": "2025-12-04T13:58:33.571764",
+      "duration_seconds": 5.03265380859375
+    }
+  ]
+}

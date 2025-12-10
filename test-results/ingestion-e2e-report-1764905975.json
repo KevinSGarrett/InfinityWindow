@@ -1,0 +1,70 @@
+{
+  "timestamp": "2025-12-04T21:39:35.190592",
+  "project_id": 132,
+  "repo_path": "C:\\InfinityWindow",
+  "summary": {
+    "total": 7,
+    "passed": 4,
+    "failed": 3
+  },
+  "results": [
+    {
+      "test_name": "B-Docs-01: Basic Ingestion",
+      "passed": true,
+      "details": "Processed 94/94 files in 300.2s",
+      "timestamp": "2025-12-04T21:13:06.067235",
+      "duration_seconds": 300.23599433898926
+    },
+    {
+      "test_name": "B-Docs-02: Hash-Based Skipping",
+      "passed": false,
+      "details": "Test failed: ",
+      "timestamp": "2025-12-04T21:17:51.765978",
+      "duration_seconds": 285.69874358177185,
+      "errors": [
+        ""
+      ]
+    },
+    {
+      "test_name": "B-Docs-03: Progress Metrics",
+      "passed": false,
+      "details": "Test failed: ",
+      "timestamp": "2025-12-04T21:18:03.713010",
+      "duration_seconds": 11.947031021118164,
+      "errors": [
+        ""
+      ]
+    },
+    {
+      "test_name": "B-Docs-04: Job Cancellation",
+      "passed": false,
+      "details": "Test failed: Job 122 did not complete within 30.0 seconds",
+      "timestamp": "2025-12-04T21:19:35.605762",
+      "duration_seconds": 91.89275288581848,
+      "errors": [
+        "Job 122 did not complete within 30.0 seconds"
+      ]
+    },
+    {
+      "test_name": "B-Docs-05: Job History",
+      "passed": true,
+      "details": "Found 3 jobs in history",
+      "timestamp": "2025-12-04T21:19:35.644156",
+      "duration_seconds": 0.03839397430419922
+    },
+    {
+      "test_name": "B-Docs-06: Error Handling",
+      "passed": true,
+      "details": "Error handled correctly: Root path is not a directory: C:\\NonExistentDirectory12345",
+      "timestamp": "2025-12-04T21:37:00.884519",
+      "duration_seconds": 1045.239841222763
+    },
+    {
+      "test_name": "B-Docs-07: Telemetry",
+      "passed": true,
+      "details": "Telemetry tracking works: jobs_started 6 -> 7, files_processed: 102",
+      "timestamp": "2025-12-04T21:39:35.190592",
+      "duration_seconds": 154.30453753471375
+    }
+  ]
+}

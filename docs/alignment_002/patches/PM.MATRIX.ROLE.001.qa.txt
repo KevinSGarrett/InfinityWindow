@@ -1,0 +1,7 @@
+QA checklist (role alias helper)
+1) Run mypy/ruff if available to ensure no import/type errors.
+2) Unit smoke: import openai_client.get_model_for_role/call_model_for_role in a REPL; verify env overrides respected.
+3) Call call_model_for_role("summary", messages=[...]) with a stubbed client to ensure routing works.
+4) Confirm existing chat modes still route via _get_model_for_mode (no behavior change).
+5) python -m qa.run_smoke to ensure no regressions.
+
