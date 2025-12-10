@@ -226,6 +226,9 @@ Job metadata is stored in the `ingestion_jobs` table; per-file digests live in `
 - **GET `/conversations/{conversation_id}/usage`**  
   Returns usage/cost summaries for a conversation (used by the Usage tab).
 
+- **GET `/projects/{project_id}/usage_summary`**  
+  Query: `window` (`1h` | `24h` | `7d`, default `24h`). Returns project-level totals plus per-model and per-group breakdowns used by the Usage analytics card.
+
 - **GET `/debug/telemetry`**
 
   Returns telemetry for:

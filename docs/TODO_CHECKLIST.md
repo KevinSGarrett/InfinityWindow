@@ -36,10 +36,11 @@ Legend:
 These items are described conceptually in `PROGRESS.md` under v3/v4+. This checklist tracks implementation status.
 
 - [~] **Task‑aware auto‑mode routing**  
-  - [x] Heuristic `_infer_auto_submode` for `auto` (`code`/`research`/`fast`/`deep`).  
-  - [x] Telemetry counters for routes + fallbacks.  
+  - [x] Heuristic `_infer_auto_submode` v2 with new signals (code fences/blocks, research cues, history length, route history).  
+  - [x] Telemetry counters and textual route/reason logging (per submode + fallbacks).  
+  - [x] UI transparency: model override dropdown plus “Most recent auto route” pill (route + reason) in Usage tab.  
   - [ ] Refine heuristics using real telemetry data.  
-  - [x] Add UI surface to inspect chosen model and override if needed (model override dropdown + last chosen model display).  
+  - [ ] Autopilot-level routing/strategy integration (future).  
 
 - [~] **Autonomous TODO intelligence**  
   - [x] Completion detection (“X is done” → mark tasks done).  
@@ -51,11 +52,12 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
   - [~] Priority & grouping heuristics (Critical / Blocked / Ready) instead of pure recency.  
   - [~] Dependency tracking and smarter duplicate detection beyond simple similarity (dependency hints appended to auto notes; full graph still future).  
   - [x] Core telemetry: counters + `/debug/telemetry` endpoint + Usage tab telemetry drawer for task automation.  
-- [~] Full usage/telemetry dashboard UI (graphs, filters, long‑term analytics).  (Phase 2 shipped: charts for action/model/confidence/mode with shared filters/time window, filtered JSON/CSV exports, inline empty/error states, and export error fallbacks; Phase 3 long-term analytics/persistence still future.)  
-  - [x] Usage tab filters/render verification; telemetry now fetches on tab entry/Use current chat; filters verified.  
-  - [x] Audit trail snippets when the maintainer closes a task (“Closed automatically on …”).  
-  - [ ] Context-aware extraction prompts (feed project goals, sprint focus, blockers).  
-  - [x] Additional QA around noisy projects and long histories.  
+- [x] Usage/telemetry dashboard  
+  - [x] Phase 1/2: cards/charts/shared filters & time window plus JSON/CSV exports with inline empty/error states.  
+  - [x] Phase 3: project-level summary endpoint + analytics card with 1h/24h/7d selector in the Usage tab.  
+  - [x] Tests: `qa/tests_api/test_usage_phase3.py`, `qa/tests_api/test_usage_telemetry_dashboard.py`, `frontend/tests/ui-usage-phase3.spec.ts`.  
+- **Future extensions (usage/telemetry)**  
+  - [ ] 30/90 day persistence and deeper analytics/export windows.  
 
 - [ ] **Enhanced retrieval & context shaping**  
   - [ ] Per‑feature retrieval tuning (tasks vs docs vs memory).  

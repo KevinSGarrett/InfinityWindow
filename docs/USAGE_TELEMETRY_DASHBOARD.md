@@ -1,6 +1,6 @@
 # Usage & Telemetry Dashboard – Design Notes
 
-Status: Phase 1 shipped; Phase 2 shipped (filters, time filter, JSON/CSV export, charts for model/action/confidence/mode, inline error/export fallback states); Phase 3 (persistence/long windows) pending.
+Status: Phase 1 shipped; Phase 2 shipped (filters, time filter, JSON/CSV export, charts for model/action/confidence/mode, inline error/export fallback states); Phase 3 shipped (project summary + 1h/24h/7d windows); long-window persistence (30d/90d) remains future.
 
 ## Goals
 - Provide a single dashboard (UI + API) to inspect usage and task-automation telemetry over time.
@@ -32,11 +32,18 @@ Status: Phase 1 shipped; Phase 2 shipped (filters, time filter, JSON/CSV export,
    - Optional: persist telemetry snapshots per reset for comparison.
 
 ## API / Data
+- Phase 3 adds `GET /projects/{project_id}/usage_summary?window=1h|24h|7d` (default `24h`) returning project-level totals plus per-model and per-group breakdowns; totals and breakdowns fuel the analytics card.
 - Reuse `/debug/telemetry` for task automation counters/stats/actions.
 - Reuse `/conversations/{id}/usage` for per-conversation usage totals.
 - No new endpoints required for Phase 1; Phase 2 might add:
   - `/debug/telemetry/actions?limit=100&action=auto_added&group=critical`.
   - `/conversations/{id}/usage/aggregate?window=1h` (optional).
+
+## Analytics card (Usage tab)
+- Shows the project-level usage summary for the selected window (1h/24h/7d selector, default 24h).
+- Summary cards: tokens in/out, estimated cost, total calls.
+- Lists: per-model breakdown and per-group breakdown tied to the selected window.
+- Error handling: inline banner when the summary fetch fails; charts/exports continue to render when available so the tab stays usable.
 
 ## Task Grouping Surface
 - Use `task_group` (critical/blocked/ready) in recent actions and any future charts.
@@ -49,7 +56,7 @@ Status: Phase 1 shipped; Phase 2 shipped (filters, time filter, JSON/CSV export,
 - Usage totals show non-zero when chat activity exists; no blocking impact if usage is zero.
 
 ## Follow-ups
-- Decide whether to add persistence (e.g., write recent actions to disk or DB).
+- Decide whether to add persistence (e.g., write recent actions to disk or DB) and long-window (30d/90d) analytics/exports.
 - Decide on charting library (lightweight, no heavy deps) or pure CSS bars.
 - Keep data fetch inexpensive; cache telemetry for a short window to avoid backend load.
 

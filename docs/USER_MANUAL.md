@@ -356,6 +356,7 @@ To inspect how auto‑mode and tasks automation are behaving:
     - Auto‑mode route counts per logical sub‑mode.
     - Model fallback attempts/successes.
     - Counts of tasks auto‑added, auto‑completed, and auto‑deduped.
+- A “Most recent auto route” pill in the Usage tab shows `auto → <submode>` plus a short reason; if no recent route exists, the pill hides until telemetry provides one.
 
 ---
 
@@ -740,6 +741,11 @@ In the **Usage** tab:
 - **Conversation selector**:
   - Pick any conversation (not just the one currently open in chat).
   - “Use current chat” jumps back to the active conversation’s usage in one click.
+- **Analytics card (project summary)**:
+  - Window selector for `1h | 24h | 7d` (default 24h) controls the summary.
+  - Summary cards show tokens in/out, estimated cost, and total calls.
+  - Lists show per-model and per-group breakdowns for the selected window.
+  - If the summary request fails, an inline banner appears while charts/exports remain usable.
 - **Summary metrics**:
   - Total tokens in/out and estimated cost (USD).
   - Total assistant calls recorded for the selected conversation.
@@ -753,6 +759,7 @@ In the **Usage** tab:
   - “Refresh & reset” lets you zero the counters after capturing a snapshot.
 - **Task automation charts & exports**:
   - Action/group/model filters and the time filter apply to charts, the recent actions list, and JSON/CSV exports.
+  - The 1h/24h/7d selector keeps the analytics card and related lists in sync with the selected window.
   - Filters are keyboard/screen-reader friendly (action/group/model/time plus “Usage time range” and “Usage records window” selectors).
   - Charts cover task action types, calls per model, confidence buckets, and auto-mode routes.
   - If clipboard copy fails, the export preview still appears inline; usage/telemetry fetch errors are shown inline without collapsing the tab.

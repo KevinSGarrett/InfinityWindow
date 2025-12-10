@@ -18,6 +18,21 @@ _Updated from `Hydration_File_002.txt`, `To_Do_List_001.txt`, and `Cursor_Chat_L
 - **Right‑column UI 2.0**: partially implemented; layout is currently under active iteration based on UX feedback.
 - **CI attempt (2025‑12‑05)**: `make ci` currently fails with “No rule to make target 'ci'.” – add/restore a CI target or document the correct command.
 
+## 2025-12-10 – Usage Phase 3 + auto-mode routing v2
+- Usage Phase 3:
+  - Added `/projects/{project_id}/usage_summary?window=1h|24h|7d` (default 24h) for project-level totals plus per-model/group breakdowns.
+  - Usage tab analytics card shows the project summary with 1h/24h/7d selector, summary cards, and per-model/group breakdown lists.
+  - API coverage: `qa/tests_api/test_usage_phase3.py`.
+  - Frontend coverage: `frontend/tests/ui-usage-phase3.spec.ts`.
+- Auto-mode routing v2:
+  - `_infer_auto_submode` heuristics now include code fences/blocks, research cues, history length, and recent route history signals.
+  - Telemetry tracks per-submode counts plus textual route reasons, exposed via `/debug/telemetry`.
+  - UI transparency: model override plus “Most recent auto route” pill in Usage showing `auto → <submode>` with the reason.
+- Branches:
+  - `feature/agent-a-auto-mode-v2`
+  - `feature/agent-b-auto-mode-ui`
+  - `docs/agent-c-usage-phase3-auto-mode-v2`
+
 ## 2025‑12‑08 – CI & telemetry alignment
 - CI stabilized with stubbed dependencies: `LLM_MODE=stub` and `VECTORSTORE_MODE=stub` now drive `make ci` locally and in GitHub Actions (badge on README stays green).
 - Usage dashboard Phase 2 confirmed complete: shared action/group/model filters + time window across charts/exports, JSON/CSV exports scoped to filters, and inline empty/error/export-fallback states.

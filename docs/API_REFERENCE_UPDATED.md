@@ -4,6 +4,11 @@ This version reflects the latest backend behavior after 2025-12-06 fixes. Base U
 
 ---
 
+## 2025-12-10 – Usage summary + analytics card + auto-mode routing v2
+- Added `GET /projects/{project_id}/usage_summary?window=1h|24h|7d` (default 24h) returning project-level totals plus per-model and per-group breakdowns; drives the Usage analytics card.
+- Usage tab analytics card wired with 1h/24h/7d selector; covered by `qa/tests_api/test_usage_phase3.py` and `frontend/tests/ui-usage-phase3.spec.ts`.
+- Auto-mode routing telemetry now records the latest routed submode + reason, exposed via `/debug/telemetry` and shown as the “Most recent auto route” pill in the Usage tab.
+
 ## 1. Projects & Conversations
 
 ### 1.1 Projects
