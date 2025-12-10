@@ -10,6 +10,7 @@ export default defineConfig({
     'tests/tasks-suggestions.spec.ts',
     'tests/tasks-confidence.spec.ts',
     'tests/ui-accessibility-phase3.spec.ts',
+    'tests/ui-usage-phase3.spec.ts',
   ],
   use: {
     baseURL: 'http://localhost:5173',

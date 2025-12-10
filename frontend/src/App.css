@@ -2467,6 +2467,102 @@ body {
   margin-bottom: 0.15rem;
 }
 
+.usage-analytics-card {
+  margin-bottom: 0.8rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  padding: 0.7rem 0.9rem;
+  background: #f9fafb;
+}
+
+.usage-analytics-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.usage-analytics-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.usage-analytics-subtitle {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.usage-analytics-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.usage-analytics-filter select {
+  min-width: 150px;
+}
+
+.usage-analytics-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.6rem;
+  margin-top: 0.35rem;
+}
+
+.usage-analytics-breakdowns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
+.usage-analytics-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.usage-analytics-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.auto-route-pill {
+  border: 1px dashed #d1d5db;
+  background: #ffffff;
+  border-radius: 0.65rem;
+  padding: 0.55rem 0.7rem;
+  min-width: 220px;
+}
+
+.auto-route-label {
+  font-size: 0.72rem;
+  color: #6b7280;
+}
+
+.auto-route-value {
+  font-weight: 600;
+  color: #111827;
+  margin-top: 2px;
+}
+
+.auto-route-reason {
+  font-size: 0.75rem;
+  color: #4b5563;
+  margin-top: 2px;
+}
+
+.auto-route-fallback {
+  font-size: 0.78rem;
+  color: #6b7280;
+}
+
 .usage-toolbar {
   display: flex;
   flex-wrap: wrap;

@@ -186,9 +186,40 @@ type ConversationUsage = {
   records: UsageRecord[];
 };
 
+type UsageSummaryWindow = "1h" | "24h" | "7d";
+
+type UsageSummaryBreakdown = {
+  key: string;
+  label?: string | null;
+  calls?: number | null;
+  tokens_in?: number | null;
+  tokens_out?: number | null;
+  cost_estimate?: number | null;
+};
+
+type ProjectUsageSummary = {
+  window: UsageSummaryWindow;
+  total_tokens_in: number | null;
+  total_tokens_out: number | null;
+  total_cost_estimate: number | null;
+  total_calls: number | null;
+  model_breakdown: UsageSummaryBreakdown[];
+  group_breakdown: UsageSummaryBreakdown[];
+};
+
+type AutoRouteReason = {
+  mode?: string | null;
+  reason?: string | null;
+  project_id?: number | null;
+  conversation_id?: number | null;
+  timestamp?: string | null;
+};
+
 type TelemetrySnapshot = {
   llm: {
     auto_routes: Record<string, number>;
+    auto_route_reasons?: AutoRouteReason[];
+    recent_auto_routes?: AutoRouteReason[];
     fallback_attempts: number;
     fallback_success: number;
   };
@@ -341,6 +372,174 @@ const formatDateTime = (value?: string | null): string | null => {
   return d.toLocaleString();
 };
 
+const coerceNumber = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+};
+
+const normalizeUsageSummaryBreakdown = (
+  raw: unknown,
+  fallbackKey: "model" | "group"
+): UsageSummaryBreakdown[] => {
+  if (!raw) return [];
+  const entries: UsageSummaryBreakdown[] = [];
+
+  if (Array.isArray(raw)) {
+    raw.forEach((entry, idx) => {
+      if (!entry || typeof entry !== "object") return;
+      const item = entry as Record<string, unknown>;
+      const key =
+        (item.key as string) ??
+        (item.model as string) ??
+        (item.group as string) ??
+        (item[fallbackKey] as string) ??
+        `${fallbackKey}-${idx}`;
+      entries.push({
+        key,
+        label:
+          (item.label as string) ??
+          (item.model as string) ??
+          (item.group as string) ??
+          key,
+        calls: coerceNumber(item.calls ?? item.count ?? item.total),
+        tokens_in: coerceNumber(item.tokens_in ?? item.tokensIn),
+        tokens_out: coerceNumber(item.tokens_out ?? item.tokensOut),
+        cost_estimate: coerceNumber(item.cost_estimate ?? item.cost),
+      });
+    });
+  } else if (typeof raw === "object") {
+    Object.entries(raw as Record<string, unknown>).forEach(
+      ([key, value], idx) => {
+        if (value && typeof value === "object") {
+          const valObj = value as Record<string, unknown>;
+          entries.push({
+            key,
+            label:
+              (valObj.label as string) ??
+              (valObj.model as string) ??
+              (valObj.group as string) ??
+              key,
+            calls: coerceNumber(
+              valObj.calls ?? valObj.count ?? valObj.total ?? value
+            ),
+            tokens_in: coerceNumber(
+              valObj.tokens_in ?? valObj.tokensIn ?? valObj.in
+            ),
+            tokens_out: coerceNumber(
+              valObj.tokens_out ?? valObj.tokensOut ?? valObj.out
+            ),
+            cost_estimate: coerceNumber(
+              valObj.cost_estimate ?? valObj.cost ?? valObj.price
+            ),
+          });
+        } else {
+          entries.push({
+            key: key || `${fallbackKey}-${idx}`,
+            label: key || `${fallbackKey}-${idx}`,
+            calls: coerceNumber(value),
+          });
+        }
+      }
+    );
+  }
+  return entries;
+};
+
+const normalizeUsageSummaryPayload = (
+  data: Record<string, unknown> | null | undefined,
+  windowKey: UsageSummaryWindow
+): ProjectUsageSummary => {
+  const recordsRaw = (data as { records?: unknown })?.records;
+  const totalCallsCandidate =
+    data?.["total_calls"] ??
+    data?.["calls"] ??
+    data?.["count"] ??
+    (Array.isArray(recordsRaw) ? recordsRaw.length : null);
+  return {
+    window: windowKey,
+    total_tokens_in:
+      coerceNumber(
+        data?.["total_tokens_in"] ??
+          data?.["tokens_in"] ??
+          data?.["total_in"]
+      ) ?? null,
+    total_tokens_out:
+      coerceNumber(
+        data?.["total_tokens_out"] ??
+          data?.["tokens_out"] ??
+          data?.["total_out"]
+      ) ?? null,
+    total_cost_estimate:
+      coerceNumber(
+        data?.["total_cost_estimate"] ??
+          data?.["cost_estimate"] ??
+          data?.["cost"]
+      ) ?? null,
+    total_calls: coerceNumber(totalCallsCandidate),
+    model_breakdown: normalizeUsageSummaryBreakdown(
+      data?.["model_breakdown"] ??
+        data?.["models"] ??
+        data?.["per_model"] ??
+        data?.["model_counts"],
+      "model"
+    ),
+    group_breakdown: normalizeUsageSummaryBreakdown(
+      data?.["group_breakdown"] ??
+        data?.["groups"] ??
+        data?.["per_group"] ??
+        data?.["group_counts"],
+      "group"
+    ),
+  };
+};
+
+const normalizeAutoRouteReasons = (raw: unknown): AutoRouteReason[] => {
+  if (!raw || !Array.isArray(raw)) return [];
+  return raw
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const obj = entry as Record<string, unknown>;
+      const timestamp =
+        typeof obj.at === "string"
+          ? obj.at
+          : typeof obj.timestamp === "string"
+          ? obj.timestamp
+          : typeof obj.time === "string"
+          ? obj.time
+          : null;
+      return {
+        mode:
+          (obj.route as string) ??
+          (obj.mode as string) ??
+          (obj.submode as string) ??
+          (obj.choice as string) ??
+          (obj.target as string) ??
+          null,
+        reason:
+          (obj.reason as string) ??
+          (obj.explanation as string) ??
+          (obj.note as string) ??
+          null,
+        project_id:
+          (obj.project_id as number | null | undefined) ??
+          (obj.projectId as number | null | undefined),
+        conversation_id:
+          (obj.conversation_id as number | null | undefined) ??
+          (obj.conversationId as number | null | undefined),
+        timestamp,
+      };
+    })
+    .filter(Boolean) as AutoRouteReason[];
+};
+
 // Allow overriding backend base via Vite env; default to localhost:8000.
 // For QA runs we set VITE_API_BASE; fallback remains 8000.
 const BACKEND_BASE =
@@ -438,6 +637,15 @@ function App() {
   const [telemetry, setTelemetry] = useState<TelemetrySnapshot | null>(null);
   const [isLoadingTelemetry, setIsLoadingTelemetry] = useState(false);
   const [telemetryError, setTelemetryError] = useState<string | null>(null);
+  const [usageSummary, setUsageSummary] = useState<ProjectUsageSummary | null>(
+    null
+  );
+  const [usageSummaryWindow, setUsageSummaryWindow] =
+    useState<UsageSummaryWindow>("24h");
+  const [usageSummaryError, setUsageSummaryError] = useState<string | null>(
+    null
+  );
+  const [isLoadingUsageSummary, setIsLoadingUsageSummary] = useState(false);
   const [usageActionFilter, setUsageActionFilter] = useState<string>("all");
   const [usageGroupFilter, setUsageGroupFilter] = useState<string>("all");
   const [usageModelFilter, setUsageModelFilter] = useState<string>("all");
@@ -629,6 +837,9 @@ function App() {
   useEffect(() => {
     if (rightTab === "usage") {
       loadTelemetry(false);
+      if (selectedProjectId) {
+        loadUsageSummary(usageSummaryWindow);
+      }
       if (usageConversationId && usageConversationId > 0) {
         loadUsageForConversation(usageConversationId);
       } else if (selectedConversationId) {
@@ -642,6 +853,9 @@ function App() {
   useEffect(() => {
     if (rightTab === "usage") {
       loadTelemetry(false);
+      if (selectedProjectId) {
+        loadUsageSummary(usageSummaryWindow);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProjectId, usageConversationId]);
@@ -909,6 +1123,59 @@ function App() {
   }, [windowedUsageRecords]);
 
   const lastUsageAutoReason = usage?.auto_reason ?? null;
+
+  const autoRouteReasons = useMemo(() => {
+    const rawReasons =
+      telemetry?.llm.auto_route_reasons ??
+      telemetry?.llm.recent_auto_routes ??
+      [];
+    return normalizeAutoRouteReasons(rawReasons);
+  }, [telemetry]);
+
+  const latestAutoRouteDecision = useMemo(() => {
+    const parseTs = (value?: string | null) => {
+      if (!value) return 0;
+      const parsed = Date.parse(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    const sorted = [...autoRouteReasons].sort(
+      (a, b) => parseTs(b.timestamp) - parseTs(a.timestamp)
+    );
+    const scoped = sorted.filter((entry) => {
+      if (
+        selectedProjectId != null &&
+        entry.project_id != null &&
+        entry.project_id !== selectedProjectId
+      ) {
+        return false;
+      }
+      return true;
+    });
+    const pickFrom = scoped.length ? scoped : sorted;
+    if (pickFrom.length) {
+      return pickFrom[0];
+    }
+    if (lastUsageAutoReason) {
+      const lastRecord =
+        usage?.records && usage.records.length > 0
+          ? usage.records[usage.records.length - 1]
+          : null;
+      return {
+        mode: lastRecord?.mode ?? lastRecord?.model ?? "auto",
+        reason: lastUsageAutoReason,
+        project_id: selectedProjectId,
+        conversation_id: usageConversationId,
+        timestamp: null,
+      };
+    }
+    return null;
+  }, [
+    autoRouteReasons,
+    lastUsageAutoReason,
+    selectedProjectId,
+    usage,
+    usageConversationId,
+  ]);
 
   // Fallback model options from task telemetry when usage breakdown is empty.
   const telemetryModelOptions = useMemo(() => {
@@ -1665,6 +1932,19 @@ function App() {
   }, [selectedConversationId]);
 
   useEffect(() => {
+    if (rightTab === "usage" && selectedProjectId) {
+      loadUsageSummary(usageSummaryWindow);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usageSummaryWindow, rightTab, selectedProjectId]);
+
+  useEffect(() => {
+    setUsageSummary(null);
+    setUsageSummaryError(null);
+    setUsageSummaryWindow("24h");
+  }, [selectedProjectId]);
+
+  useEffect(() => {
     if (
       highlightNewDrafts &&
       !projectDecisions.some(
@@ -2164,6 +2444,39 @@ function App() {
       setUsageError("Unexpected error loading usage.");
     } finally {
       setIsLoadingUsage(false);
+    }
+  };
+
+  const loadUsageSummary = async (
+    windowOverride: UsageSummaryWindow = usageSummaryWindow
+  ) => {
+    if (!selectedProjectId) {
+      setUsageSummary(null);
+      setUsageSummaryError(null);
+      return;
+    }
+    try {
+      setIsLoadingUsageSummary(true);
+      setUsageSummaryError(null);
+      const res = await fetch(
+        `${BACKEND_BASE}/projects/${selectedProjectId}/usage_summary?window=${windowOverride}`
+      );
+      if (!res.ok) {
+        console.error("Fetching usage summary failed:", res.status);
+        setUsageSummary(null);
+        setUsageSummaryError(
+          `Failed to load usage analytics (status ${res.status}).`
+        );
+        return;
+      }
+      const data = await res.json();
+      setUsageSummary(normalizeUsageSummaryPayload(data, windowOverride));
+    } catch (e: unknown) {
+      console.error("Fetching usage summary threw:", e);
+      setUsageSummary(null);
+      setUsageSummaryError("Unexpected error loading usage analytics.");
+    } finally {
+      setIsLoadingUsageSummary(false);
     }
   };
 
@@ -3861,6 +4174,16 @@ function App() {
     const convId = Number(value);
     loadUsageForConversation(convId);
     loadTelemetry(false);
+  };
+
+  const handleUsageSummaryWindowChange: React.ChangeEventHandler<
+    HTMLSelectElement
+  > = (event) => {
+    const value = event.target.value as UsageSummaryWindow;
+    if (value === "1h" || value === "24h" || value === "7d") {
+      setUsageSummaryWindow(value);
+      loadUsageSummary(value);
+    }
   };
 
   const handleFocusCurrentConversationUsage = () => {
@@ -6669,6 +6992,215 @@ function App() {
                 )}
               </div>
               <div className="usage-panel">
+                <div
+                  className="usage-analytics-card"
+                  data-testid="usage-analytics-card"
+                  aria-label="Usage analytics summary"
+                >
+                  <div className="usage-analytics-header">
+                    <div>
+                      <div className="usage-analytics-title">Usage analytics</div>
+                      <div className="usage-analytics-subtitle">
+                        Project-level summary
+                      </div>
+                    </div>
+                    <div className="usage-analytics-actions">
+                      <label className="usage-filter usage-analytics-filter">
+                        <span>Window</span>
+                        <select
+                          aria-label="Usage analytics window"
+                          title="Usage analytics window"
+                          value={usageSummaryWindow}
+                          onChange={handleUsageSummaryWindowChange}
+                          data-testid="usage-analytics-window"
+                        >
+                          <option value="24h">Last 24h</option>
+                          <option value="7d">Last 7d</option>
+                          <option value="1h">Last hour</option>
+                        </select>
+                      </label>
+                      <div
+                        className="auto-route-pill"
+                        data-testid="auto-mode-route-pill"
+                        aria-live="polite"
+                      >
+                        {latestAutoRouteDecision ? (
+                          <>
+                            <div className="auto-route-label">
+                              Most recent auto route
+                            </div>
+                            <div className="auto-route-value">
+                              auto → {latestAutoRouteDecision.mode ?? "auto"}
+                            </div>
+                            {latestAutoRouteDecision.reason ? (
+                              <div
+                                className="auto-route-reason"
+                                data-testid="auto-mode-route-reason"
+                              >
+                                {latestAutoRouteDecision.reason}
+                              </div>
+                            ) : (
+                              <div className="auto-route-reason">
+                                Reason not recorded.
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div
+                            className="auto-route-fallback"
+                            data-testid="auto-mode-route-fallback"
+                          >
+                            No recent auto-mode routing decisions for this
+                            project.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  {usageSummaryError ? (
+                    <div className="usage-telemetry-error">
+                      {usageSummaryError}
+                    </div>
+                  ) : null}
+                  {isLoadingUsageSummary ? (
+                    <div className="usage-empty">Loading analytics…</div>
+                  ) : usageSummary ? (
+                    <>
+                      <div className="usage-analytics-metrics">
+                        <div className="usage-card">
+                          <div className="usage-card-title">Total calls</div>
+                          <div
+                            className="usage-card-value"
+                            data-testid="usage-analytics-total-calls"
+                          >
+                            {usageSummary.total_calls != null
+                              ? usageSummary.total_calls.toLocaleString()
+                              : "—"}
+                          </div>
+                        </div>
+                        <div className="usage-card">
+                          <div className="usage-card-title">Total cost</div>
+                          <div className="usage-card-value">
+                            {usageSummary.total_cost_estimate != null
+                              ? `$${usageSummary.total_cost_estimate.toFixed(4)}`
+                              : "—"}
+                          </div>
+                        </div>
+                        <div className="usage-card">
+                          <div className="usage-card-title">Tokens in</div>
+                          <div className="usage-card-value">
+                            {usageSummary.total_tokens_in != null
+                              ? usageSummary.total_tokens_in.toLocaleString()
+                              : "—"}
+                          </div>
+                        </div>
+                        <div className="usage-card">
+                          <div className="usage-card-title">Tokens out</div>
+                          <div className="usage-card-value">
+                            {usageSummary.total_tokens_out != null
+                              ? usageSummary.total_tokens_out.toLocaleString()
+                              : "—"}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="usage-analytics-breakdowns">
+                        <div
+                          className="usage-chart-card"
+                          data-testid="usage-analytics-models"
+                        >
+                          <div className="usage-chart-heading">
+                            Per-model breakdown
+                          </div>
+                          {usageSummary.model_breakdown.length === 0 ? (
+                            <div className="usage-telemetry-empty">
+                              No model data yet for this window.
+                            </div>
+                          ) : (
+                            <ul className="usage-analytics-list">
+                              {usageSummary.model_breakdown.map((entry) => (
+                                <li
+                                  key={entry.key}
+                                  className="usage-analytics-row"
+                                >
+                                  <div className="usage-chart-label">
+                                    {entry.label || entry.key}
+                                    {entry.calls != null && (
+                                      <span className="usage-chart-count">
+                                        {entry.calls}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="usage-model-metrics">
+                                    {entry.tokens_in != null && (
+                                      <span>
+                                        in {entry.tokens_in.toLocaleString()}
+                                      </span>
+                                    )}
+                                    {entry.tokens_out != null && (
+                                      <span>
+                                        out {entry.tokens_out.toLocaleString()}
+                                      </span>
+                                    )}
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                        <div
+                          className="usage-chart-card"
+                          data-testid="usage-analytics-groups"
+                        >
+                          <div className="usage-chart-heading">
+                            Per-group breakdown
+                          </div>
+                          {usageSummary.group_breakdown.length === 0 ? (
+                            <div className="usage-telemetry-empty">
+                              No group data yet for this window.
+                            </div>
+                          ) : (
+                            <ul className="usage-analytics-list">
+                              {usageSummary.group_breakdown.map((entry) => (
+                                <li
+                                  key={entry.key}
+                                  className="usage-analytics-row"
+                                >
+                                  <div className="usage-chart-label">
+                                    {entry.label || entry.key}
+                                    {entry.calls != null && (
+                                      <span className="usage-chart-count">
+                                        {entry.calls}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="usage-model-metrics">
+                                    {entry.tokens_in != null && (
+                                      <span>
+                                        in {entry.tokens_in.toLocaleString()}
+                                      </span>
+                                    )}
+                                    {entry.tokens_out != null && (
+                                      <span>
+                                        out {entry.tokens_out.toLocaleString()}
+                                      </span>
+                                    )}
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div
+                      className="usage-empty"
+                      data-testid="usage-analytics-empty"
+                    >
+                      No usage analytics available yet for this project.
+                    </div>
+                  )}
+                </div>
                 <div className="usage-toolbar">
                   <label className="usage-filter">
                     <span>Select conversation</span>
