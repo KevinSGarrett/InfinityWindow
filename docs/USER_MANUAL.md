@@ -1,6 +1,7 @@
 # InfinityWindow – Complete Setup & Usage Manual
 
 _This manual explains, in exhaustive detail, how to **set up**, **run**, and **use** the InfinityWindow system from the GitHub repo. It is written so that a new user can go from zero to fully functional, and then learn how to use every feature._
+> Recovery note (2025-12-10): This manual reflects the recovered `C:\InfinityWindow_Recovery` repo. Autopilot/Blueprint/export/import features are **not** implemented here (Section 15 is design-only). Usage telemetry covers the shipped short-window charts/filters; long-horizon dashboards remain future work.
 
 ---
 

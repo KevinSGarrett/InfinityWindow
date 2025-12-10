@@ -1,88 +1,70 @@
 # InfinityWindow – Developer Workflow & GitHub
 
-How to run the stack locally, execute the main tests, and keep Git/GitHub tidy. For full usage steps see `USER_MANUAL.md`; for architecture see `SYSTEM_OVERVIEW.md` and `SYSTEM_MATRIX.md`.
+Repo rules and branching discipline for the recovery baseline (`C:\InfinityWindow_Recovery`). Use this as the contract for Git/GitHub, multi-agent work, and local setup.
 
-## Prerequisites
-- Windows 10/11; PowerShell or cmd.
-- Python 3.11+ with `python` on PATH (use a virtual env per project).
-- Node.js (current LTS) with `npm`.
-- Git; optional: Make (for QA copy), Playwright (for UI tests).
+## Recovery repo rules
+- Active dev repo: `C:\InfinityWindow_Recovery`.
+- Read-only backup snapshot: `C:\InfinityWindow_Backup\019` (never edit).
+- Legacy/quarantined repo: `C:\InfinityWindow` (historical reference only, do not edit or branch from it).
+- Agents never modify the backup or the quarantined repo; all work happens in `C:\InfinityWindow_Recovery`.
+
+## Branching & agent protocol
+- main stays clean; feature branches only. Start from up-to-date main before work.
+- No “mega hygiene” tasks: do not switch branches mid-task, merge multiple branches, or attempt repo-wide conflict resolutions autonomously.
+- Branch ownership:
+  - Agent #A: backend/QA + GitHub wiring for one feature at a time.
+  - Agent #B: frontend/Playwright for scoped UI features.
+  - Agent #C: docs/CRM/alignment (this file and other docs).
+- Parallel agents are allowed only when branches avoid the same core files (e.g., `backend/app/api/main.py`, `frontend/src/App.tsx`, `docs/ISSUES_LOG.md`) or merge order is explicitly managed.
+
+## Cursor workflow (user + agents)
+- The user pastes prompts for Agent A/B/C into Cursor.
+- Cursor/agent runs tests and handles git/PR for that branch. User does not run git commands unless explicitly agreed.
+- Do not run prompts that mix “edit files” with “fix all git conflicts”; conflict resolution is a separate, manual step if needed.
+
+## Typical loop per branch
+1) `git fetch origin && git switch main && git pull`.
+2) `git switch -c <branch>` (e.g., `docs/agent-c-recovery-workflow`).
+3) Make focused changes (one feature/fix per branch).
+4) Run relevant tests before push (see below).
+5) `git status` / `git diff`, then `git add -p` and `git commit -m "<prefix>: <summary>"` (use `docs`/`test`/`fix`/`chore`).
+6) `git push origin <branch>` and open a PR against `main`.
 
 ## Backend (FastAPI)
-- From repo root:
-
+From repo root:
 ```powershell
 cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-```
-
-- Add `backend/.env` with `OPENAI_API_KEY=...` (and any `OPENAI_MODEL_*` overrides if needed).
-- Run the app (defaults to `http://127.0.0.1:8000`):
-
-```powershell
 uvicorn app.api.main:app --reload
 ```
 
 ## Frontend (React + Vite)
-- From repo root:
-
+From repo root:
 ```powershell
 cd frontend
 npm install
 npm run dev
 ```
-
-- Open the URL printed by Vite (usually `http://127.0.0.1:5173/`) while the backend is running.
+Open the Vite URL (usually `http://127.0.0.1:5173/`) while the backend runs.
 
 ## Tests (run before pushing)
-- API suite (with backend venv active, from repo root):
-
-```powershell
-$env:PYTHONPATH=".;backend"
-python -m pytest qa/tests_api/test_tasks_automation_audit.py
-# or full suite
-python -m pytest qa/tests_api
-# optional coverage:
-# $env:COVERAGE_ARGS="--cov=app --cov-report=xml:coverage-api.xml"
-# python -m pytest qa/tests_api $env:COVERAGE_ARGS
-```
-- CI command (same as GitHub Actions): `make ci` runs backend API tests plus the frontend build. GitHub Actions runs this on every push/PR to `main` with `LLM_MODE=stub` and `VECTORSTORE_MODE=stub`.
-- Stubbed CI/dev mode:
-  - No `OPENAI_API_KEY` required; `openai_client` uses the stub LLM and the vector store runs in memory.
-  - Match CI locally with:
-
+- Recommended quick check: `python -m pytest qa/tests_api -q --disable-warnings`.
+- Stubbed CI equivalent (matches GitHub Actions):
 ```powershell
 $env:LLM_MODE="stub"; $env:VECTORSTORE_MODE="stub"; make ci
 ```
-
-- Persistent / live modes for local experiments:
-  - Drop the stub env vars and set `VECTORSTORE_MODE=persistent` when you want the on-disk Chroma store under `backend/chroma_data` (clear it for a clean run).
-  - Provide `OPENAI_API_KEY` (and optional `OPENAI_MODEL_*` overrides) when you want live LLM calls.
-  - Makefile defaults `VECTORSTORE_MODE` to `stub` for backend tests; override per run when you need persistence.
-
-- Frontend checks:
-
+- Frontend build: `npm run build --prefix frontend`.
+- Playwright (when UI changes):
 ```powershell
-npm run build --prefix frontend   # typecheck + build
-# Playwright (optional; keep dev server up in another terminal)
 npm run dev -- --host 127.0.0.1 --port 5173
 npm run test:e2e
 ```
 
-## Git & GitHub workflow
+## Git & GitHub workflow summary
 - Remote: `origin` → `https://github.com/KevinSGarrett/InfinityWindow` (primary branch `main`).
-- CI: GitHub Actions runs `make ci` (backend API tests + frontend build) on every push/PR to `main` with `LLM_MODE=stub` and `VECTORSTORE_MODE=stub`; keep branches green by running `make ci` locally first (equivalent to `PYTHONPATH=".;backend" python -m pytest qa/tests_api` plus `npm run build --prefix frontend`). Coverage is off by default; supply `COVERAGE_ARGS` if you want pytest-cov metrics.
-- Keep `main` green: run the API tests (and UI build/Playwright if you changed the UI) before pushing.
-- Branching:
-  - Prefer short-lived branches like `feature/<topic>` or `bugfix/<topic>` merged into `main` after tests.
-  - If committing directly to `main`, keep changes small and tested.
-- Typical loop:
-  - `git status` / `git diff` (review).
-  - `git add -p` (or specific files).
-  - `git commit -m "feat: <summary>"` (Conventional Commit prefixes encouraged: `feat`, `fix`, `docs`, `test`, `refactor`).
-  - `git push origin <branch>` (or `git push origin main` when ready).
+- Keep branches green: run API tests (and UI build/Playwright if the UI changed) before push/PR.
+- Prefer short-lived branches; never merge directly to `main` if tests are failing.
 
-Quick pointers: use `DEV_GUIDE.md` for code structure and conventions, `OPERATIONS_RUNBOOK.md` for QA/ops routines, and `TEST_PLAN.md` for detailed test cases.
-
+For architecture/usage see `USER_MANUAL.md`, `SYSTEM_OVERVIEW.md`, and `SYSTEM_MATRIX.md`; for docs/QA alignment see `REQUIREMENTS_CRM.md`, `TODO_CHECKLIST.md`, and `PROGRESS.md` (Recovery 2025-12-10).

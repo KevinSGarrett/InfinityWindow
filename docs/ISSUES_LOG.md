@@ -62,6 +62,7 @@ This log captures the significant issues encountered during development and QA, 
 | ISSUE-043 | 2025-12-11    | fs/list local_root_path enforcement     | local_root_path validation added on project update; verify creation/update flows set valid paths to avoid 400 on fs/list. | Documented requirement in API reference; create/update must supply an existing path (e.g., `C:\\InfinityWindow`). Validation left enforced. | Resolved |
 | ISSUE-045 | 2025-12-12    | UI lint/accessibility warnings          | App.tsx still reports ARIA/inline-style lint warnings (labels/roles/inline styles). | Add labels/aria where missing and move inline styles to CSS; rerun lints. | Open |
 
+| DOC-RECOVERY-001 | 2025-12-10 | Docs / Workflow                        | Merge-conflict + DB/test drift in the legacy repo; docs/workflows pointed at quarantined paths; multi-agent rules unclear. | Restored clean snapshot into `C:\\InfinityWindow_Recovery`, marked backup/quarantine paths read-only, updated `DEVELOPMENT_WORKFLOW.md`, `REQUIREMENTS_CRM.md`, `TODO_CHECKLIST.md`, `PROGRESS.md` (Recovery note), `ALIGNMENT_OVERVIEW.md`, and `USER_MANUAL.md`; recommended validation: `python -m pytest qa/tests_api -q --disable-warnings` and `LLM_MODE=stub VECTORSTORE_MODE=stub make ci`. | Resolved |
 Add new rows as regressions appear so we retain institutional memory of how they were diagnosed and fixed.
 
 
