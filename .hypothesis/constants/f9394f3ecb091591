@@ -1,4 +1,0 @@
-# file: C:\InfinityWindow\backend\app\api\search.py
-# hypothesis_version: 6.148.7
-
-[400, 404, '/docs', '/memory', '/messages', '/search', 'Document not found.', 'Project not found.', 'chunk_id', 'chunk_index', 'conversation_id', 'distances', 'document_id', 'documents', 'folder_color', 'folder_id', 'folder_name', 'ids', 'memory_id', 'message_id', 'metadatas', 'project_id', 'role', 'search', 'title']

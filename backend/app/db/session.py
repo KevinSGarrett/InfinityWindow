@@ -1,12 +1,14 @@
+﻿from pathlib import Path
 from typing import Generator
 
 from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 
-# SQLite DB file in the backend directory.
-# When you run from C:\InfinityWindow\backend, this will create:
-#   C:\InfinityWindow\backend\infinitywindow.db
-SQLALCHEMY_DATABASE_URL = "sqlite:///./infinitywindow.db"
+# SQLite DB file lives in the backend directory regardless of the current
+# working directory. This avoids split DBs when running tests from repo root.
+BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+DB_PATH = BACKEND_DIR / "infinitywindow.db"
+SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH.as_posix()}"
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,

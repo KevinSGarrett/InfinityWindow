@@ -1,4 +1,0 @@
-# file: C:\InfinityWindow\qa\tests_api\conftest.py
-# hypothesis_version: 6.148.7
-
-[0.0, 0.75, 0.8, 0.82, 0.9, 0.91, 1.0, 2.0, 200, '%login%', '%payment retry flow%', '/projects', 'Add login page', 'Fix logout bug', 'LLM_MODE', 'auto', 'auto_added', 'auto_completed', 'backend', 'description', 'done', 'get_client', 'get_embedding', 'local_root_path', 'login', 'matched', 'name', 'normal', 'open', 'payment', 'payment retry flow', 'reply', 'session', 'source', 'stub', 'stub_auto_update']

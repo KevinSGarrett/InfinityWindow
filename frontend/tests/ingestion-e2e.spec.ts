@@ -23,7 +23,7 @@ const SETUP_TIMEOUT = 4 * 60 * 1000; // 4 minutes
  * Prerequisites:
  * - Backend running on http://127.0.0.1:8001
  * - Frontend running on http://127.0.0.1:5174
- * - Test repository available (uses C:\InfinityWindow by default)
+ * - Test repository available (uses C:\InfinityWindow_Recovery by default)
  */
 
 const TEST_REPO_PATH = process.env.TEST_REPO_PATH || 'C:\\InfinityWindow';

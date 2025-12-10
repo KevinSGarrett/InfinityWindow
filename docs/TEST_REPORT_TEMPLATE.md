@@ -10,7 +10,7 @@ _Use this file as a template for recording results from `docs/TEST_PLAN.md`. Mak
 - **Tester**: `Your name`
 - **Backend version**: `vX.Y.Z` (from `/health`; expected host `http://127.0.0.1:8000`)
 - **Frontend SHA / branch**: `...` (optional)
-- **OS / environment**: `Windows 11, C:\InfinityWindow`
+- **OS / environment**: `Windows 11, C:\InfinityWindow_Recovery`
 - **DB state**:
   - [ ] Fresh DB (deleted `backend/infinitywindow.db` before run)
   - [ ] Existing DB

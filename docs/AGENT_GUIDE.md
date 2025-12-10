@@ -26,7 +26,7 @@ It explains:
    - At the end of a window, the user expects `make ci` to be run in the QA copy and summarized in `docs/PROGRESS.md`.
 
 3. **Confirm which workspace you are in:**
-   - Primary repo: `C:\InfinityWindow`.
+   - Primary repo: `C:\InfinityWindow_Recovery`.
    - QA copy: `C:\InfinityWindow_QA`.
    - Never run destructive operations (DB/chroma reset) on the wrong one.
 
@@ -74,7 +74,7 @@ Whenever you make meaningful code changes:
   - Run the smoke suite:
 
     ```powershell
-    cd C:\InfinityWindow
+    cd C:\InfinityWindow_Recovery
     # ensure backend venv is active
     python -m qa.run_smoke
     ```

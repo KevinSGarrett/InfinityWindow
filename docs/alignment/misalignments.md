@@ -1,6 +1,6 @@
 # Alignment Log — Misalignments
 
-This file records every confirmed misalignment or gap between the updated project plans in `C:\InfinityWindow\Updated_Project_Plans` and the current repository (`C:\InfinityWindow`). Entries should be exhaustive, with clear remediation notes or owners.
+This file records every confirmed misalignment or gap between the updated project plans in `C:\InfinityWindow_Recovery\Updated_Project_Plans` and the current repository (`C:\InfinityWindow_Recovery`). Entries should be exhaustive, with clear remediation notes or owners.
 
 ## Index
 - Last updated by Cursor on: 2025-12-08

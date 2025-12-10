@@ -7,7 +7,7 @@ This runbook describes how to **run, reset, and validate** InfinityWindow in day
 ## 1. Environments
 
 - **Primary development environment**
-  - Location: `C:\InfinityWindow`
+  - Location: `C:\InfinityWindow_Recovery`
   - Purpose: day‑to‑day development and usage.
 
 - **QA / staging environment**
@@ -23,10 +23,10 @@ Keep these environments separate. Do not run destructive resets (DB/Chroma delet
 
 ### 2.1 Backend (FastAPI)
 
-From `C:\InfinityWindow\backend`:
+From `C:\InfinityWindow_Recovery\backend`:
 
 ```powershell
-cd C:\InfinityWindow\backend
+cd C:\InfinityWindow_Recovery\backend
 .\.venv\Scripts\Activate.ps1   # if not already active
 uvicorn app.api.main:app --reload
 ```
@@ -43,10 +43,10 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 
 ### 2.2 Frontend (Vite dev server)
 
-From `C:\InfinityWindow\frontend`:
+From `C:\InfinityWindow_Recovery\frontend`:
 
 ```powershell
-cd C:\InfinityWindow\frontend
+cd C:\InfinityWindow_Recovery\frontend
 npm install           # first time
 npm run dev
 ```
@@ -65,7 +65,7 @@ Open the app at the URL Vite reports (default `http://127.0.0.1:5173/`).
 
 To create or refresh a QA copy:
 
-1. Ensure `C:\InfinityWindow` is up to date (e.g. `git pull`).
+1. Ensure `C:\InfinityWindow_Recovery` is up to date (e.g. `git pull`).
 2. Copy the directory to create `C:\InfinityWindow_QA` (using Explorer or `robocopy`).
 3. Adjust any environment‑specific settings if needed (e.g. `.env`).
 
@@ -78,11 +78,11 @@ When the primary repo changes, bring `C:\InfinityWindow_QA` back in sync before 
 2. **Mirror the updated directories** from the main repo (examples below assume PowerShell + `robocopy`):
 
    ```powershell
-   robocopy "C:\InfinityWindow\backend" "C:\InfinityWindow_QA\backend" /MIR /XD ".venv" "__pycache__"
-   robocopy "C:\InfinityWindow\frontend" "C:\InfinityWindow_QA\frontend" /MIR /XD "node_modules" "dist" ".next" ".nuxt" ".turbo"
-   robocopy "C:\InfinityWindow\docs" "C:\InfinityWindow_QA\docs" /MIR
-   robocopy "C:\InfinityWindow\qa" "C:\InfinityWindow_QA\qa" /MIR
-   robocopy "C:\InfinityWindow\tools" "C:\InfinityWindow_QA\tools" /MIR
+   robocopy "C:\InfinityWindow_Recovery\backend" "C:\InfinityWindow_QA\backend" /MIR /XD ".venv" "__pycache__"
+   robocopy "C:\InfinityWindow_Recovery\frontend" "C:\InfinityWindow_QA\frontend" /MIR /XD "node_modules" "dist" ".next" ".nuxt" ".turbo"
+   robocopy "C:\InfinityWindow_Recovery\docs" "C:\InfinityWindow_QA\docs" /MIR
+   robocopy "C:\InfinityWindow_Recovery\qa" "C:\InfinityWindow_QA\qa" /MIR
+   robocopy "C:\InfinityWindow_Recovery\tools" "C:\InfinityWindow_QA\tools" /MIR
    ```
 
 3. **Reset the QA data stores** (see section 4) so SQLite + Chroma schemas match the new code.
@@ -135,7 +135,7 @@ After running:
 
 ## 5. Running the QA smoke suite
 
-From `C:\InfinityWindow` or `C:\InfinityWindow_QA` (with backend venv active):
+From `C:\InfinityWindow_Recovery` or `C:\InfinityWindow_QA` (with backend venv active):
 
 ```powershell
 python -m qa.run_smoke
@@ -157,7 +157,7 @@ If any probe fails:
 
 ## 6. Running Playwright UI tests
 
-From `C:\InfinityWindow\frontend` (or QA equivalent):
+From `C:\InfinityWindow_Recovery\frontend` (or QA equivalent):
 
 1. Install dependencies (first run):
 

@@ -34,7 +34,7 @@ This is the “get it running locally” path. For exhaustive setup and feature 
 
 ### 1.2 Backend (FastAPI)
 
-From `C:\InfinityWindow\backend`:
+From `C:\InfinityWindow_Recovery\backend`:
 
 ```powershell
 # Create and activate a venv
@@ -63,7 +63,7 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 
 ### 1.3 Frontend (React + Vite)
 
-From `C:\InfinityWindow\frontend`:
+From `C:\InfinityWindow_Recovery\frontend`:
 
 ```powershell
 npm install
@@ -160,7 +160,7 @@ Once the documentation overhaul is complete, all of these will be discoverable f
 
 ## 5. Testing & QA
 
-- **Backend smoke tests**: from `C:\InfinityWindow` (backend venv active):
+- **Backend smoke tests**: from `C:\InfinityWindow_Recovery` (backend venv active):
 
   ```powershell
   python -m qa.run_smoke
@@ -171,7 +171,7 @@ Once the documentation overhaul is complete, all of these will be discoverable f
   - Autonomous TODO maintenance behavior.
   - Mode/model routing and fallback logic.
 
-- **Frontend UI tests (Playwright)**: from `C:\InfinityWindow\frontend`:
+- **Frontend UI tests (Playwright)**: from `C:\InfinityWindow_Recovery\frontend`:
 
   ```powershell
   npm install

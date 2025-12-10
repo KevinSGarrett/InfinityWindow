@@ -40,7 +40,7 @@ A simple pattern for entries:
   - A `Makefile` (`make ci`) for backend tests + frontend build.
   - A small `qa/` smoke suite for message search, tasks auto-loop, and mode routing.
   - A guarded reset helper (`tools/reset_qa_env.py`) to safely reset DB + Chroma.
-- **Rationale**: This enables repeatable, automated checks on a clean environment while keeping day‑to‑day work in `C:\InfinityWindow` stable.
+- **Rationale**: This enables repeatable, automated checks on a clean environment while keeping day‑to‑day work in `C:\InfinityWindow_Recovery` stable.
 - **Implications**: Any future changes to DB paths, Chroma configuration, or test layout must keep the QA copy and smoke suite up to date.
 
 ### 2025-12-02 – Make docs the primary source of truth for behavior and QA

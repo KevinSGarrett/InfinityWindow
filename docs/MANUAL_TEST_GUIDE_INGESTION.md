@@ -8,10 +8,10 @@ This guide provides step-by-step instructions for manually testing all aspects o
 
 - **Backend**: Python 3.9+ with virtual environment set up
 - **Frontend**: Node.js 18+ with npm installed
-- **Test Repository**: A local repository or directory with multiple files to ingest (we'll use `C:\InfinityWindow` itself as the test repo)
+- **Test Repository**: A local repository or directory with multiple files to ingest (we'll use `C:\InfinityWindow_Recovery` itself as the test repo)
 - **Browser**: Chrome, Firefox, or Edge (for testing the frontend UI)
 - **API Testing Tool** (optional): Postman, curl, or PowerShell for direct API calls
-- **Project root requirement**: Each project used for ingestion must have `local_root_path` set to a real directory (e.g., `C:\InfinityWindow`). The backend now rejects ingestion jobs without it.
+- **Project root requirement**: Each project used for ingestion must have `local_root_path` set to a real directory (e.g., `C:\InfinityWindow_Recovery`). The backend now rejects ingestion jobs without it.
 
 ---
 
@@ -22,7 +22,7 @@ This guide provides step-by-step instructions for manually testing all aspects o
 1. Open a PowerShell terminal
 2. Navigate to the backend directory:
    ```powershell
-   cd C:\InfinityWindow\backend
+   cd C:\InfinityWindow_Recovery\backend
    ```
 3. Activate the virtual environment:
    ```powershell
@@ -52,7 +52,7 @@ This guide provides step-by-step instructions for manually testing all aspects o
 1. Open a **new** PowerShell terminal (keep backend running)
 2. Navigate to the frontend directory:
    ```powershell
-   cd C:\InfinityWindow\frontend
+   cd C:\InfinityWindow_Recovery\frontend
    ```
 3. Install dependencies (if not already done):
    ```powershell
@@ -116,7 +116,7 @@ This guide provides step-by-step instructions for manually testing all aspects o
 
 1. In the Docs tab, expand the **"Ingest local repo"** section (click the `<summary>` or arrow)
 2. Fill in the form fields:
-   - **Root path**: `C:\InfinityWindow` (or another directory with multiple files)
+   - **Root path**: `C:\InfinityWindow_Recovery` (or another directory with multiple files)
    - **Name prefix**: `TestRepo/` (this will prefix all document names)
    - **Include globs**: Leave empty for default, OR enter specific patterns like `*.py,*.ts,*.md` to limit files
 3. Click the **"Ingest repo"** button
@@ -232,7 +232,7 @@ This guide provides step-by-step instructions for manually testing all aspects o
 ### Step 4.1: Re-run Ingestion (No Changes)
 
 1. **Immediately re-run** the same ingestion:
-   - Same root path: `C:\InfinityWindow`
+   - Same root path: `C:\InfinityWindow_Recovery`
    - Same name prefix: `TestRepo/`
    - Same include globs (or leave empty)
    - Click **"Ingest repo"** again
@@ -252,7 +252,7 @@ This guide provides step-by-step instructions for manually testing all aspects o
 ### Step 4.2: Modify a File and Re-ingest
 
 1. **Modify a file** in the repository:
-   - Open a file in `C:\InfinityWindow` (e.g., `README.md` or any `.py` file)
+   - Open a file in `C:\InfinityWindow_Recovery` (e.g., `README.md` or any `.py` file)
    - Add a comment or change a line (e.g., add `# Test change for ingestion` at the top)
    - Save the file
 
@@ -297,7 +297,7 @@ This guide provides step-by-step instructions for manually testing all aspects o
 ### Step 5.1: Start a Medium-Sized Ingestion
 
 1. **Choose a larger subset** to test progress:
-   - Root path: `C:\InfinityWindow`
+   - Root path: `C:\InfinityWindow_Recovery`
    - Name prefix: `ProgressTest/`
    - Include globs: `*.py,*.ts,*.md` (to limit but still have many files)
    - Click **"Ingest repo"**
@@ -348,7 +348,7 @@ This guide provides step-by-step instructions for manually testing all aspects o
 ### Step 6.1: Start a Large Ingestion
 
 1. **Start a large ingestion** that will take time:
-   - Root path: `C:\InfinityWindow`
+   - Root path: `C:\InfinityWindow_Recovery`
    - Name prefix: `CancelTest/`
    - Include globs: Leave empty (to ingest everything)
    - Click **"Ingest repo"**

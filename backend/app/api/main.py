@@ -82,6 +82,7 @@ class ProjectCreate(BaseModel):
     # NEW: optional local filesystem root configured at creation
     local_root_path: Optional[str] = None
     instruction_text: Optional[str] = None
+    is_archived: bool = False
 
     @model_validator(mode="before")
     @classmethod
@@ -101,6 +102,8 @@ class ProjectRead(BaseModel):
     instruction_text: Optional[str] = None
     instruction_updated_at: Optional[datetime] = None
     pinned_note_text: Optional[str] = None
+    is_archived: bool = False
+    archived_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -111,6 +114,7 @@ class ProjectUpdate(BaseModel):
     local_root_path: Optional[str] = None
     instruction_text: Optional[str] = None
     pinned_note_text: Optional[str] = None
+    is_archived: Optional[bool] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -2067,6 +2071,8 @@ def create_project(
         local_root_path=str(validated_root),
         instruction_text=instructions,
         instruction_updated_at=datetime.now(timezone.utc) if instructions else None,
+        is_archived=payload.is_archived,
+        archived_at=datetime.now(timezone.utc) if payload.is_archived else None,
     )
     db.add(project)
     _commit_with_retry(db)
@@ -2120,6 +2126,9 @@ def update_project(
         project.instruction_updated_at = datetime.now(timezone.utc)
     if payload.pinned_note_text is not None:
         project.pinned_note_text = payload.pinned_note_text.strip() or None
+    if payload.is_archived is not None:
+        project.is_archived = payload.is_archived
+        project.archived_at = datetime.now(timezone.utc) if payload.is_archived else None
 
     _commit_with_retry(db)
     db.refresh(project)

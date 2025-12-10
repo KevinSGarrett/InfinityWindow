@@ -42,7 +42,7 @@ This document tracks issues found during automated E2E testing of the Large Repo
 - Legacy projects were created without `local_root_path`; ingestion endpoints did not enforce the requirement.
 
 **Fix Applied**:
-- Backfilled existing projects with `local_root_path = C:\InfinityWindow`.
+- Backfilled existing projects with `local_root_path = C:\InfinityWindow_Recovery`.
 - Backend guard now rejects ingestion job creation when `local_root_path` is missing.
 
 **Status**: ✅ Fixed (guard + data backfill). Future projects must set `local_root_path`.

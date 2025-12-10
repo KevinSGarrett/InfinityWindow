@@ -1,4 +1,0 @@
-# file: C:\InfinityWindow\backend\app\db\session.py
-# hypothesis_version: 6.148.7
-
-[60.0, 3600, 'check_same_thread', 'connect', 'timeout']

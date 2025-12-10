@@ -1,6 +1,6 @@
 # Alignment Log — Correct Alignments
 
-This file records every confirmed alignment between the updated project plans in `C:\InfinityWindow\Updated_Project_Plans` and the current repository (`C:\InfinityWindow`). Entries should be exhaustive and precise.
+This file records every confirmed alignment between the updated project plans in `C:\InfinityWindow_Recovery\Updated_Project_Plans` and the current repository (`C:\InfinityWindow_Recovery`). Entries should be exhaustive and precise.
 
 ## Index
 - Last updated by Cursor on: 2025-12-08

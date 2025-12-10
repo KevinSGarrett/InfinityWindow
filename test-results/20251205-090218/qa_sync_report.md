@@ -1,7 +1,7 @@
 ﻿QA Sync Report
 
 Time: 20251205-084459
-Source: C:\InfinityWindow
+Source: C:\InfinityWindow_Recovery
 QA Mirror: C:\InfinityWindow_QA
 Excluded Dirs: .venv, node_modules, test-results, .cache, dist, build, playwright-report, .git, chroma_data
 Excluded Files: *.log, *.tmp, Thumbs.db, desktop.ini, *.db-shm, *.db-wal, infinitywindow.db

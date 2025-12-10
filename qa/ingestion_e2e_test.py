@@ -16,7 +16,7 @@ Usage:
 
 Prerequisites:
     - Backend running on http://127.0.0.1:8000
-    - Test repository available (defaults to C:\InfinityWindow)
+    - Test repository available (defaults to C:\InfinityWindow_Recovery)
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 # Test configuration
-DEFAULT_REPO_PATH = r"C:\InfinityWindow"
+DEFAULT_REPO_PATH = r"C:\InfinityWindow_Recovery"
 DEFAULT_API_BASE = "http://127.0.0.1:8001"
 TEST_NAME_PREFIX = "E2E_Test"
 

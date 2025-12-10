@@ -7,7 +7,7 @@ bug fixes still hold.
 
 ## Prerequisites
 
-1. Run everything from the repo root (`C:\InfinityWindow`).
+1. Run everything from the repo root (`C:\InfinityWindow_Recovery`).
 2. Use the backend virtual environment (`backend\.venv\Scripts\python.exe`).
 3. Ensure the dev server is **stopped**; these probes instantiate the app
    directly and will fail if port 8000 is already bound.

@@ -22,7 +22,7 @@ Both test suites cover all scenarios from `MANUAL_TEST_GUIDE_INGESTION.md`:
 
 ## Prerequisites
 
-- Every ingestion project must have `local_root_path` set to a real directory (e.g., `C:\InfinityWindow`). The backend now rejects ingestion jobs when the project has no root path.
+- Every ingestion project must have `local_root_path` set to a real directory (e.g., `C:\InfinityWindow_Recovery`). The backend now rejects ingestion jobs when the project has no root path.
 - Run one ingestion suite at a time to avoid SQLite lock contention; if locks occur, restart the backend and retry.
 
 ### For Playwright Tests:
@@ -44,14 +44,14 @@ Both test suites cover all scenarios from `MANUAL_TEST_GUIDE_INGESTION.md`:
 
 1. **Start the backend** (required):
    ```powershell
-   cd C:\InfinityWindow\backend
+   cd C:\InfinityWindow_Recovery\backend
    .\.venv\Scripts\Activate.ps1
    uvicorn app.api.main:app --reload
    ```
 
 2. **Install Playwright** (if not already installed):
    ```powershell
-   cd C:\InfinityWindow\frontend
+   cd C:\InfinityWindow_Recovery\frontend
    npm install
    npx playwright install
    ```
@@ -61,7 +61,7 @@ Both test suites cover all scenarios from `MANUAL_TEST_GUIDE_INGESTION.md`:
 ### Run Tests
 
 ```powershell
-cd C:\InfinityWindow\frontend
+cd C:\InfinityWindow_Recovery\frontend
 npm run test:e2e -- ingestion-e2e.spec.ts
 ```
 
@@ -91,7 +91,7 @@ npm run test:e2e
 
 1. **Start the backend**:
    ```powershell
-   cd C:\InfinityWindow\backend
+   cd C:\InfinityWindow_Recovery\backend
    .\.venv\Scripts\Activate.ps1
    uvicorn app.api.main:app --reload
    ```
@@ -104,7 +104,7 @@ npm run test:e2e
 ### Run Tests
 
 ```powershell
-cd C:\InfinityWindow
+cd C:\InfinityWindow_Recovery
 python -m qa.ingestion_e2e_test
 ```
 

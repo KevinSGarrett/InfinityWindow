@@ -1,4 +1,0 @@
-# file: C:\InfinityWindow\qa\tests_api\conftest.py
-# hypothesis_version: 6.148.7
-
-[0.0, 1.0, 2.0, 200, '/projects', 'Add login page', 'Fix logout bug', 'LLM_MODE', 'auto', 'backend', 'description', 'get_client', 'get_embedding', 'local_root_path', 'name', 'normal', 'open', 'reply', 'session', 'stub']

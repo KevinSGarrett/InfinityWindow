@@ -79,7 +79,7 @@ Before calling a window “done” or cutting a release:
    - Ensure `docs/SYSTEM_OVERVIEW.md` and `docs/SYSTEM_MATRIX.md` are accurate.
 
 4. **Commit and push**
-   - In `C:\InfinityWindow`:
+   - In `C:\InfinityWindow_Recovery`:
      ```powershell
      git status
      git add ...

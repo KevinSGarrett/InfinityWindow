@@ -33,7 +33,7 @@ Optional but recommended:
 
 By default, the repo is assumed to live at:
 
-- `C:\InfinityWindow`
+- `C:\InfinityWindow_Recovery`
 
 Key directories:
 
@@ -55,19 +55,19 @@ If using Git:
 ```powershell
 cd C:\
 git clone https://github.com/your-account/InfinityWindow.git
-cd C:\InfinityWindow
+cd C:\InfinityWindow_Recovery
 ```
 
 If you download a ZIP:
 
-- Extract it to `C:\InfinityWindow`.
+- Extract it to `C:\InfinityWindow_Recovery`.
 
 ### 2.2 Backend Setup (FastAPI)
 
 1. **Create and activate a virtual environment** (recommended):
 
 ```powershell
-cd C:\InfinityWindow\backend
+cd C:\InfinityWindow_Recovery\backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
@@ -105,15 +105,15 @@ These values are just an example of overriding the defaults; if you omit these e
   - Delete:
 
     ```powershell
-    Remove-Item C:\InfinityWindow\backend\infinitywindow.db -Force
-    Remove-Item C:\InfinityWindow\backend\chroma_data -Recurse -Force
+    Remove-Item C:\InfinityWindow_Recovery\backend\infinitywindow.db -Force
+    Remove-Item C:\InfinityWindow_Recovery\backend\chroma_data -Recurse -Force
     ```
 
   - Restart the backend; the DB will be recreated with the new schema.
 
 5. **Run the backend server**:
 
-From `C:\InfinityWindow\backend` with venv active:
+From `C:\InfinityWindow_Recovery\backend` with venv active:
 
 ```powershell
 uvicorn app.api.main:app --reload
@@ -138,7 +138,7 @@ Expected JSON:
 1. **Install frontend dependencies**:
 
 ```powershell
-cd C:\InfinityWindow\frontend
+cd C:\InfinityWindow_Recovery\frontend
 npm install
 ```
 
@@ -173,7 +173,7 @@ For robust testing, you can maintain a **QA copy** of the repo, e.g. `C:\Infinit
 Using `robocopy` from an elevated PowerShell:
 
 ```powershell
-robocopy C:\InfinityWindow C:\InfinityWindow_QA /MIR /XD .git .venv node_modules
+robocopy C:\InfinityWindow_Recovery C:\InfinityWindow_QA /MIR /XD .git .venv node_modules
 ```
 
 Then:
@@ -217,7 +217,7 @@ When you first open the app:
 
 You can manage projects via API or UI (if exposed), but in most flows:
 
-- You keep a single main project pointing to `C:\InfinityWindow` as its `local_root_path`.
+- You keep a single main project pointing to `C:\InfinityWindow_Recovery` as its `local_root_path`.
 
 To create a project via API:
 
@@ -225,7 +225,7 @@ To create a project via API:
 $body = @{
   name = "Demo Project"
   description = "Main InfinityWindow playground"
-  local_root_path = "C:\InfinityWindow"
+  local_root_path = "C:\InfinityWindow_Recovery"
 } | ConvertTo-Json
 
 Invoke-RestMethod -Method Post `
@@ -477,7 +477,7 @@ Still in the **Docs** tab:
 
 1. Expand **Ingest local repo**.
 2. Fill in:
-   - **Root path** – usually the same directory you pointed the project at (`C:\InfinityWindow` in most setups).
+   - **Root path** – usually the same directory you pointed the project at (`C:\InfinityWindow_Recovery` in most setups).
    - **Name prefix** – optional label prepended to every ingested file (e.g., `InfinityWindow/` so search results mention the repo path).
 3. Click **Ingest repo**.
 4. A status card appears directly under the button:

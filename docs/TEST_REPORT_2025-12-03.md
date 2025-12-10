@@ -10,7 +10,7 @@
   - Backend: `uvicorn app.api.main:app --host 127.0.0.1 --port 8000`
   - Frontend: `npm run dev -- --host 127.0.0.1 --port 5174`
 - **Repo sync**:
-  - Mirrored `backend`, `frontend`, `docs`, `qa`, `tools` from `C:\InfinityWindow` via `robocopy`.
+  - Mirrored `backend`, `frontend`, `docs`, `qa`, `tools` from `C:\InfinityWindow_Recovery` via `robocopy`.
   - Cleared DB + Chroma with `python tools/reset_qa_env.py --confirm`.
 - **Goal**: Reproduce and close the Tasks tab regression that blocked `tests/tasks-suggestions.spec.ts`, then document the safe QA-sync workflow.
 

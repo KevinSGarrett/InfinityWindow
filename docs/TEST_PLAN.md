@@ -22,7 +22,7 @@ This test plan covers:
   - Memory item embeddings.
 
 - Environment matches `Hydration_File_002.txt`:
-  - Windows, root at `C:\InfinityWindow`.
+  - Windows, root at `C:\InfinityWindow_Recovery`.
   - Backend expected on **http://127.0.0.1:8000** (`uvicorn app.api.main:app --host 127.0.0.1 --port 8000` from `backend` venv). If port 8000 is occupied, use a temporary port (e.g., 8001) and adjust calls accordingly.
   - Frontend at `http://127.0.0.1:5173` via `npm run dev` from `frontend`.
 - **LLM key required**: Chat, embeddings, memory, search, and usage rely on a configured OpenAI/LLM key; fail fast if unset or invalid.
@@ -79,7 +79,7 @@ Results and issues for each test should be recorded in a separate test report (s
 ### A-Env-01 – Backend health check
 
 - **Preconditions**:
-  - From `C:\InfinityWindow\backend`: venv activated, `uvicorn app.api.main:app --host 127.0.0.1 --port 8000` running.
+  - From `C:\InfinityWindow_Recovery\backend`: venv activated, `uvicorn app.api.main:app --host 127.0.0.1 --port 8000` running.
 - **Steps**:
   1. `Invoke-RestMethod http://127.0.0.1:8000/health` (PowerShell) or use browser.
   2. Confirm CORS config by hitting `/health` from `http://127.0.0.1:5173` UI (refresh app header).
@@ -90,7 +90,7 @@ Results and issues for each test should be recorded in a separate test report (s
 ### A-Env-02 – Frontend startup
 
 - **Preconditions**:
-  - From `C:\InfinityWindow\frontend`: `npm install` completed at least once.
+  - From `C:\InfinityWindow_Recovery\frontend`: `npm install` completed at least once.
 - **Steps**:
   1. `npm run dev` and open `http://127.0.0.1:5173` in browser.
   2. Confirm the 3‑column layout renders (Projects/Conversations, Chat, Right workbench).
@@ -106,7 +106,7 @@ Results and issues for each test should be recorded in a separate test report (s
   1. Delete `backend\infinitywindow.db`.
   2. Delete `backend\chroma_data` directory.
   3. Restart backend.
-  4. Use API to create a fresh “Demo Project” with `local_root_path` = `C:\InfinityWindow`.
+  4. Use API to create a fresh “Demo Project” with `local_root_path` = `C:\InfinityWindow_Recovery`.
 - **Expected**:
   - New DB created with current schema (including instructions, decisions, folders, memory_items).
   - No `sqlite3.OperationalError: no such column` errors on startup.
@@ -232,7 +232,7 @@ Record any problems under `A-Env-*` in test reports.
 
 - **Reset & project**: Run `tools/reset_qa_env.py --confirm` (or delete `backend\infinitywindow.db` + `backend\chroma_data`) and create `POST /projects { "name": "Ingestion QA", "local_root_path": "C:\\InfinityWindow" }`.
 - **Backend**: Use `http://127.0.0.1:8000` (switch temporarily only if 8000 is occupied).
-- **Repository fixture**: Use the real `C:\InfinityWindow` tree or a curated subset (`docs`, `backend\app`, `frontend\src`) so we can exercise tiny, medium, and large jobs.
+- **Repository fixture**: Use the real `C:\InfinityWindow_Recovery` tree or a curated subset (`docs`, `backend\app`, `frontend\src`) so we can exercise tiny, medium, and large jobs.
 - **Pre-checks**: Confirm the selected project has `local_root_path` set and that `/projects/{id}/fs/list` returns 200 for the root. Fail fast if the UI shows “local_root_path not configured” or if the status card does not appear within 10 seconds after clicking “Ingest repo”.
 - **Current known issue**: The “Job History” UI check may time out under heavy load; if the rest pass, you may defer that single check and log it in the report.
 - **Instrumentation**:
@@ -250,7 +250,7 @@ Record any problems under `A-Env-*` in test reports.
 
 - **Steps**:
   1. In Docs tab: ingest a small text document (name, description, content) via **Ingest text document**.
-  2. Expand **Ingest local repo**, set root to `C:\InfinityWindow`, prefix `InfinityWindow/`, and click **Ingest repo**.
+  2. Expand **Ingest local repo**, set root to `C:\InfinityWindow_Recovery`, prefix `InfinityWindow/`, and click **Ingest repo**.
   3. Observe the status card transitions `pending → running → completed` and shows non-zero `processed/total` counts while the job runs (screenshot + timestamp).
   4. Poll `GET /projects/{id}/ingestion_jobs/{job_id}` until completion and confirm the JSON (status, `total_items`, `processed_items`, `total_bytes`, timestamps, `error_message=null`) matches the UI; paste the final payload into the test report.
   5. Call `GET /projects/{id}/docs` to confirm repo documents were added (look for names prefixed with `InfinityWindow/`) and record the total doc count delta.

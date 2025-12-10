@@ -145,7 +145,7 @@ All QA artifacts (project 6, associated conversations/tasks/docs/memory/etc.) re
 
 - **Commands**: `python -X utf8 -m qa.run_smoke`, `npx playwright test tests/right-column.spec.ts tests/files-tab.spec.ts tests/notes-memory.spec.ts`
 - **Backend / Frontend**: `uvicorn app.api.main:app --host 127.0.0.1 --port 8000`, Vite dev server on `127.0.0.1:5174`
-- **Goal**: Re-run the high-impact rows that cover auto-mode routing, autonomous TODO maintenance, Search/Usage UX, and Notes/Decisions automation after syncing the QA repo with `C:\InfinityWindow`.
+- **Goal**: Re-run the high-impact rows that cover auto-mode routing, autonomous TODO maintenance, Search/Usage UX, and Notes/Decisions automation after syncing the QA repo with `C:\InfinityWindow_Recovery`.
 
 | Test ID        | Description / Focus                                         | Result | Notes / Evidence |
 |----------------|-------------------------------------------------------------|--------|------------------|
