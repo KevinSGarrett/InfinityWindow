@@ -2734,6 +2734,12 @@ body {
   font-size: 0.75rem;
 }
 
+.retrieval-config-summary {
+  margin-top: 0.35rem;
+  color: #4b5563;
+  font-size: 0.75rem;
+}
+
 .usage-export {
   margin-top: 0.5rem;
   display: flex;

@@ -214,6 +214,13 @@ type TelemetrySnapshot = {
   ingestion: Record<string, unknown>;
 };
 
+type RetrievalConfig = {
+  messages_k?: number | null;
+  docs_k?: number | null;
+  memory_k?: number | null;
+  tasks_k?: number | null;
+};
+
 type ProjectDecision = {
   id: number;
   project_id: number;
@@ -438,6 +445,12 @@ function App() {
   const [telemetry, setTelemetry] = useState<TelemetrySnapshot | null>(null);
   const [isLoadingTelemetry, setIsLoadingTelemetry] = useState(false);
   const [telemetryError, setTelemetryError] = useState<string | null>(null);
+  const [retrievalConfig, setRetrievalConfig] = useState<RetrievalConfig | null>(
+    null
+  );
+  const [retrievalConfigError, setRetrievalConfigError] = useState<
+    string | null
+  >(null);
   const [usageActionFilter, setUsageActionFilter] = useState<string>("all");
   const [usageGroupFilter, setUsageGroupFilter] = useState<string>("all");
   const [usageModelFilter, setUsageModelFilter] = useState<string>("all");
@@ -1163,6 +1176,9 @@ function App() {
     return `mini-bar-fill width-${clamped}`;
   };
 
+  const formatRetrievalValue = (value?: number | null) =>
+    value === null || value === undefined ? "N/A" : value;
+
   const hasProjectContext = useMemo(
     () =>
       (projectInstructions && projectInstructions.trim().length > 0) ||
@@ -1200,6 +1216,22 @@ function App() {
           data-testid="context-aware-indicator"
         >
           Context-aware TODO extraction enabled (project instructions + pinned note).
+        </div>
+      )}
+      {(retrievalConfig || retrievalConfigError) && (
+        <div
+          className="usage-telemetry-sub retrieval-config-summary"
+          data-testid="retrieval-config-summary"
+        >
+          {retrievalConfig
+            ? `Retrieval config - messages: ${formatRetrievalValue(
+                retrievalConfig.messages_k
+              )}, docs: ${formatRetrievalValue(
+                retrievalConfig.docs_k
+              )}, memory: ${formatRetrievalValue(
+                retrievalConfig.memory_k
+              )}, tasks: ${formatRetrievalValue(retrievalConfig.tasks_k)}`
+            : "Retrieval config - N/A"}
         </div>
       )}
       {isLoadingTelemetry ? (
@@ -2184,9 +2216,10 @@ function App() {
   };
 
   const loadTelemetry = async (reset: boolean = false) => {
+    setIsLoadingTelemetry(true);
+    setTelemetryError(null);
+    setRetrievalConfigError(null);
     try {
-      setIsLoadingTelemetry(true);
-      setTelemetryError(null);
       const url = new URL(`${BACKEND_BASE}/debug/telemetry`);
       if (reset) {
         url.searchParams.set("reset", "true");
@@ -2196,10 +2229,10 @@ function App() {
         console.error("Fetching telemetry failed:", res.status);
         setTelemetry(null);
         setTelemetryError(`Failed to load telemetry (status ${res.status}).`);
-        return;
+      } else {
+        const data: TelemetrySnapshot = await res.json();
+        setTelemetry(data);
       }
-      const data: TelemetrySnapshot = await res.json();
-      setTelemetry(data);
     } catch (e: unknown) {
       console.error("Fetching telemetry threw:", e);
       setTelemetry(null);
@@ -2208,6 +2241,22 @@ function App() {
         ? `Unexpected error: ${message}`
         : "Unexpected error loading telemetry.";
       setTelemetryError(msg);
+    }
+
+    try {
+      const res = await fetch(`${BACKEND_BASE}/debug/retrieval_config`);
+      if (!res.ok) {
+        console.error("Fetching retrieval config failed:", res.status);
+        setRetrievalConfig(null);
+        setRetrievalConfigError("Retrieval config unavailable.");
+      } else {
+        const data: RetrievalConfig = await res.json();
+        setRetrievalConfig(data);
+      }
+    } catch (e: unknown) {
+      console.error("Fetching retrieval config threw:", e);
+      setRetrievalConfig(null);
+      setRetrievalConfigError("Retrieval config unavailable.");
     } finally {
       setIsLoadingTelemetry(false);
     }
