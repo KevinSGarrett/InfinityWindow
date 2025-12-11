@@ -475,3 +475,20 @@ class FileIngestionState(Base):
     project: Mapped["Project"] = relationship(
         "Project", back_populates="file_ingestion_states"
     )
+
+
+class TerminalHistory(Base):
+    __tablename__ = "terminal_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("projects.id"), nullable=False, index=True
+    )
+    command: Mapped[str] = mapped_column(String(2048), nullable=False)
+    cwd: Mapped[str] = mapped_column(String(1024), nullable=False)
+    exit_code: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    stdout_tail: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
+    stderr_tail: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, index=True
+    )

@@ -510,6 +510,19 @@ class TerminalRunPayload(BaseModel):
 
 
 
+# ---------- Terminal history models ----------
+class TerminalHistoryEntry(BaseModel):
+    id: int
+    command: str
+    cwd: str
+    exit_code: Optional[int]
+    stdout_tail: Optional[str]
+    stderr_tail: Optional[str]
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 # ---------- Helpers: misc ----------
 
 
@@ -3961,6 +3974,101 @@ def legacy_ingest(payload: dict, db: Session = Depends(get_db)):
     return job
 
 
+_TERMINAL_HISTORY_RETENTION = 200
+_TERMINAL_HISTORY_TAIL_LEN = 2048
+
+
+def _truncate_for_history(text: Optional[str], max_len: int = _TERMINAL_HISTORY_TAIL_LEN) -> Optional[str]:
+    if text is None:
+        return None
+    if len(text) <= max_len:
+        return text
+    # Keep the tail to preserve the most recent output lines.
+    return text[-max_len:]
+
+
+def ensure_safe_terminal_command(command: str) -> None:
+    normalized = " ".join((command or "").lower().split())
+    if not normalized:
+        raise HTTPException(
+            status_code=400,
+            detail="Command blocked by terminal guard: empty command.",
+        )
+
+    blocked_substrings = [
+        "rm -rf /",
+        "rm -rf /*",
+        "rm -rf --no-preserve-root /",
+        "format c:",
+        "mkfs",
+        "shutdown -h now",
+    ]
+    blocked_regexes = [
+        r"\bdd\s+if=/dev/zero\s+of=/dev/sd",
+    ]
+
+    for token in blocked_substrings:
+        if token in normalized:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Command blocked by terminal guard: '{token}' is unsafe.",
+            )
+
+    for pattern in blocked_regexes:
+        if re.search(pattern, normalized):
+            raise HTTPException(
+                status_code=400,
+                detail="Command blocked by terminal guard: unsafe command.",
+            )
+
+
+def _prune_terminal_history(
+    db: Session, project_id: int, keep: int = _TERMINAL_HISTORY_RETENTION
+) -> None:
+    stale_ids = [
+        row.id
+        for row in (
+            db.query(models.TerminalHistory.id)
+            .filter(models.TerminalHistory.project_id == project_id)
+            .order_by(
+                models.TerminalHistory.created_at.desc(),
+                models.TerminalHistory.id.desc(),
+            )
+            .offset(keep)
+            .all()
+        )
+    ]
+
+    if stale_ids:
+        db.query(models.TerminalHistory).filter(
+            models.TerminalHistory.id.in_(stale_ids)
+        ).delete(synchronize_session=False)
+
+
+def _record_terminal_history(
+    db: Session,
+    *,
+    project_id: int,
+    command: str,
+    cwd: str,
+    exit_code: Optional[int],
+    stdout: Optional[str],
+    stderr: Optional[str],
+) -> None:
+    entry = models.TerminalHistory(
+        project_id=project_id,
+        command=command,
+        cwd=cwd,
+        exit_code=exit_code,
+        stdout_tail=_truncate_for_history(stdout),
+        stderr_tail=_truncate_for_history(stderr),
+    )
+    db.add(entry)
+    _flush_with_retry(db)
+    _prune_terminal_history(db, project_id)
+    _commit_with_retry(db)
+
+
 # ---------- Terminal ----------
 
 
@@ -3983,6 +4091,8 @@ def run_terminal_command(
     """
     if payload.project_id is None:
         raise HTTPException(status_code=422, detail="project_id is required (path or body).")
+
+    ensure_safe_terminal_command(payload.command)
 
     project = _ensure_project(db, payload.project_id)
     root = _get_project_root(project)
@@ -4042,7 +4152,7 @@ def run_terminal_command(
     if len(stderr) > max_len:
         stderr = stderr[:max_len] + "\n...[truncated]..."
 
-    return {
+    response_payload = {
         "project_id": project.id,
         "cwd": str(workdir.relative_to(root)) if workdir != root else "",
         "command": payload.command,
@@ -4050,6 +4160,23 @@ def run_terminal_command(
         "stdout": stdout,
         "stderr": stderr,
     }
+
+    cwd_for_history = str(workdir.relative_to(root)) if workdir != root else "."
+    try:
+        _record_terminal_history(
+            db,
+            project_id=project.id,
+            command=payload.command,
+            cwd=cwd_for_history,
+            exit_code=exit_code,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    except Exception as exc:  # noqa: BLE001
+        # Do not fail the API call if history logging encounters an error.
+        print(f"[WARN] Failed to record terminal history: {exc!r}")
+
+    return response_payload
 
 
 @app.post("/projects/{project_id}/terminal/run")
@@ -4065,15 +4192,31 @@ def run_terminal_command_scoped(
     return run_terminal_command(payload=payload, db=db)
 
 
-@app.get("/projects/{project_id}/terminal/history")
-def list_terminal_history(project_id: int, db: Session = Depends(get_db)):
+@app.get(
+    "/projects/{project_id}/terminal/history",
+    response_model=List[TerminalHistoryEntry],
+)
+def list_terminal_history(
+    project_id: int,
+    limit: int = 20,
+    db: Session = Depends(get_db),
+):
     """
-    Placeholder history endpoint. Currently returns an empty list after
-    verifying the project exists. Extend later to persist and return
-    recent terminal runs.
+    Return recent manual terminal commands for the project, newest first.
     """
     _ensure_project(db, project_id)
-    return []
+    effective_limit = max(1, min(limit, 100))
+    history = (
+        db.query(models.TerminalHistory)
+        .filter(models.TerminalHistory.project_id == project_id)
+        .order_by(
+            models.TerminalHistory.created_at.desc(),
+            models.TerminalHistory.id.desc(),
+        )
+        .limit(effective_limit)
+        .all()
+    )
+    return history
 
 
 # ---------- Chat ----------
