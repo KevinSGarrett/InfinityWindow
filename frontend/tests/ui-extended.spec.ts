@@ -1,9 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { createTestProject, waitForBackend } from './helpers/api';
-
-const TEST_REPO_PATH = process.env.TEST_REPO_PATH || 'C:\\InfinityWindow';
-const API_BASE = process.env.PLAYWRIGHT_API_BASE ?? 'http://127.0.0.1:8000';
-const UI_BASE = process.env.PLAYWRIGHT_UI_BASE ?? 'http://localhost:5173';
+import {
+  createTestProject,
+  waitForBackend,
+  DEFAULT_TEST_REPO_PATH,
+  API_BASE,
+  UI_BASE,
+} from './helpers/api';
 
 test.describe('UI Extended Smoke - Files / Folders / Decisions / Terminal', () => {
   let projectId: number;
@@ -13,7 +15,7 @@ test.describe('UI Extended Smoke - Files / Folders / Decisions / Terminal', () =
     const proj = await createTestProject(
       request,
       `UI Extended ${Date.now()}`,
-      TEST_REPO_PATH
+      DEFAULT_TEST_REPO_PATH
     );
     projectId = proj.id;
 

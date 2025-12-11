@@ -1,18 +1,15 @@
-import { test, expect } from '@playwright/test';
+﻿import { test, expect } from '@playwright/test';
+import { API_BASE, UI_BASE, DEFAULT_TEST_REPO_PATH } from './helpers/api';
 
 test('usage filters and exports', async ({ page, request }) => {
-  const API = 'http://127.0.0.1:8000';
-  const APP = 'http://localhost:5173/';
-
-  // Seed data
   const projectName = `UsageFilters_${Date.now()}`;
-  const projectResp = await request.post(`${API}/projects`, {
-    data: { name: projectName, local_root_path: 'C:\\InfinityWindow' },
+  const projectResp = await request.post(`${API_BASE}/projects`, {
+    data: { name: projectName, local_root_path: DEFAULT_TEST_REPO_PATH },
   });
   expect(projectResp.ok()).toBeTruthy();
   const projectId = (await projectResp.json()).id;
 
-  const convResp = await request.post(`${API}/conversations`, {
+  const convResp = await request.post(`${API_BASE}/conversations`, {
     data: { project_id: projectId, title: 'Usage Filters Conv' },
   });
   expect(convResp.ok()).toBeTruthy();
@@ -26,13 +23,13 @@ test('usage filters and exports', async ({ page, request }) => {
     { description: 'Dismiss suggestion', action: 'auto_dismissed', confidence: 0.55, model: 'gpt-4o-mini' },
   ];
   for (const seed of seeds) {
-    const seedResp = await request.post(`${API}/debug/seed_task_action`, {
+    const seedResp = await request.post(`${API_BASE}/debug/seed_task_action`, {
       data: { project_id: projectId, ...seed },
     });
     expect(seedResp.ok()).toBeTruthy();
   }
 
-  await page.goto(APP);
+  await page.goto(UI_BASE);
   await page.waitForLoadState('networkidle');
 
   // Select project
@@ -40,15 +37,21 @@ test('usage filters and exports', async ({ page, request }) => {
 
   // Go to Usage tab
   await page.getByRole('tab', { name: 'Usage' }).click();
+  const usagePanel = page.locator('.usage-panel');
+  await usagePanel.waitFor({ timeout: 15000 });
 
   // Select conversation and load telemetry
-  await page.locator('select[aria-label="Select conversation for usage"]').selectOption(String(conversationId));
-  await page.getByRole('button', { name: 'Use current chat' }).click();
+  await page
+    .locator('select[aria-label="Select conversation for usage"]')
+    .selectOption(String(conversationId));
+  const useCurrentChat = page.getByRole('button', { name: 'Use current chat' });
+  if (await useCurrentChat.isVisible()) {
+    await useCurrentChat.click();
+  }
 
   // Wait for telemetry list
-  // Recent task action rows (li entries that display "conf")
-  const actionsList = page.locator('ul.usage-telemetry-list li:has-text("conf")');
-  await actionsList.first().waitFor({ state: 'visible' });
+  const actionsList = page.locator('[data-testid="recent-actions-list"] li');
+  await expect(actionsList.first()).toBeVisible({ timeout: 15000 });
   const initialCount = await actionsList.count();
   expect(initialCount).toBeGreaterThan(0);
 
@@ -81,6 +84,5 @@ test('usage filters and exports', async ({ page, request }) => {
   await expect(actionsList.first()).toBeVisible();
 
   // Cleanup
-  await request.delete(`${API}/projects/${projectId}`);
+  await request.delete(`${API_BASE}/projects/${projectId}`);
 });
-

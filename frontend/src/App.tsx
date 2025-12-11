@@ -348,6 +348,21 @@ const BACKEND_BASE =
     (import.meta as ImportMeta)?.env?.VITE_API_BASE) ||
   "http://127.0.0.1:8000";
 
+const DEFAULT_REPO_PATH =
+  (typeof import.meta !== "undefined" &&
+    (import.meta as ImportMeta)?.env?.VITE_DEFAULT_REPO_PATH) ||
+  "";
+
+const DEFAULT_REPO_PREFIX =
+  (typeof import.meta !== "undefined" &&
+    (import.meta as ImportMeta)?.env?.VITE_DEFAULT_REPO_PREFIX) ||
+  "";
+
+const NORMALIZED_REPO_PREFIX =
+  DEFAULT_REPO_PREFIX && !DEFAULT_REPO_PREFIX.endsWith("/")
+    ? `${DEFAULT_REPO_PREFIX}/`
+    : DEFAULT_REPO_PREFIX;
+
 function App() {
   // Backend / projects
   const [backendVersion, setBackendVersion] = useState<string | null>(null);
@@ -536,8 +551,8 @@ function App() {
   const [isIngestingTextDoc, setIsIngestingTextDoc] = useState(false);
 
   // Repo ingestion
-  const [repoRootPath, setRepoRootPath] = useState("C:\\InfinityWindow");
-  const [repoNamePrefix, setRepoNamePrefix] = useState("InfinityWindow/");
+  const [repoRootPath, setRepoRootPath] = useState(DEFAULT_REPO_PATH);
+  const [repoNamePrefix, setRepoNamePrefix] = useState(NORMALIZED_REPO_PREFIX);
   const [isIngestingRepo, setIsIngestingRepo] = useState(false);
   const [repoIngestionJob, setRepoIngestionJob] =
     useState<IngestionJob | null>(null);
@@ -5037,7 +5052,7 @@ function App() {
                   <input
                     className="ingest-input"
                     type="text"
-                    placeholder="Root path (e.g. C:\\InfinityWindow)"
+                    placeholder="Root path (e.g. C\\repos\\project or /repos/project)"
                     aria-label="Repository root path"
                     title="Repository root path"
                     value={repoRootPath}
@@ -5046,7 +5061,7 @@ function App() {
                   <input
                     className="ingest-input"
                     type="text"
-                    placeholder="Name prefix (e.g. InfinityWindow/)"
+                    placeholder="Name prefix (optional, e.g. repo/)"
                     aria-label="Repository name prefix"
                     title="Repository name prefix"
                     value={repoNamePrefix}

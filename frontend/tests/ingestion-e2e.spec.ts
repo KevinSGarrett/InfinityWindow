@@ -1,5 +1,12 @@
+import path from 'path';
 import { test, expect, Page, APIRequestContext } from '@playwright/test';
-import { createTestProject, waitForBackend } from './helpers/api';
+import {
+  createTestProject,
+  waitForBackend,
+  DEFAULT_TEST_REPO_PATH,
+  API_BASE,
+  UI_BASE,
+} from './helpers/api';
 
 // Increase overall test timeout to accommodate long ingests
 test.setTimeout(12 * 60 * 1000); // 12 minutes
@@ -21,15 +28,14 @@ const SETUP_TIMEOUT = 4 * 60 * 1000; // 4 minutes
  * - Telemetry verification
  * 
  * Prerequisites:
- * - Backend running on http://127.0.0.1:8001
- * - Frontend running on http://127.0.0.1:5174
- * - Test repository available (uses C:\InfinityWindow_Recovery by default)
+ * - Backend running on http://127.0.0.1:8000
+ * - Frontend running on http://127.0.0.1:5173
+ * - Test repository available via DEFAULT_TEST_REPO_PATH (falls back to repo root)
  */
 
-const TEST_REPO_PATH = process.env.TEST_REPO_PATH || 'C:\\InfinityWindow';
+const TEST_REPO_PATH = DEFAULT_TEST_REPO_PATH;
 const TEST_NAME_PREFIX = 'E2E_Test';
-const API_BASE = process.env.PLAYWRIGHT_API_BASE ?? 'http://127.0.0.1:8001';
-const UI_BASE = process.env.PLAYWRIGHT_UI_BASE ?? 'http://localhost:5173';
+const INVALID_REPO_PATH = path.join(process.cwd(), 'non-existent-playwright-path');
 
 type ProjectListItem = {
   id: number;
@@ -554,7 +560,7 @@ test.describe('Large Repo Ingestion Batching - E2E Tests', () => {
       const ingestForm = await openIngestForm(page);
 
       // Use an invalid path
-      await ingestForm.getByPlaceholder('Root path').fill('C:\\NonExistentDirectory12345');
+      await ingestForm.getByPlaceholder('Root path').fill(INVALID_REPO_PATH);
       await ingestForm.getByPlaceholder('Name').fill(`${TEST_NAME_PREFIX}/ErrorTest/`);
 
       // Start ingestion

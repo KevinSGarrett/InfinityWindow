@@ -1,8 +1,10 @@
-import { test, expect } from '@playwright/test';
-import { createTestProject, waitForBackend } from './helpers/api';
-
-const TEST_REPO_PATH = process.env.TEST_REPO_PATH || 'C:\\InfinityWindow';
-const UI_BASE = process.env.PLAYWRIGHT_UI_BASE ?? 'http://localhost:5173';
+﻿import { test, expect } from '@playwright/test';
+import {
+  createTestProject,
+  waitForBackend,
+  DEFAULT_TEST_REPO_PATH,
+  UI_BASE,
+} from './helpers/api';
 
 test.describe('UI Smoke - Instructions / Memory / Tasks', () => {
   let projectId: number;
@@ -12,10 +14,9 @@ test.describe('UI Smoke - Instructions / Memory / Tasks', () => {
     const proj = await createTestProject(
       request,
       `UI Smoke ${Date.now()}`,
-      TEST_REPO_PATH
+      DEFAULT_TEST_REPO_PATH
     );
     projectId = proj.id;
-
   });
 
   test('End-to-end UI smoke', async ({ page }) => {
@@ -89,4 +90,3 @@ test.describe('UI Smoke - Instructions / Memory / Tasks', () => {
     await expect(taskItem).toBeVisible({ timeout: 10_000 });
   });
 });
-

@@ -1,4 +1,5 @@
-import { test, expect } from "@playwright/test";
+﻿import { test, expect } from "@playwright/test";
+import { API_BASE, UI_BASE, DEFAULT_TEST_REPO_PATH } from './helpers/api';
 
 test.describe("Phase3 - UI accessibility & empty states", () => {
   test("keyboard focus, empty suggestions, usage empty state", async ({
@@ -7,16 +8,16 @@ test.describe("Phase3 - UI accessibility & empty states", () => {
   }) => {
     // Create a project via API
     const projectName = `Phase3 UI ${Date.now()}`;
-    const createResp = await request.post("http://127.0.0.1:8000/projects", {
+    const createResp = await request.post(`${API_BASE}/projects`, {
       data: {
         name: projectName,
-        local_root_path: "C:\\\\InfinityWindow",
+        local_root_path: DEFAULT_TEST_REPO_PATH,
       },
     });
     expect(createResp.status()).toBe(200);
     const project = await createResp.json();
 
-    await page.goto("/");
+    await page.goto(UI_BASE);
     await page.waitForLoadState("networkidle");
 
     // Select project
@@ -63,4 +64,3 @@ test.describe("Phase3 - UI accessibility & empty states", () => {
     await expect(usageEmpty).toBeVisible({ timeout: 5000 });
   });
 });
-

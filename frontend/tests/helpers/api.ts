@@ -1,6 +1,21 @@
+﻿import path from 'path';
 import { APIRequestContext, expect } from '@playwright/test';
 
-const API_BASE = process.env.PLAYWRIGHT_API_BASE ?? 'http://127.0.0.1:8000';
+export const API_BASE =
+  process.env.PLAYWRIGHT_API_BASE ??
+  process.env.VITE_API_BASE ??
+  'http://127.0.0.1:8000';
+export const UI_BASE =
+  process.env.PLAYWRIGHT_UI_BASE ?? 'http://localhost:5173';
+export const DEFAULT_TEST_REPO_PATH =
+  process.env.DEFAULT_TEST_REPO_PATH ??
+  process.env.TEST_REPO_PATH ??
+  process.env.VITE_DEFAULT_REPO_PATH ??
+  path.resolve(process.cwd(), '..');
+export const DEFAULT_TEST_REPO_PREFIX =
+  process.env.DEFAULT_TEST_REPO_PREFIX ??
+  process.env.VITE_DEFAULT_REPO_PREFIX ??
+  '';
 
 export interface TestProject {
   id: number;
@@ -17,16 +32,19 @@ export async function createTestProject(
   name: string,
   localRootPath?: string
 ): Promise<TestProject> {
+  const resolvedRoot = (localRootPath ?? DEFAULT_TEST_REPO_PATH)?.toString().trim();
+  const payload: Record<string, unknown> = {
+    name,
+    description: 'Playwright QA project',
+    ...(resolvedRoot ? { local_root_path: resolvedRoot } : {}),
+  };
+
   const maxAttempts = 3;
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const response = await request.post(`${API_BASE}/projects`, {
-        data: {
-          name,
-          description: 'Playwright QA project',
-          local_root_path: localRootPath ?? 'C:\\InfinityWindow',
-        },
+        data: payload,
         timeout: 30_000,
       });
       expect(response.ok()).toBeTruthy();
@@ -159,4 +177,3 @@ export async function createProject(name: string): Promise<TestProject> {
   }
   return await response.json();
 }
-

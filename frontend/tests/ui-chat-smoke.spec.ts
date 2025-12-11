@@ -1,9 +1,11 @@
-import { test, expect } from '@playwright/test';
-import { createTestProject, waitForBackend } from './helpers/api';
-
-const TEST_REPO_PATH = process.env.TEST_REPO_PATH || 'C:\\InfinityWindow';
-const API_BASE = process.env.PLAYWRIGHT_API_BASE ?? 'http://127.0.0.1:8000';
-const UI_BASE = process.env.PLAYWRIGHT_UI_BASE ?? 'http://localhost:5173';
+﻿import { test, expect } from '@playwright/test';
+import {
+  createTestProject,
+  waitForBackend,
+  DEFAULT_TEST_REPO_PATH,
+  API_BASE,
+  UI_BASE,
+} from './helpers/api';
 
 test.describe('UI Chat Smoke - Chat, Remember, Usage, Search', () => {
   let projectId: number;
@@ -13,7 +15,7 @@ test.describe('UI Chat Smoke - Chat, Remember, Usage, Search', () => {
     const proj = await createTestProject(
       request,
       `UI Chat Smoke ${Date.now()}`,
-      TEST_REPO_PATH
+      DEFAULT_TEST_REPO_PATH
     );
     projectId = proj.id;
 
@@ -62,13 +64,20 @@ test.describe('UI Chat Smoke - Chat, Remember, Usage, Search', () => {
       await expect(page.getByText('Chat-remembered')).toBeVisible({ timeout: 10_000 });
     }
 
-    // Usage tab: verify a usage entry exists
+    // Usage tab: verify a usage entry exists or empty state renders
     await page.getByText('Usage', { exact: true }).click();
-    await page.waitForSelector('.usage-table, .usage-empty', { timeout: 10_000 });
-    // If table exists, ensure at least one row
-    const usageRows = page.locator('.usage-table tbody tr');
-    if (await usageRows.count()) {
-      await expect(usageRows.first()).toBeVisible();
+    const usagePanel = page.locator('.usage-panel');
+    await usagePanel.waitFor({ timeout: 10_000 });
+    const useCurrentChat = page.getByRole('button', { name: 'Use current chat' });
+    if (await useCurrentChat.isVisible()) {
+      await useCurrentChat.click();
+    }
+    const recentActions = page.locator('[data-testid="recent-actions-list"] li');
+    const usageEmpty = page.locator('.usage-empty');
+    if (await recentActions.count()) {
+      await expect(recentActions.first()).toBeVisible();
+    } else {
+      await expect(usageEmpty).toBeVisible({ timeout: 10_000 });
     }
 
     // Docs search tab: search for a term from the seeded doc
@@ -84,4 +93,3 @@ test.describe('UI Chat Smoke - Chat, Remember, Usage, Search', () => {
     await expect(results.first()).toBeVisible({ timeout: 15_000 });
   });
 });
-

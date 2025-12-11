@@ -1,20 +1,18 @@
-import { test, expect } from "@playwright/test";
+﻿import { test, expect } from "@playwright/test";
+import { API_BASE, UI_BASE, DEFAULT_TEST_REPO_PATH } from './helpers/api';
 
 test.describe("Usage dashboard charts and exports", () => {
   test("charts follow filters and export matches filtered actions", async ({
     page,
     request,
   }) => {
-    const API = "http://127.0.0.1:8000";
-    const APP = "http://localhost:5173/";
-
-    const projectResp = await request.post(`${API}/projects`, {
-      data: { name: `UsageDash_${Date.now()}`, local_root_path: "C:\\InfinityWindow" },
+    const projectResp = await request.post(`${API_BASE}/projects`, {
+      data: { name: `UsageDash_${Date.now()}`, local_root_path: DEFAULT_TEST_REPO_PATH },
     });
     expect(projectResp.ok()).toBeTruthy();
     const projectId = (await projectResp.json()).id;
 
-    const convoResp = await request.post(`${API}/conversations`, {
+    const convoResp = await request.post(`${API_BASE}/conversations`, {
       data: { project_id: projectId, title: "Usage Dashboard Conv" },
     });
     expect(convoResp.ok()).toBeTruthy();
@@ -26,13 +24,13 @@ test.describe("Usage dashboard charts and exports", () => {
       { description: "Seed suggest", action: "auto_suggested", confidence: 0.82, model: "gpt-5.1-codex" },
     ];
     for (const seed of seeds) {
-      const seedResp = await request.post(`${API}/debug/seed_task_action`, {
+      const seedResp = await request.post(`${API_BASE}/debug/seed_task_action`, {
         data: { project_id: projectId, ...seed },
       });
       expect(seedResp.ok()).toBeTruthy();
     }
 
-    await page.goto(APP);
+    await page.goto(UI_BASE);
     await page.waitForLoadState("networkidle");
 
     await page.locator(".project-selector select").selectOption(String(projectId));
@@ -74,7 +72,6 @@ test.describe("Usage dashboard charts and exports", () => {
       "No filtered actions yet."
     );
 
-    await request.delete(`${API}/projects/${projectId}`);
+    await request.delete(`${API_BASE}/projects/${projectId}`);
   });
 });
-

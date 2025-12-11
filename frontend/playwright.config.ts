@@ -1,4 +1,9 @@
-import { defineConfig } from '@playwright/test';
+﻿import { defineConfig } from '@playwright/test';
+
+const uiBase = process.env.PLAYWRIGHT_UI_BASE ?? 'http://localhost:5173';
+const uiUrl = new URL(uiBase);
+const uiHost = uiUrl.hostname || 'localhost';
+const uiPort = uiUrl.port || '5173';
 
 export default defineConfig({
   testDir: './tests',
@@ -12,7 +17,7 @@ export default defineConfig({
     'tests/ui-accessibility-phase3.spec.ts',
   ],
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: uiBase,
     headless: true,
     trace: 'on-first-retry',
     // Increase timeout for slow operations
@@ -21,12 +26,11 @@ export default defineConfig({
   },
   // Auto-start frontend server before tests
   webServer: {
-    command: 'npm run dev -- --host localhost --port 5173',
-    url: 'http://localhost:5173',
+    command: `npm run dev -- --host ${uiHost} --port ${uiPort}`,
+    url: uiBase,
     reuseExistingServer: !process.env.CI, // Reuse if already running (unless in CI)
     timeout: 120 * 1000, // 2 minutes to start
     stdout: 'ignore',
     stderr: 'pipe',
   },
 });
-
