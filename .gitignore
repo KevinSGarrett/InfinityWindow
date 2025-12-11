@@ -30,3 +30,7 @@ Thumbs.db
 
 backend/.env
 
+# Test caches (Hypothesis)
+.hypothesis/
+**/.hypothesis/
+
