@@ -26,6 +26,7 @@ from app.llm import openai_client as openai_module
 from app.llm.openai_client import generate_reply_from_history
 from app.llm.embeddings import get_embedding
 from app.llm.pricing import estimate_call_cost
+from app import retrieval_config
 from app.vectorstore.chroma_store import (
     add_message_embedding,
     query_similar_messages,
@@ -1410,7 +1411,7 @@ def build_task_context_for_project(
     project: Optional[models.Project],
     db: Session,
     *,
-    max_tasks: int = 5,
+    max_tasks: int = retrieval_config.DEFAULT_PROFILE.tasks_k,
 ) -> tuple[str, int]:
     """
     Build a compact, structured context block for task extraction.
@@ -1421,6 +1422,7 @@ def build_task_context_for_project(
     - Project goal/description (or explicit None)
     - Top N high-priority open tasks with blocked hints (or explicit None)
     """
+    max_tasks = max(1, max_tasks)
     instructions = (getattr(project, "instruction_text", "") or "").strip() or "None set"
     pinned_note = (getattr(project, "pinned_note_text", "") or "").strip() or "None set"
     goal = (getattr(project, "description", "") or "").strip() or "None set"
@@ -1480,6 +1482,7 @@ def auto_update_tasks_from_conversation(
     """
     _TASK_CONTEXT_STATS["context_included"] = False
     _TASK_CONTEXT_STATS["context_high_priority_count"] = 0
+    retrieval_profile = retrieval_config.get_retrieval_profile()
 
     # Get recent messages (most recent first, then reverse to chronological)
     recent_messages = (
@@ -1662,7 +1665,7 @@ def auto_update_tasks_from_conversation(
         .filter(models.Task.project_id == conversation.project_id)
         .filter(models.Task.status == "open")
         .order_by(models.Task.priority.asc(), models.Task.updated_at.desc())
-        .limit(5)
+        .limit(retrieval_profile.tasks_k)
         .all()
     )
     priority_context = ""
@@ -1712,7 +1715,9 @@ def auto_update_tasks_from_conversation(
         )
 
     project = conversation.project
-    context_block, high_priority_count = build_task_context_for_project(project, db)
+    context_block, high_priority_count = build_task_context_for_project(
+        project, db, max_tasks=retrieval_profile.tasks_k
+    )
     _TASK_CONTEXT_STATS["context_included"] = bool(context_block)
     _TASK_CONTEXT_STATS["context_high_priority_count"] = high_priority_count
 
@@ -3344,6 +3349,23 @@ def read_docs_status() -> Dict[str, Any]:
     return collect_docs_status()
 
 
+@app.get("/debug/retrieval_config")
+def read_retrieval_config() -> Dict[str, Any]:
+    """
+    Expose the active retrieval profile and its source.
+    """
+    profile, source = retrieval_config.get_retrieval_profile_with_source()
+    return {
+        "profile": {
+            "messages_k": profile.messages_k,
+            "docs_k": profile.docs_k,
+            "memory_k": profile.memory_k,
+            "tasks_k": profile.tasks_k,
+        },
+        "source": source,
+    }
+
+
 @app.get("/debug/telemetry")
 def read_telemetry(reset: bool = False) -> Dict[str, Any]:
     """
@@ -4243,6 +4265,7 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
 
     # 4) Retrieval: embed user message and pull relevant messages & docs
     retrieval_context_text = ""
+    retrieval_profile = retrieval_config.get_retrieval_profile()
     user_embedding = None
 
     try:
@@ -4254,7 +4277,7 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
             query_embedding=user_embedding,
             conversation_id=conversation.id,
             folder_id=conversation.folder_id,
-            n_results=5,
+            n_results=retrieval_profile.messages_k,
         )
 
         msg_docs_nested = msg_results.get("documents", [[]])
@@ -4272,7 +4295,7 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
             project_id=conversation.project_id,
             query_embedding=user_embedding,
             document_id=None,
-            n_results=5,
+            n_results=retrieval_profile.docs_k,
         )
 
         doc_docs_nested = doc_results.get("documents", [[]])
@@ -4319,7 +4342,7 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
         memory_results = query_similar_memory_items(
             project_id=conversation.project_id,
             query_embedding=user_embedding,
-            n_results=5,
+            n_results=retrieval_profile.memory_k,
         )
         mem_ids_nested = memory_results.get("ids", [[]])
         mem_docs_nested = memory_results.get("documents", [[]])
