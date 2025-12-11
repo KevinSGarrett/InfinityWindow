@@ -63,9 +63,10 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
   - [ ] Future: telemetry-driven prompt tuning, smarter retrieval/context shaping, and long-window learning.  
   - [x] Additional QA around noisy projects and long histories.  
 
-- [ ] **Enhanced retrieval & context shaping**  
-  - [ ] Per‑feature retrieval tuning (tasks vs docs vs memory).  
-  - [ ] Configurable retrieval strategies via `CONFIG_ENV.md`.  
+- [~] **Enhanced retrieval & context shaping**  
+  - [~] Per‑feature retrieval tuning (tasks vs docs vs memory) via env‑driven `RetrievalProfile`; future refinements remain.  
+  - [x] Configurable retrieval strategies via `CONFIG_ENV.md`.  
+  - v1: RetrievalProfile env config + `/debug/retrieval_config` + Usage tab summary; deeper telemetry-driven tuning and multi-profile strategies remain future.  
 
 ---
 

@@ -9,7 +9,8 @@ Status legend: **Shipped** (implemented in this repo), **Partial** (works but ne
 
 ## Current requirement clusters
 - Core workspace (projects, conversations, chat, search): **Shipped**. FastAPI backend + React UI support projects, conversations, chat modes, search over messages/docs/memory.
-- Tasks & automation: **Partial**. Tasks CRUD, auto-add/auto-complete/dedupe, and context-aware prompt assembly (`PROJECT_CONTEXT` built from instructions + pinned note/sprint focus + project goal + high-priority tasks) with telemetry are present; Usage tab surfaces a hint when context is available. Priority/dependency intelligence, retrieval/context shaping, richer approvals, and long-horizon tuning remain future.
+- Tasks & automation: **Partial**. Tasks CRUD, auto-add/auto-complete/dedupe, and context-aware prompt assembly (`PROJECT_CONTEXT` built from instructions + pinned note/sprint focus + project goal + high-priority tasks) with telemetry are present; Usage tab surfaces a hint when context is available. Priority/dependency intelligence and long-horizon tuning remain future.
+- Retrieval/context shaping: **Partial**. Env-driven `RetrievalProfile` (messages/docs/memory/tasks K) preserves prior defaults, feeds chat/search/task upkeep, and is exposed via `/debug/retrieval_config` plus a read-only summary in the Usage tab. Telemetry-driven tuning, long-window analytics, and multi-strategy profiles are future.
 - Docs & ingestion/search: **Shipped**. Text and repo ingestion with `IngestionJob` progress, hash skip, cancel/history; search across docs/messages/memory. Blueprint/plan ingestion is **Future**.
 - Filesystem & terminal safety: **Shipped**. Scoped fs list/read/write and AI edits under project root; terminal runs scoped with `check=True` and a pattern-based injection guard; `local_root_path` validation enforced. Persisted terminal history remains future.
 - Notes, decisions, memory: **Shipped**. Project instructions/pinned note, decision log with follow-ups, memory items + retrieval and “Remember this” button.
@@ -41,8 +42,8 @@ Source of truth:
 
 ### Chat & Retrieval — Status: Partial
 - `/chat` reuses or creates conversations, stores messages, and calls the stubbed LLM.
-- Retrieval embeds user text and surfaces similar messages, docs, and memory items into the system prompt.
-- No retrieval debug endpoint; quality tuning/persistence is future work.
+- Retrieval embeds user text and surfaces similar messages, docs, and memory items into the system prompt. Retrieval counts (messages/docs/memory/tasks) are governed by an env-driven `RetrievalProfile` that clamps overrides and defaults to the prior 5/5/5/5 behavior.
+- Diagnostics: `/debug/retrieval_config` exposes the active profile + source; UI surfaces a read-only retrieval summary in the Usage tab. Quality tuning/persistence remains future.
 
 ### Documents & Ingestion — Status: Implemented (core)
 - Text doc ingest (`/docs/text`, `/projects/{id}/docs/text`), metadata CRUD, and delete.
@@ -94,9 +95,10 @@ Source of truth:
 - QA/Evidence: API regression for delete/list on archived projects; Playwright project-list archive flow; PROGRESS entry “2025-12-10 – Project lifecycle & archive v1”; docs updated in `USER_MANUAL.md`, `API_REFERENCE.md`, `API_REFERENCE_UPDATED.md`, `SYSTEM_OVERVIEW.md`.
 - Future extensions: `[ ]` Permanent purge for archived projects; `[ ]` Bulk archive/unarchive or batch include/exclude controls.
 
-### Retrieval Phase 1 — Status: Partial
-- Scope: message/doc/memory retrieval in `/chat`, debug retrieval context endpoints, and telemetry. `GET /conversations/{id}/debug/retrieval_context` returns **404 for missing conversations by design**.
-- Evidence: `API_REFERENCE_UPDATED.md`, `SYSTEM_OVERVIEW.md`, retrieval Phase 1 noted as Partial in TODO/PROGRESS.
+### Enhanced retrieval & context shaping v1 — Status: Partial
+- Scope: env-driven `RetrievalProfile` (messages_k/docs_k/memory_k/tasks_k) with caps and defaults matching the prior hard-coded 5s; shared by chat (`app/api/main.py`), search (`app/api/search.py`), and task upkeep.
+- Diagnostics: `GET /debug/retrieval_config` returns the active profile + source; UI shows a read-only summary alongside Usage telemetry.
+- Evidence: `qa/tests_api/test_retrieval_config.py` (defaults, env overrides, chat/search callsites), `frontend/tests/usage-dashboard.spec.ts` (Usage telemetry/summary rendering). Future: telemetry-driven tuning with real-world data and long-window/strategy profiles.
 
 ### Usage dashboard (Phase 3) — Status: Implemented
 - Scope: usage records per conversation, charts/filters/exports, telemetry drawer. Phase 3 persistence/long-window analytics remain future work.

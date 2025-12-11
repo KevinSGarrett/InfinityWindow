@@ -2,6 +2,12 @@
 
 This log is the source of truth for status; keep `docs/TODO_CHECKLIST.md` consistent with it.
 
+## 2025-12-11 – Enhanced retrieval & context shaping v1 (feature/retrieval-profiles-v1, feature/retrieval-profiles-frontend-v1)
+- Backend now builds an env-driven `RetrievalProfile` (`messages_k/docs_k/memory_k/tasks_k`) with caps and defaults that mirror the prior 5/5/5/5 behavior; chat (`/chat`), search (`/search/messages|docs|memory`), and task upkeep share the active profile.
+- Diagnostics: `GET /debug/retrieval_config` returns the active profile + source, covered by `qa/tests_api/test_retrieval_config.py` (defaults, env overrides, and chat/search callsites).
+- Frontend surfaces a read-only retrieval config summary in the Usage tab alongside telemetry (branch `feature/retrieval-profiles-frontend-v1`); usage dashboard specs continue to exercise the Usage view.
+- Tests/commands: `python -m pytest qa/tests_docs/test_docs_existence.py qa/tests_api/test_docs_status.py -q --disable-warnings`; `set LLM_MODE=stub` / `set VECTORSTORE_MODE=stub` + `make ci`; Playwright `frontend/tests/usage-dashboard.spec.ts` and `frontend/tests/ui-usage-filters.spec.ts` cover the Usage view with telemetry/export filters.
+
 ## 2025-12-11 – Context-aware task upkeep (feature/context-aware-tasks-v1)
 - Maintainer now builds a `PROJECT_CONTEXT` block for automation prompts (instructions, pinned note/sprint focus, project goal/description, and high-priority open tasks with blocked/not-blocked flags) via `build_task_context_for_project` + `_TASK_CONTEXT_STATS`; telemetry records whether context was injected and how many high-priority tasks were surfaced.
 - Usage tab shows a subtle “context-aware TODO extraction enabled” hint when instructions + pinned note are present (seeded in `frontend/tests/tasks-confidence.spec.ts`).
@@ -25,7 +31,7 @@ This log is the source of truth for status; keep `docs/TODO_CHECKLIST.md` consis
 - Task-aware auto-mode routing live (heuristic submode, telemetry counters, override UI); tuning with real telemetry remains.
 - Autonomous TODO intelligence: auto add/complete/deduped tasks, review queue v2 with dependency/duplicate reasons, dependency hints guard completions, audit snippets + telemetry; priority/grouping heuristics partially tuned; dependency graph/advanced dedupe future.
 - Usage/telemetry dashboard Phase 2 shipped (charts/filters/time window, JSON/CSV exports, inline empty/error states); long-window analytics/persistence and context-aware extraction prompts are still future.
-- Retrieval/context shaping per-feature and config toggles not started (future).
+- Retrieval/context shaping v1 shipped (env-driven `RetrievalProfile`, `/debug/retrieval_config`, Usage summary). Future: telemetry-driven tuning with real data, long-window analytics, and strategy profiles.
 
 ## 3. v3/v4 – UX and right-column
 - Eight-tab right column with refresh-all; Search/Usage/Notes/Decisions UX improvements; manual terminal UI + command history.
