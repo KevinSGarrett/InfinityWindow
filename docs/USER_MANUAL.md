@@ -653,6 +653,7 @@ Safety tips:
 - The backend enforces `cwd` under `local_root_path`.
 - You, not the assistant, are responsible for destructive commands.
 - Prefer safe diagnostics and tests as recommended by the system prompt.
+- A lightweight **terminal guard** blocks obviously destructive commands (examples: `rm -rf /`, `rm -rf *`, `del /s /q C:\`, `format C:`, `shutdown`). If blocked, the run is skipped and the Terminal panel shows the API error detail, e.g., `Command blocked by terminal guard: rm -rf / is not allowed`.
 
 ---
 

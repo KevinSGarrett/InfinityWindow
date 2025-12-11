@@ -5,6 +5,7 @@ import os
 import subprocess
 import difflib
 import re
+import shlex
 import time
 import threading
 from collections import deque
@@ -3964,6 +3965,53 @@ def legacy_ingest(payload: dict, db: Session = Depends(get_db)):
 # ---------- Terminal ----------
 
 
+def ensure_safe_terminal_command(cmd: str) -> None:
+    """
+    Light-weight guardrail to block obviously destructive commands.
+    - Keep rules minimal and explicit; err on allowing ambiguous commands.
+    """
+    normalized = (cmd or "").strip()
+    lowered = normalized.lower()
+
+    def _block(reason: str) -> None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Command blocked by terminal guard: {reason}",
+        )
+
+    if not normalized:
+        return
+
+    try:
+        tokens = shlex.split(normalized)
+    except ValueError:
+        tokens = lowered.split()
+    tokens_lower = [t.lower() for t in tokens]
+
+    # rm -rf against root or global wildcards
+    if len(tokens_lower) >= 3 and tokens_lower[0] == "rm" and tokens_lower[1].startswith("-rf"):
+        target = tokens_lower[2].strip()
+        if target in {"/", "/*", "*", ".*"} or target.startswith("/*"):
+            _block(f"rm -rf {target} is not allowed")
+    if "rm" in tokens_lower and "--no-preserve-root" in lowered:
+        _block("rm with --no-preserve-root is not allowed")
+
+    # Windows destructive variants
+    if re.search(r"\bdel\s+/s\s+/q\s+[a-z]:\\?(?:\s|$)", lowered):
+        _block("del /s /q against a drive root is not allowed")
+    if re.search(r"\bformat\s+[a-z]:\\?(?:\s|$)", lowered):
+        _block("formatting a drive is not allowed")
+
+    # Shutdown / reboot commands
+    shutdown_targets = {"shutdown", "reboot", "poweroff"}
+    if tokens_lower:
+        first = tokens_lower[0]
+        if first in shutdown_targets:
+            _block("shutdown or reboot commands are not allowed")
+        if first == "sudo" and len(tokens_lower) > 1 and tokens_lower[1] in shutdown_targets:
+            _block("shutdown or reboot commands are not allowed")
+
+
 @app.post("/terminal/run")
 def run_terminal_command(
     payload: TerminalRunPayload,
@@ -3999,6 +4047,7 @@ def run_terminal_command(
             detail="Working directory does not exist or is not a directory.",
         )
 
+    ensure_safe_terminal_command(payload.command)
     timeout = payload.timeout_seconds or 120
 
     try:
