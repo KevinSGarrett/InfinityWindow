@@ -22,7 +22,7 @@ ci: backend-tests frontend-build
 backend-tests: export PYTHONPATH := $(PYTHONPATH_VALUE)
 backend-tests: export VECTORSTORE_MODE ?= stub
 backend-tests:
-	$(PYTHON) -m pytest qa/tests_api $(COVERAGE_ARGS) $(if $(COVERAGE_FAIL_UNDER),--cov-fail-under=$(COVERAGE_FAIL_UNDER),)
+	$(PYTHON) -m pytest qa/tests_docs qa/tests_api $(COVERAGE_ARGS) $(if $(COVERAGE_FAIL_UNDER),--cov-fail-under=$(COVERAGE_FAIL_UNDER),)
 
 frontend-build:
 	npm run build --prefix frontend

@@ -38,6 +38,7 @@ from app.api.search import router as search_router
 from app.api.docs import router as docs_router
 from app.api.github import router as github_router
 from app.ingestion.github_ingestor import ingest_repo_job, get_ingest_telemetry
+from app.docs_guardrails import collect_docs_status
 
 # Create tables on import (simple approach for now; later we can use migrations)
 Base.metadata.create_all(bind=engine)
@@ -3272,6 +3273,14 @@ def get_conversation_usage(
 
 
 # ---------- Telemetry & diagnostics ----------
+
+
+@app.get("/debug/docs_status")
+def read_docs_status() -> Dict[str, Any]:
+    """
+    Return status for required docs. `missing` is empty when all docs exist.
+    """
+    return collect_docs_status()
 
 
 @app.get("/debug/telemetry")
