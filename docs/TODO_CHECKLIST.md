@@ -1,4 +1,4 @@
-﻿# InfinityWindow TODO / Roadmap Checklist
+# InfinityWindow TODO / Roadmap Checklist
 
 This document is a **checklist view** of the roadmap described in `docs/PROGRESS.md`.  
 It is intentionally redundant, but more actionable: use it to track what remains, in what order.
@@ -56,7 +56,11 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
 - [~] Full usage/telemetry dashboard UI (graphs, filters, long‑term analytics).  (Phase 2 shipped: charts for action/model/confidence/mode with shared filters/time window, filtered JSON/CSV exports, inline empty/error states, and export error fallbacks; Phase 3 long-term analytics/persistence still future.)  
   - [x] Usage tab filters/render verification; telemetry now fetches on tab entry/Use current chat; filters verified.  
   - [x] Audit trail snippets when the maintainer closes a task (“Closed automatically on …”).  
-  - [ ] Context-aware extraction prompts (feed project goals, sprint focus, blockers).  
+- [~] Context-aware TODO extraction prompts (feed project goals, sprint focus, blockers).  
+  - [x] Backend builds a `PROJECT_CONTEXT` block (instructions, pinned note/sprint focus, goal/description, high-priority open tasks with blocked/not-blocked flags) via `build_task_context_for_project` + `_TASK_CONTEXT_STATS`, and telemetry records context injection + surfaced high-priority counts.  
+  - [x] Usage tab shows a subtle “context-aware TODO extraction enabled” hint when instructions + pinned note are present.  
+  - [x] Tests cover prompt context assembly and the Usage hint (API: `qa/tests_api/test_tasks_automation_prompt_context.py`; UI: `frontend/tests/tasks-confidence.spec.ts` seeds instructions/pinned note).  
+  - [ ] Future: telemetry-driven prompt tuning, smarter retrieval/context shaping, and long-window learning.  
   - [x] Additional QA around noisy projects and long histories.  
 
 - [ ] **Enhanced retrieval & context shaping**  
@@ -130,6 +134,7 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
 - [x] Wire `auto_update_tasks` to run automatically after `/chat` (with retry/timeout guards).
 - [x] Stabilize `auto_update_tasks` (503 mitigation + retry).
 - [x] Handle missing task backlog files gracefully (skip/log missing targets).
+- [~] Context-aware TODO extraction prompt: context block is injected (instructions + pinned note + goal + high-priority tasks), telemetry records context usage/high-priority surfaced counts, and the Usage hint is visible when instructions + pinned note are set; advanced tuning and retrieval shaping remain future.
 - [~] Improve task intent extraction to reduce extra “analysis” tasks and handle vague prompts.
   - Next: tighten dedupe/completion on noisy conversations; add telemetry-backed confidence scoring. (Recent QA adds noisy/long-history coverage and conservative completion guard.)
 - [x] Audit snippets for auto-added/completed/deduped tasks (stored in `Task.auto_notes` and shown in Tasks/Usage UI).

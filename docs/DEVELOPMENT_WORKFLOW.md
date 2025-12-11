@@ -72,6 +72,7 @@ npm run test:e2e
 ```
 
 ## Git & GitHub workflow
+- Repo scope: work only in `C:\InfinityWindow_Recovery`. Treat `C:\InfinityWindow` (legacy) and `C:\InfinityWindow_Backup\019` as read-only references.
 - Remote: `origin` → `https://github.com/KevinSGarrett/InfinityWindow` (primary branch `main`).
 - CI: GitHub Actions runs `make ci` (backend API tests + frontend build) on every push/PR to `main` with `LLM_MODE=stub` and `VECTORSTORE_MODE=stub`; keep branches green by running `make ci` locally first (equivalent to `PYTHONPATH=".;backend" python -m pytest qa/tests_api` plus `npm run build --prefix frontend`). Coverage is off by default; supply `COVERAGE_ARGS` if you want pytest-cov metrics.
 - Keep `main` green: run the API tests (and UI build/Playwright if you changed the UI) before pushing.
@@ -79,10 +80,17 @@ npm run test:e2e
   - Prefer short-lived branches like `feature/<topic>` or `bugfix/<topic>` merged into `main` after tests.
   - If committing directly to `main`, keep changes small and tested.
 - Typical loop:
+  - Start every run with `git status -sb` to confirm the branch and detect unexpected tracked changes.
   - `git status` / `git diff` (review).
   - `git add -p` (or specific files).
   - `git commit -m "feat: <summary>"` (Conventional Commit prefixes encouraged: `feat`, `fix`, `docs`, `test`, `refactor`).
   - `git push origin <branch>` (or `git push origin main` when ready).
+
+### Repo hygiene & multi-agent rules
+- Do not delete or rename docs (`docs/*.md`), test files (`qa/` or `frontend/tests/`), or docs zip backups; never run `git clean` as “cleanup.”
+- Accepted persistent noise: SQLite shards (`infinitywindow.db*`), Chroma data under `backend/chroma_data/`, and docs zip backups. Leave them untracked; do not stage or delete.
+- Each run should end with an effectively clean working tree: no tracked changes; only the accepted noise above may remain untracked.
+- If you see unexpected tracked changes outside your task, stop and report instead of “fixing” by deleting files.
 
 Quick pointers: use `DEV_GUIDE.md` for code structure and conventions, `OPERATIONS_RUNBOOK.md` for QA/ops routines, and `TEST_PLAN.md` for detailed test cases.
 

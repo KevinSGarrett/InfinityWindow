@@ -2,6 +2,11 @@
 
 This log is the source of truth for status; keep `docs/TODO_CHECKLIST.md` consistent with it.
 
+## 2025-12-11 – Context-aware task upkeep (feature/context-aware-tasks-v1)
+- Maintainer now builds a `PROJECT_CONTEXT` block for automation prompts (instructions, pinned note/sprint focus, project goal/description, and high-priority open tasks with blocked/not-blocked flags) via `build_task_context_for_project` + `_TASK_CONTEXT_STATS`; telemetry records whether context was injected and how many high-priority tasks were surfaced.
+- Usage tab shows a subtle “context-aware TODO extraction enabled” hint when instructions + pinned note are present (seeded in `frontend/tests/tasks-confidence.spec.ts`).
+- QA coverage added for prompt context assembly (`qa/tests_api/test_tasks_automation_prompt_context.py`) alongside existing automation audit coverage; branch: `feature/context-aware-tasks-v1`.
+
 ## Recovery 2025-12-10
 - Restored clean copy from `C:\InfinityWindow_Backup\019` into `C:\InfinityWindow_Recovery`; rebuilt SQLite/Chroma in stub mode and validated the stack.
 - Wired GitHub via staging branch `recovery-main-2025-12-10`; guardrails: small single-feature branches, human merges to main, no repo-wide conflict/branch cleanup prompts.

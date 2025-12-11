@@ -9,11 +9,11 @@ Status legend: **Shipped** (implemented in this repo), **Partial** (works but ne
 
 ## Current requirement clusters
 - Core workspace (projects, conversations, chat, search): **Shipped**. FastAPI backend + React UI support projects, conversations, chat modes, search over messages/docs/memory.
-- Tasks & automation: **Partial**. Tasks CRUD, auto-add/auto-complete/dedupe and telemetry are present. Priority/dependency intelligence, richer approvals, and long-horizon tuning remain future.
+- Tasks & automation: **Partial**. Tasks CRUD, auto-add/auto-complete/dedupe, and context-aware prompt assembly (`PROJECT_CONTEXT` built from instructions + pinned note/sprint focus + project goal + high-priority tasks) with telemetry are present; Usage tab surfaces a hint when context is available. Priority/dependency intelligence, retrieval/context shaping, richer approvals, and long-horizon tuning remain future.
 - Docs & ingestion/search: **Shipped**. Text and repo ingestion with `IngestionJob` progress, hash skip, cancel/history; search across docs/messages/memory. Blueprint/plan ingestion is **Future**.
 - Filesystem & terminal safety: **Shipped**. Scoped fs list/read/write and AI edits under project root; terminal runs scoped with `check=True` and a pattern-based injection guard; `local_root_path` validation enforced. Persisted terminal history remains future.
 - Notes, decisions, memory: **Shipped**. Project instructions/pinned note, decision log with follow-ups, memory items + retrieval and “Remember this” button.
-- Usage & telemetry: **Partial**. Usage records per conversation plus task automation telemetry and lightweight charts/filters/exports. Long-window persistence/analytics still **Future**.
+- Usage & telemetry: **Partial**. Usage records per conversation plus task automation telemetry (including context injection + surfaced high-priority counts) and lightweight charts/filters/exports. Long-window persistence/analytics still **Future**.
 - UI workbench (right-column tabs): **Shipped**. Eight-tab layout (Tasks, Docs, Files, Search, Terminal, Usage, Notes, Memory) with refresh-all and keyboard shortcuts.
 - QA & safety tooling: **Shipped**. Smoke probes (`qa/run_smoke.py`), ingestion probes, Playwright specs, guarded QA reset script. Continue to validate after recovery.
 - Git/GitHub workflow hygiene: **Shipped** (doc’d). main stays clean; feature branches only; agents A/B/C own separate scopes; no branch merging/conflict “mega hygiene.”
@@ -49,10 +49,10 @@ Source of truth:
 - Repo ingestion jobs (`/projects/{id}/ingestion_jobs` + poll/cancel) with Chroma embeddings.
 - Semantic search over messages/docs/memory via `/search/*`.
 
-### Tasks / TODO Automation — Status: Implemented
-- Auto add/complete/dedupe runs after `/chat` and via `/projects/{id}/auto_update_tasks`.
-- Task suggestions + approve/dismiss endpoints; audit fields (`auto_confidence`, `auto_last_action`, `auto_notes`).
-- Telemetry counters + recent actions via `/debug/telemetry`; task overview endpoint combines tasks + suggestions.
+### Tasks / TODO Automation — Status: Partial
+- Auto add/complete/dedupe runs after `/chat` and via `/projects/{id}/auto_update_tasks`; automation prompts now include a `PROJECT_CONTEXT` block (instructions, pinned note/sprint focus, project goal/description, high-priority tasks with blocked/not-blocked flags) and telemetry captures context injection + surfaced high-priority counts.
+- Task suggestions + approve/dismiss endpoints; audit fields (`auto_confidence`, `auto_last_action`, `auto_notes`) and a Usage-tab hint appears when instructions + pinned note are present.
+- Telemetry counters + recent actions via `/debug/telemetry`; task overview endpoint combines tasks + suggestions; QA: `qa/tests_api/test_tasks_automation_prompt_context.py`, `qa/tests_api/test_tasks_automation_audit.py`, Playwright `frontend/tests/tasks-confidence.spec.ts`.
 
 ### Memory & Decisions — Status: Implemented
 - Memory item CRUD + search; pinned items injected into chat context.
@@ -67,8 +67,8 @@ Source of truth:
 - History endpoint returns an empty list; persisted terminal history is future work.
 
 ### Usage & Telemetry — Status: Partial
-- `/conversations/{id}/usage` returns per-conversation usage records (tokens/model/cost).
-- `/debug/telemetry` returns LLM + task + ingestion counters and recent actions.
+- `/conversations/{id}/usage` returns per-conversation usage records (tokens/model/cost) plus task automation telemetry, including context-aware prompt injection and surfaced high-priority task counts.
+- `/debug/telemetry` returns LLM + task + ingestion counters and recent actions; the Usage tab surfaces a subtle hint when context-aware TODO extraction is active (instructions + pinned note present).
 - No dashboard persistence, charts, or long-window analytics.
 
 ### Autopilot / Blueprint / Export-Import — Status: Not started (design-only)
@@ -76,8 +76,8 @@ Source of truth:
 
 ## Evidence
 - Backend APIs: `backend/app/api/main.py`, `backend/app/api/docs.py`, `backend/app/api/search.py`.
-- Tests: `qa/tests_api/test_api_projects.py`, `test_chat_tasks_autopilot.py`, `test_chat_tasks_noisy.py`, `test_tasks_automation_audit.py`, `test_usage_telemetry_dashboard.py`, `test_ingestion_e2e.py`.
-- Frontend: minimal SPA in `frontend/src/App.tsx`; Playwright specs cover basic tabs and telemetry/task surfaces.
+- Tests: `qa/tests_api/test_api_projects.py`, `test_chat_tasks_autopilot.py`, `test_chat_tasks_noisy.py`, `test_tasks_automation_audit.py`, `test_tasks_automation_prompt_context.py`, `test_usage_telemetry_dashboard.py`, `test_ingestion_e2e.py`.
+- Frontend: minimal SPA in `frontend/src/App.tsx`; Playwright specs cover basic tabs, telemetry/task surfaces, and context-aware TODO hints (`frontend/tests/tasks-confidence.spec.ts`).
 # InfinityWindow – Requirements & CRM
 
 ## Source of truth
