@@ -6,6 +6,8 @@ __pycache__/
 *.pyd
 *.so
 *.db
+*.db-wal
+*.db-shm
 *.egg
 *.egg-info/
 *.env
