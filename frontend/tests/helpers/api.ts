@@ -1,4 +1,8 @@
 import { APIRequestContext, expect } from '@playwright/test';
+import path from 'node:path';
+
+export const DEFAULT_TEST_REPO_PATH =
+  process.env.TEST_REPO_PATH || path.resolve('..');
 
 const API_BASE = process.env.PLAYWRIGHT_API_BASE ?? 'http://127.0.0.1:8000';
 
@@ -25,7 +29,7 @@ export async function createTestProject(
         data: {
           name,
           description: 'Playwright QA project',
-          local_root_path: localRootPath ?? 'C:\\InfinityWindow',
+          local_root_path: localRootPath ?? DEFAULT_TEST_REPO_PATH,
         },
         timeout: 30_000,
       });
@@ -44,17 +48,24 @@ export async function createTestProject(
 export async function setProjectInstructions(
   request: APIRequestContext,
   projectId: number,
-  text: string
+  text: string,
+  pinnedNote?: string
 ): Promise<void> {
+  const payload: {
+    instruction_text: string;
+    pinned_note_text?: string;
+  } = { instruction_text: text };
+  if (pinnedNote !== undefined) {
+    payload.pinned_note_text = pinnedNote;
+  }
   const response = await request.put(
     `${API_BASE}/projects/${projectId}/instructions`,
     {
-      data: { instruction_text: text },
+      data: payload,
     }
   );
   expect(response.ok()).toBeTruthy();
 }
-
 export async function addDecision(
   request: APIRequestContext,
   projectId: number,
@@ -159,4 +170,3 @@ export async function createProject(name: string): Promise<TestProject> {
   }
   return await response.json();
 }
-

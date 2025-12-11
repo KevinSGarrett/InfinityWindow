@@ -812,6 +812,10 @@ _TASK_TELEMETRY: Dict[str, int] = {
     "auto_suggested": 0,
 }
 _TASK_ACTION_HISTORY: Deque[Dict[str, Any]] = deque(maxlen=50)
+_TASK_CONTEXT_STATS: Dict[str, Any] = {
+    "context_included": False,
+    "context_high_priority_count": 0,
+}
 _AUTO_UPDATE_TASKS_AFTER_CHAT = (
     os.getenv("AUTO_UPDATE_TASKS_AFTER_CHAT", "true").lower()
     not in {"0", "false", "no", "off"}
@@ -847,6 +851,11 @@ def get_task_telemetry(reset: bool = False) -> Dict[str, int]:
         reset_task_telemetry()
         snapshot = dict(_TASK_TELEMETRY)
         actions = []
+        snapshot["recent_actions"] = actions
+    snapshot["context_included"] = bool(_TASK_CONTEXT_STATS.get("context_included", False))
+    snapshot["context_high_priority_count"] = int(
+        _TASK_CONTEXT_STATS.get("context_high_priority_count", 0)
+    )
     return snapshot
 
 
@@ -854,6 +863,8 @@ def reset_task_telemetry() -> None:
     for key in _TASK_TELEMETRY:
         _TASK_TELEMETRY[key] = 0
     _TASK_ACTION_HISTORY.clear()
+    _TASK_CONTEXT_STATS["context_included"] = False
+    _TASK_CONTEXT_STATS["context_high_priority_count"] = 0
 
 
 def _run_auto_update_with_retry(
@@ -1395,6 +1406,66 @@ def _line_mentions_completion(line: str) -> bool:
     return any(keyword in lower for keyword in _TASK_COMPLETION_KEYWORDS)
 
 
+def build_task_context_for_project(
+    project: Optional[models.Project],
+    db: Session,
+    *,
+    max_tasks: int = 5,
+) -> tuple[str, int]:
+    """
+    Build a compact, structured context block for task extraction.
+
+    Includes:
+    - Project instructions (or explicit None)
+    - Pinned note / sprint focus (or explicit None)
+    - Project goal/description (or explicit None)
+    - Top N high-priority open tasks with blocked hints (or explicit None)
+    """
+    instructions = (getattr(project, "instruction_text", "") or "").strip() or "None set"
+    pinned_note = (getattr(project, "pinned_note_text", "") or "").strip() or "None set"
+    goal = (getattr(project, "description", "") or "").strip() or "None set"
+
+    high_priority_tasks: List[models.Task] = []
+    if project:
+        priority_order = case(
+            (models.Task.priority == "critical", 0),
+            (models.Task.priority == "high", 1),
+            else_=2,
+        )
+        high_priority_tasks = (
+            db.query(models.Task)
+            .filter(models.Task.project_id == project.id)
+            .filter(models.Task.status == "open")
+            .filter(models.Task.priority.in_(("critical", "high")))
+            .order_by(priority_order, models.Task.updated_at.desc())
+            .limit(max_tasks)
+            .all()
+        )
+
+    lines: List[str] = [
+        "[PROJECT_CONTEXT]",
+        f"Instructions: {instructions}",
+        f"Pinned note / sprint focus: {pinned_note}",
+        f"Project goal/description: {goal}",
+        "High-priority open tasks:",
+    ]
+    if high_priority_tasks:
+        for task in high_priority_tasks:
+            blocked_reason = (task.blocked_reason or "").strip()
+            blocked_label = (
+                f"blocked=Yes: {blocked_reason}" if blocked_reason else "blocked=No"
+            )
+            lines.append(
+                f"- [TASK-{task.id}] {task.description} "
+                f"(status={task.status.upper()}, priority={task.priority.upper()}, {blocked_label})"
+            )
+    else:
+        lines.append("- None set")
+    lines.append("[/PROJECT_CONTEXT]")
+
+    return "\n".join(lines), len(high_priority_tasks)
+
+
 def auto_update_tasks_from_conversation(
     db: Session,
     conversation: models.Conversation,
@@ -1407,6 +1478,9 @@ def auto_update_tasks_from_conversation(
 
     This is best‑effort and should never raise out of here.
     """
+    _TASK_CONTEXT_STATS["context_included"] = False
+    _TASK_CONTEXT_STATS["context_high_priority_count"] = 0
+
     # Get recent messages (most recent first, then reverse to chronological)
     recent_messages = (
         db.query(models.Message)
@@ -1638,31 +1712,16 @@ def auto_update_tasks_from_conversation(
         )
 
     project = conversation.project
-    instruction_context = ""
-    if project and project.instruction_text:
-        instruction_context = (
-            "Project instructions:\n"
-            f"{project.instruction_text.strip()}\n\n"
-        )
-    pinned_note_context = ""
-    if project and project.pinned_note_text:
-        pinned_note_context = (
-            "Pinned note:\n"
-            f"{project.pinned_note_text.strip()}\n\n"
-        )
-    goal_context = ""
-    if project and project.description:
-        goal_context = (
-            "Project goal/description:\n"
-            f"{project.description.strip()}\n\n"
-        )
+    context_block, high_priority_count = build_task_context_for_project(project, db)
+    _TASK_CONTEXT_STATS["context_included"] = bool(context_block)
+    _TASK_CONTEXT_STATS["context_high_priority_count"] = high_priority_count
 
     system_instructions = (
         "You help maintain a TODO list for a long-running software project.\n"
-        "Use the current context to decide what new tasks should exist.\n\n"
-        f"{goal_context}"
-        f"{instruction_context}"
-        f"{pinned_note_context}"
+        "Use the PROJECT_CONTEXT to prioritize which TODO items to extract and which existing tasks to mark complete. "
+        "Focus on items aligned with the project goals, sprint focus, and blockers, and de-emphasize generic or off-topic ideas. "
+        "Avoid creating noisy duplicates when equivalent work already exists in the high-priority open list.\n\n"
+        f"{context_block}\n\n"
         f"{priority_context}"
         f"{dependency_context}"
         f"{blocked_context}"
@@ -1670,14 +1729,16 @@ def auto_update_tasks_from_conversation(
         "actionable tasks that should be added to the project TODO list. "
         "Prefer action verbs (implement/add/fix/write/document). "
         "If the message is vague/analysis-only, return an empty list or use suggestions instead of noisy tasks. "
-        "Infer priority (critical/high/normal/low) from language and mark blocked_reason when users mention blockers.\n\n"
+        "Infer priority (critical/high/normal/low) from language and mark blocked_reason when users mention blockers. "
+        "If conversation snippets imply a listed high-priority task is finished, prefer completion over creating a duplicate.\n\n"
         "Rules:\n"
         "- Only include tasks that clearly represent work to be done in the future.\n"
         "- Skip questions, chit-chat, or things already clearly completed.\n"
         '- Prefer short, imperative descriptions like '
         '"Add cost panel to InfinityWindow UI".\n'
         "- Do NOT include due dates or owners; only descriptions.\n"
-        "- If there are no new tasks, return an empty list.\n\n"
+        "- If there are no new tasks, return an empty list.\n"
+        "- If a request matches an existing open task, avoid adding another duplicate.\n\n"
         "Output JSON ONLY, with this exact structure (no commentary):\n"
         '{\"tasks\": [{\"description\": \"...\"}, ...]}'
     )
