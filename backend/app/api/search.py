@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app import retrieval_config
 from app.db.session import get_db
 from app.db import models
 from app.llm.embeddings import get_embedding
@@ -30,7 +31,7 @@ class MessageSearchRequest(BaseModel):
     query: str
     conversation_id: Optional[int] = None
     folder_id: Optional[int] = None
-    limit: int = 5
+    limit: Optional[int] = None
 
 
 class MessageSearchHit(BaseModel):
@@ -88,7 +89,11 @@ def search_messages(
                 detail="Conversation folder not found for this project.",
             )
 
-    # 3) Create embedding for the query
+    # 3) Resolve retrieval profile and create embedding for the query
+    profile = retrieval_config.get_retrieval_profile()
+    limit = payload.limit if payload.limit is not None else profile.messages_k
+    if limit is None or limit <= 0:
+        limit = profile.messages_k
     query_emb = get_embedding(payload.query)
 
     # 4) Query Chroma
@@ -97,7 +102,7 @@ def search_messages(
         query_embedding=query_emb,
         conversation_id=payload.conversation_id,
         folder_id=payload.folder_id,
-        n_results=payload.limit,
+        n_results=limit,
     )
 
     # Chroma response structure:
@@ -183,7 +188,7 @@ class DocSearchRequest(BaseModel):
     project_id: int
     query: str
     document_id: Optional[int] = None
-    limit: int = 5
+    limit: Optional[int] = None
 
 
 class DocSearchHit(BaseModel):
@@ -230,6 +235,11 @@ def search_docs(
                 detail="Document does not belong to the given project.",
             )
 
+    profile = retrieval_config.get_retrieval_profile()
+    limit = payload.limit if payload.limit is not None else profile.docs_k
+    if limit is None or limit <= 0:
+        limit = profile.docs_k
+
     # 3) Create embedding for the query
     query_emb = get_embedding(payload.query)
 
@@ -238,7 +248,7 @@ def search_docs(
         project_id=payload.project_id,
         query_embedding=query_emb,
         document_id=payload.document_id,
-        n_results=payload.limit,
+        n_results=limit,
     )
 
     ids_nested = results.get("ids", [[]])
@@ -277,13 +287,13 @@ def search_docs(
 class MemorySearchRequest(BaseModel):
     project_id: int
     query: str
-    limit: int = 5
+    limit: Optional[int] = None
 
 
 class MemorySearchRequest(BaseModel):
     project_id: int
     query: str
-    limit: int = 5
+    limit: Optional[int] = None
 
 
 class MemorySearchHit(BaseModel):
@@ -300,7 +310,7 @@ class MemorySearchResponse(BaseModel):
 class MemorySearchRequest(BaseModel):
     project_id: int
     query: str
-    limit: int = 5
+    limit: Optional[int] = None
 
 
 class MemorySearchHit(BaseModel):
@@ -327,11 +337,16 @@ def search_memory(
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found.")
 
+    profile = retrieval_config.get_retrieval_profile()
+    limit = payload.limit if payload.limit is not None else profile.memory_k
+    if limit is None or limit <= 0:
+        limit = profile.memory_k
+
     query_emb = get_embedding(payload.query)
     results = query_similar_memory_items(
         project_id=payload.project_id,
         query_embedding=query_emb,
-        n_results=payload.limit,
+        n_results=limit,
     )
 
     ids_nested = results.get("ids", [[]])
