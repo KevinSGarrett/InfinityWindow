@@ -750,6 +750,9 @@ In the **Usage** tab:
 - **Summary metrics**:
   - Total tokens in/out and estimated cost (USD).
   - Total assistant calls recorded for the selected conversation.
+- **Retrieval config summary**:
+  - Shows the active env-driven retrieval caps (messages/docs/memory/tasks) used by chat/search/task upkeep; defaults mirror the prior 5/5/5/5 behavior and clamp misconfigured overrides.
+  - Also available via `GET /debug/retrieval_config` for diagnostics.
 - **Model breakdown**:
   - Shows how many calls each model handled.
   - Displays aggregate tokens-in/tokens-out per model so you can spot expensive routes.

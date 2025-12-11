@@ -68,7 +68,29 @@ The `auto` mode uses `_infer_auto_submode` to pick between:
 - `fast` – short, simple prompts.
 - `deep` – everything else.
 
-### 1.3 Autopilot / role-based model aliases (planned)
+### 1.3 Retrieval context shaping
+
+Retrieval counts are controlled by an env-driven `RetrievalProfile` (see `backend/app/retrieval_config.py`). Overrides are clamped to a safe range (min 1, max 50) and default to the previous 5/5/5/5 behavior.
+
+- **`IW_RETRIEVAL_MESSAGES_K`** (optional)  
+  - Default: `5` (int)  
+  - Description: Maximum similar messages retrieved when constructing chat/search context.
+
+- **`IW_RETRIEVAL_DOCS_K`** (optional)  
+  - Default: `5` (int)  
+  - Description: Maximum document chunks retrieved for chat/search context.
+
+- **`IW_RETRIEVAL_MEMORY_K`** (optional)  
+  - Default: `5` (int)  
+  - Description: Maximum memory items retrieved for chat/search context.
+
+- **`IW_RETRIEVAL_TASKS_K`** (optional)  
+  - Default: `5` (int)  
+  - Description: Maximum tasks considered when building the task upkeep context block.
+
+These settings are surfaced via `GET /debug/retrieval_config` (profile + source) and appear read-only in the Usage tab retrieval summary; defaults maintain prior behavior if unset.
+
+### 1.4 Autopilot / role-based model aliases (planned)
 
 > The following environment variables are part of the **Autopilot design** described in `MODEL_MATRIX.md`.  
 > They are not all wired into the current codebase yet.
@@ -89,7 +111,7 @@ Planned role-specific env vars:
 
 Defaults and wiring for these variables are specified in `docs/MODEL_MATRIX.md`. As Autopilot modules are implemented, they should use role-based helpers (`get_model_for_role`, `call_model_for_role`) rather than hard‑coding model IDs.
 
-### 1.4 CORS & networking
+### 1.5 CORS & networking
 
 - **`CORS_ALLOW_ORIGINS`** (optional)  
   Comma‑separated list of allowed origins.  

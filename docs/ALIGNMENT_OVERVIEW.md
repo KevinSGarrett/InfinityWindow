@@ -34,6 +34,12 @@ This is a skim-friendly entry point for alignment and requirement tracking. For 
 - Code: `frontend/src/App.tsx` (Usage tab charts/exports), `backend/app/api/main.py` (`/debug/telemetry`, `/conversations/{id}/usage`), `backend/app/llm/openai_client.py` (telemetry counters).
 - Tests: `qa/tests_api/test_usage_telemetry_dashboard.py`, `frontend/tests/usage-dashboard.spec.ts`, smoke `qa/run_smoke.py` (telemetry reset).
 
+### Enhanced retrieval & context shaping — Status: Partial
+- Requirements: REQ-RETRIEVAL-001 (per-feature retrieval caps with env overrides) and REQ-RETRIEVAL-002 (diagnostics/UI visibility).
+- Docs: `docs/REQUIREMENTS_CRM.md`, `docs/TODO_CHECKLIST.md`, `docs/PROGRESS.md`, `docs/CONFIG_ENV.md`, `docs/USER_MANUAL.md`.
+- Code: `backend/app/retrieval_config.py` (env-driven `RetrievalProfile` with clamps/defaults), `backend/app/api/main.py` (`/chat` retrieval, `/debug/retrieval_config`, task upkeep), `backend/app/api/search.py` (search K limits), `frontend/src/App.tsx` (Usage tab retrieval summary).
+- Tests: `qa/tests_api/test_retrieval_config.py` (defaults, env overrides, chat/search callsites); Usage tab exercised in `frontend/tests/usage-dashboard.spec.ts` and `frontend/tests/ui-usage-filters.spec.ts` alongside telemetry.
+
 ### Ingestion & vector store (T-phase ingestion) — Status: Complete for repo ingestion; blueprint ingestion TBD
 - Scope: Repo ingestion batching, hash-skipping, and progress/audit endpoints are live with stubbed vector store support; blueprint/plan ingestion remains design-only.
 - Docs: `docs/TODO_CHECKLIST.md` (§1), `docs/PROGRESS.md` (ingestion batching), `docs/SYSTEM_OVERVIEW.md` (§3.7), `docs/CONFIG_ENV.md` (embedding/batch knobs).
