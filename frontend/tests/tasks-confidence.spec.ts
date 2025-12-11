@@ -1,13 +1,17 @@
 import { test, expect } from "@playwright/test";
+import { DEFAULT_TEST_REPO_PATH, setProjectInstructions } from "./helpers/api";
+
+const API_BASE =
+  process.env.PLAYWRIGHT_API_BASE ?? "http://127.0.0.1:8000";
 
 test.describe("Tasks tab confidence chip", () => {
   test("renders when available", async ({ page, request }) => {
     // Create a project via API so the UI has something to select
     const projectName = `PW Tasks ${Date.now()}`;
-    const createResp = await request.post("http://127.0.0.1:8000/projects", {
+    const createResp = await request.post(`${API_BASE}/projects`, {
       data: {
         name: projectName,
-        local_root_path: "C:\\\\InfinityWindow",
+        local_root_path: DEFAULT_TEST_REPO_PATH,
       },
     });
     if (createResp.status() !== 200) {
@@ -15,8 +19,15 @@ test.describe("Tasks tab confidence chip", () => {
     }
     const project = await createResp.json();
 
+    await setProjectInstructions(
+      request,
+      project.id,
+      "Context-aware automation enabled for Playwright",
+      "Pinned sprint focus for UI hint"
+    );
+
     // Create a conversation so Usage tab content renders
-    const convoResp = await request.post("http://127.0.0.1:8000/conversations", {
+    const convoResp = await request.post(`${API_BASE}/conversations`, {
       data: {
         project_id: project.id,
         title: "PW Seeded Conversation",
@@ -27,7 +38,7 @@ test.describe("Tasks tab confidence chip", () => {
     }
 
     // Seed an auto action so the confidence chip appears
-    await request.post("http://127.0.0.1:8000/debug/seed_task_action", {
+    await request.post(`${API_BASE}/debug/seed_task_action`, {
       data: {
         project_id: project.id,
         description: "PW Seeded Task",
@@ -39,7 +50,7 @@ test.describe("Tasks tab confidence chip", () => {
 
     // Verify task exists via API
     const tasksResp = await request.get(
-      `http://127.0.0.1:8000/projects/${project.id}/tasks`
+      `${API_BASE}/projects/${project.id}/tasks`
     );
     const tasksJson: { description?: string | null }[] = await tasksResp.json();
     const seededExists = tasksJson.some(
@@ -119,6 +130,9 @@ test.describe("Tasks tab confidence chip", () => {
     const usageTelemetry = page.locator(".usage-telemetry");
     try {
       await usageTelemetry.waitFor({ state: "visible", timeout: 15000 });
+      await expect(
+        page.getByTestId("context-aware-indicator")
+      ).toBeVisible({ timeout: 15000 });
       const usageHeader = page.locator(".usage-telemetry-header");
       if (await usageHeader.isVisible()) {
         const telemetryRefresh = usageHeader.locator(".btn-secondary", {
@@ -137,7 +151,7 @@ test.describe("Tasks tab confidence chip", () => {
       await buckets.waitFor({ state: "visible", timeout: 15000 });
       const bucketList = page
         .locator(".usage-telemetry-list")
-        .filter({ hasText: "0.4–0.7" });
+        .filter({ hasText: "0.4-0.7" });
       await bucketList.waitFor({ state: "visible", timeout: 15000 });
     } catch {
       // Usage telemetry may be absent when no usage records exist; that's acceptable for this check.
@@ -145,4 +159,3 @@ test.describe("Tasks tab confidence chip", () => {
     }
   });
 });
-

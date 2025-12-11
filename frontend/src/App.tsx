@@ -578,7 +578,7 @@ function App() {
   const [fsError, setFsError] = useState<string | null>(null);
   const [fsShowOriginal, setFsShowOriginal] = useState(false);
 
-  // Right‑column workbench tab
+  // Right-column workbench tab
   const [rightTab, setRightTab] = useState<RightTab>("tasks");
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -1039,8 +1039,8 @@ function App() {
   const confidenceChartData = useMemo(() => {
     const labels: Record<string, string> = {
       lt_0_4: "<0.4",
-      "0_4_0_7": "0.4–0.7",
-      gte_0_7: "≥0.7",
+      "0_4_0_7": "0.4-0.7",
+      gte_0_7: ">=0.7",
     };
     const entries = Object.entries(bucketCounts).map(([bucket, count]) => ({
       key: bucket,
@@ -1163,6 +1163,13 @@ function App() {
     return `mini-bar-fill width-${clamped}`;
   };
 
+  const hasProjectContext = useMemo(
+    () =>
+      (projectInstructions && projectInstructions.trim().length > 0) ||
+      (projectPinnedNote && projectPinnedNote.trim().length > 0),
+    [projectInstructions, projectPinnedNote]
+  );
+
   const telemetryPanel = (
     <div className="usage-telemetry">
       <div className="usage-telemetry-header">
@@ -1186,8 +1193,17 @@ function App() {
           </button>
         </div>
       </div>
+      {/* TODO: replace proxy check with backend telemetry flag when available */}
+      {hasProjectContext && (
+        <div
+          className="usage-telemetry-sub context-aware-hint"
+          data-testid="context-aware-indicator"
+        >
+          Context-aware TODO extraction enabled (project instructions + pinned note).
+        </div>
+      )}
       {isLoadingTelemetry ? (
-        <div className="usage-telemetry-body">Loading telemetry…</div>
+        <div className="usage-telemetry-body">Loading telemetry...</div>
       ) : telemetryError ? (
         <div className="usage-telemetry-body usage-telemetry-error">
           {telemetryError}
@@ -1307,7 +1323,7 @@ function App() {
                   </div>
                 </li>
                 <li>
-                  <span className="usage-label">0.4–0.7</span>
+                  <span className="usage-label">0.4-0.7</span>
                   <span className="usage-value">
                     {telemetry.tasks.confidence_buckets["0_4_0_7"]}
                   </span>
@@ -1324,7 +1340,7 @@ function App() {
                   </div>
                 </li>
                 <li>
-                  <span className="usage-label">≥0.7</span>
+                  <span className="usage-label">{'>=0.7'}</span>
                   <span className="usage-value">
                     {telemetry.tasks.confidence_buckets.gte_0_7}
                   </span>
@@ -1444,7 +1460,7 @@ function App() {
                   Mode usage (auto routes)
                 </div>
                 <div className="usage-telemetry-sub">
-                  Counters reset with “Refresh & reset”.
+                  Counters reset with "Refresh & reset".
                 </div>
                 {modeUsageChartData.length ? (
                   <ul className="usage-chart-list">
@@ -1522,7 +1538,7 @@ function App() {
                 {timeFilteredRecentActions.map((a, idx) => (
                   <li key={`${a.timestamp}-${idx}`}>
                     <div className="usage-label">
-                      {a.action} · conf {(a.confidence ?? 0).toFixed(2)}
+                      {a.action} - conf {(a.confidence ?? 0).toFixed(2)}
                       {(() => {
                         const actionModel =
                           a.details?.model ?? a.model ?? lastUsageModel;
@@ -1534,14 +1550,14 @@ function App() {
                       })()}
                     </div>
                     <div className="usage-telemetry-sub">
-                      {a.task_description ?? "—"}
+                      {a.task_description ?? "-"}
                     </div>
                     <div className="usage-telemetry-sub">
                       {a.task_status ? `status: ${a.task_status}` : ""}
-                      {a.task_priority ? ` · priority: ${a.task_priority}` : ""}
-                      {a.task_group ? ` · group: ${a.task_group}` : ""}
+                      {a.task_priority ? ` - priority: ${a.task_priority}` : ""}
+                      {a.task_group ? ` - group: ${a.task_group}` : ""}
                       {a.task_blocked_reason
-                        ? ` · blocked: ${a.task_blocked_reason}`
+                        ? ` - blocked: ${a.task_blocked_reason}`
                         : ""}
                     </div>
                     {(a.details?.matched_text || a.matched_text) ? (
@@ -2052,7 +2068,7 @@ function App() {
       return;
     }
     const description = decision.details
-      ? `Follow-up: ${decision.title} — ${decision.details}`
+      ? `Follow-up: ${decision.title} - ${decision.details}`
       : `Follow-up: ${decision.title}`;
     try {
       const res = await fetch(`${BACKEND_BASE}/tasks`, {
@@ -2580,7 +2596,7 @@ function App() {
     setFileEditError(null);
   };
 
-  // ---------- Terminal + AI follow‑up helpers ----------
+  // ---------- Terminal + AI follow-up helpers ----------
 
   const sendTerminalOutputToChat = async (messageText: string) => {
     if (!selectedProjectId || !selectedConversationId) {
@@ -2735,7 +2751,7 @@ function App() {
     }
     if (manualTerminalSendToChat && !selectedConversationId) {
       alert(
-        "Select a conversation (or uncheck “Send output to chat”) before sending results back to the assistant."
+        'Select a conversation (or uncheck "Send output to chat") before sending results back to the assistant.'
       );
       return;
     }
@@ -3046,7 +3062,7 @@ function App() {
 
       if (!res.ok) {
         console.error("Chat error:", res.status);
-        alert("Chat failed – check backend logs.");
+        alert("Chat failed - check backend logs.");
         return;
       }
 
@@ -3887,7 +3903,7 @@ function App() {
           <div className="backend-pill">
             Backend:{" "}
             <span className="backend-pill-version">
-              {backendVersion ? `InfinityWindow v${backendVersion}` : "…"}
+              {backendVersion ? `InfinityWindow v${backendVersion}` : "..."}
             </span>
           </div>
         </div>
@@ -4400,7 +4416,7 @@ function App() {
                   <div className="chat-message from-assistant thinking">
                     <div className="chat-message-role">Assistant</div>
                     <div className="chat-message-content">
-                      InfinityWindow is thinking…
+                      InfinityWindow is thinking...
                     </div>
                   </div>
                 )}
@@ -4490,7 +4506,7 @@ function App() {
                 onClick={handleSend}
                 disabled={isSending || !chatInput.trim()}
               >
-                {isSending ? "Sending…" : "Send"}
+                {isSending ? "Sending..." : "Send"}
               </button>
             </div>
           </div>
@@ -4747,7 +4763,7 @@ function App() {
                               )}
                           {typeof task.auto_confidence === "number" && (
                             <span className="task-confidence-chip">
-                              {(task.auto_last_action || "auto").replaceAll("_", " ")} ·{" "}
+                              {(task.auto_last_action || "auto").replaceAll("_", " ")} -{" "}
                               {task.auto_confidence.toFixed(2)}
                             </span>
                           )}
@@ -4816,15 +4832,15 @@ function App() {
                     <div className="suggestion-telemetry">
                       <div className="suggestion-telemetry-item">
                         <span className="label">Auto-added</span>
-                        <span>{telemetry?.tasks.auto_added ?? "—"}</span>
+                        <span>{telemetry?.tasks.auto_added ?? "-"}</span>
                       </div>
                       <div className="suggestion-telemetry-item">
                         <span className="label">Auto-completed</span>
-                        <span>{telemetry?.tasks.auto_completed ?? "—"}</span>
+                        <span>{telemetry?.tasks.auto_completed ?? "-"}</span>
                       </div>
                       <div className="suggestion-telemetry-item">
                         <span className="label">Auto-suggested</span>
-                        <span>{telemetry?.tasks.auto_suggested ?? "—"}</span>
+                        <span>{telemetry?.tasks.auto_suggested ?? "-"}</span>
                       </div>
                     </div>
                     {taskSuggestionError && (
@@ -4833,7 +4849,7 @@ function App() {
                       </div>
                     )}
                     {isLoadingTaskSuggestions ? (
-                      <div className="tasks-empty">Loading suggestions…</div>
+                      <div className="tasks-empty">Loading suggestions...</div>
                     ) : pendingSuggestionCount === 0 ? (
                       <div className="tasks-empty">
                         No pending suggestions right now.
@@ -4901,7 +4917,7 @@ function App() {
                                   }
                                   disabled={isProcessing}
                                 >
-                                  {isProcessing ? "Applying…" : "Approve"}
+                                  {isProcessing ? "Applying..." : "Approve"}
                                 </button>
                                 <button
                                   type="button"
@@ -4911,7 +4927,7 @@ function App() {
                                   }
                                   disabled={isProcessing}
                                 >
-                                  {isProcessing ? "Working…" : "Dismiss"}
+                                  {isProcessing ? "Working..." : "Dismiss"}
                                 </button>
                               </div>
                             </li>
@@ -5026,7 +5042,7 @@ function App() {
                     disabled={isIngestingTextDoc}
                   >
                     {isIngestingTextDoc
-                      ? "Ingesting…"
+                      ? "Ingesting..."
                       : "Ingest text doc"}
                   </button>
                 </div>
@@ -5060,7 +5076,7 @@ function App() {
                     onClick={handleIngestRepo}
                     disabled={isIngestingRepo}
                   >
-                    {isIngestingRepo ? "Queueing…" : "Ingest repo"}
+                    {isIngestingRepo ? "Queueing..." : "Ingest repo"}
                   </button>
                   {repoIngestionJob &&
                     repoIngestionJob.project_id === selectedProjectId && (
@@ -5152,7 +5168,7 @@ function App() {
                       </div>
                       {isLoadingRepoJobs ? (
                         <div className="ingest-history-empty">
-                          Loading ingestion jobs…
+                          Loading ingestion jobs...
                         </div>
                       ) : repoIngestionJobs.length === 0 ? (
                         <div className="ingest-history-empty">
@@ -5189,16 +5205,16 @@ function App() {
                                     {formatDuration(
                                       job.started_at,
                                       job.finished_at
-                                    ) || "—"}
+                                    ) || "-"}
                                   </td>
                                   <td>
                                     {formatDateTime(job.finished_at) ||
-                                      "—"}
+                                      "-"}
                                   </td>
                                   <td>
                                     {job.error_message
                                       ? job.error_message
-                                      : "—"}
+                                      : "-"}
                                   </td>
                                 </tr>
                               ))}
@@ -5266,7 +5282,7 @@ function App() {
                       <div className="instructions-meta">
                         {instructionsDirty ? (
                           <span className="instructions-dirty">
-                            Unsaved changes — don’t forget to click Save.
+                            Unsaved changes - don't forget to click Save.
                           </span>
                         ) : projectInstructionsUpdatedAt ? (
                           `Last updated ${new Date(
@@ -5289,7 +5305,7 @@ function App() {
                           disabled={isSavingInstructions}
                         >
                           {isSavingInstructions
-                            ? "Saving…"
+                            ? "Saving..."
                             : "Save instructions"}
                         </button>
                       </div>
@@ -5410,7 +5426,7 @@ function App() {
                           <span>Search</span>
                           <input
                             type="text"
-                            placeholder="Find a decision…"
+                            placeholder="Find a decision..."
                             value={decisionSearchQuery}
                             onChange={(e) =>
                               setDecisionSearchQuery(e.target.value)
@@ -5433,7 +5449,7 @@ function App() {
                       </div>
                       {highlightNewDrafts && (
                         <div className="decision-draft-alert">
-                          New draft decisions detected — review them below.
+                          New draft decisions detected - review them below.
                         </div>
                       )}
                       <div className="decision-form compact">
@@ -5500,7 +5516,7 @@ function App() {
                             onClick={handleAddDecision}
                             disabled={isSavingDecision}
                           >
-                            {isSavingDecision ? "Saving…" : "Add decision"}
+                            {isSavingDecision ? "Saving..." : "Add decision"}
                           </button>
                         </div>
                         {decisionsError && (
@@ -5756,7 +5772,7 @@ function App() {
                     </div>
                     {isLoadingMemory ? (
                       <div className="memory-empty">
-                        Loading memories…
+                        Loading memories...
                       </div>
                     ) : memoryItems.length === 0 ? (
                       <div className="memory-empty">
@@ -5882,7 +5898,7 @@ function App() {
                             !fsCurrentSubpath || fsIsLoadingList
                           }
                         >
-                          ↑ Up
+                          Up
                         </button>
                         <button
                           type="button"
@@ -5897,7 +5913,7 @@ function App() {
                     <div className="files-list">
                       {fsIsLoadingList ? (
                         <div className="files-empty">
-                          Loading files…
+                          Loading files...
                         </div>
                       ) : fsEntries.length === 0 ? (
                         <div className="files-empty">
@@ -5920,11 +5936,10 @@ function App() {
                                     "file-list-entry-button" +
                                     (isSelected ? " selected" : "")
                                   }
-                                      onClick={() => handleOpenFsEntry(entry)}
+                                  onClick={() => handleOpenFsEntry(entry)}
                                 >
                                   <span className="file-list-name">
-                                    {entry.is_dir ? "📁" : "📄"}{" "}
-                                    {entry.name}
+                                    {entry.is_dir ? "[DIR]" : "[FILE]"} {entry.name}
                                   </span>
                                   {!entry.is_dir &&
                                     entry.size != null && (
@@ -5947,7 +5962,7 @@ function App() {
                             Editing: {fsSelectedRelPath}
                             {hasUnsavedFileChanges && (
                               <span className="unsaved-indicator">
-                                ● Unsaved changes
+                                * Unsaved changes
                               </span>
                             )}
                           </div>
@@ -5970,7 +5985,7 @@ function App() {
                                     fsIsSavingFile || !hasUnsavedFileChanges
                               }
                             >
-                                  {fsIsSavingFile ? "Saving…" : "Save file"}
+                                  {fsIsSavingFile ? "Saving..." : "Save file"}
                             </button>
                           </div>
                         </div>
@@ -6049,7 +6064,7 @@ function App() {
                             disabled={isPreviewingFileEdit}
                           >
                             {isPreviewingFileEdit
-                              ? "Previewing…"
+                              ? "Previewing..."
                               : "Preview edit"}
                           </button>
                       <button
@@ -6059,7 +6074,7 @@ function App() {
                         disabled={isApplyingFileEdit}
                       >
                         {isApplyingFileEdit
-                          ? "Applying…"
+                          ? "Applying..."
                           : "Apply AI edit"}
                       </button>
                       <button
@@ -6163,7 +6178,7 @@ function App() {
                   onClick={handleSearch}
                   disabled={isSearching || !searchQuery.trim()}
                 >
-                  {isSearching ? "Searching…" : "Search"}
+                  {isSearching ? "Searching..." : "Search"}
                 </button>
               </div>
                   <div className="search-filters">
@@ -6313,7 +6328,7 @@ function App() {
                           className="search-result-item"
                         >
                           <div className="search-result-meta">
-                                      {hit.role} · distance{" "}
+                                      {hit.role} - distance{" "}
                                       {hit.distance.toFixed(3)}
                           </div>
                           <div className="search-result-content">
@@ -6365,7 +6380,7 @@ function App() {
                         className="search-result-item"
                       >
                         <div className="search-result-meta">
-                                    Chunk {hit.chunk_index} · distance{" "}
+                                    Chunk {hit.chunk_index} - distance{" "}
                                     {hit.distance.toFixed(3)}
                         </div>
                         <div className="search-result-content">
@@ -6457,7 +6472,7 @@ function App() {
                             }
                           >
                             {isRunningManualTerminal
-                              ? "Running…"
+                              ? "Running..."
                               : "Run command"}
                           </button>
                           <button
@@ -6528,7 +6543,7 @@ function App() {
                         disabled={isRunningTerminalCommand}
                       >
                         {isRunningTerminalCommand
-                          ? "Running…"
+                          ? "Running..."
                           : "Run command"}
                       </button>
                       <button
@@ -6681,7 +6696,7 @@ function App() {
                       <option value="">
                         {conversations.length === 0
                           ? "No conversations available"
-                          : "Choose…"}
+                          : "Choose..."}
                       </option>
                       {conversations.map((conversation) => (
                         <option key={conversation.id} value={conversation.id}>
@@ -6799,7 +6814,7 @@ function App() {
                     {usageError}
                   </div>
                 ) : isLoadingUsage ? (
-                  <div className="usage-empty">Loading usage…</div>
+                  <div className="usage-empty">Loading usage...</div>
                 ) : !usage || !windowedUsageRecords.length ? (
                   <div className="usage-empty">
                     No usage records yet for this conversation.
@@ -6814,7 +6829,7 @@ function App() {
                           </div>
                           <div className="usage-card-value">
                             {usage.records[usage.records.length - 1]?.model ||
-                              "—"}
+                              "-"}
                           </div>
                           {telemetry?.llm?.auto_routes && lastUsageAutoReason && (
                             <div className="usage-subtext">
@@ -6835,7 +6850,7 @@ function App() {
                           <div className="usage-card-value">
                             {usage.total_cost_estimate != null
                               ? `$${usage.total_cost_estimate.toFixed(4)}`
-                              : "—"}
+                              : "-"}
                           </div>
                         </div>
                         <div className="usage-card">
@@ -6859,13 +6874,13 @@ function App() {
                         <div className="usage-card">
                           <div className="usage-card-title">Auto-added</div>
                           <div className="usage-card-value">
-                            {telemetry?.tasks?.auto_added ?? "—"}
+                            {telemetry?.tasks?.auto_added ?? "-"}
                           </div>
                         </div>
                         <div className="usage-card">
                           <div className="usage-card-title">Auto-completed</div>
                           <div className="usage-card-value">
-                            {telemetry?.tasks?.auto_completed ?? "—"}
+                            {telemetry?.tasks?.auto_completed ?? "-"}
                           </div>
                         </div>
                       </div>
@@ -6935,12 +6950,12 @@ function App() {
                                 {r.model || "model?"}
                               </span>
                               <span className="usage-tokens">
-                                in {(r.tokens_in ?? 0).toLocaleString()} · out{" "}
+                                in {(r.tokens_in ?? 0).toLocaleString()} - out{" "}
                                 {(r.tokens_out ?? 0).toLocaleString()}
                               </span>
                             </div>
                             <div className="usage-record-sub">
-                              msg #{r.message_id ?? "?"} ·{" "}
+                              msg #{r.message_id ?? "?"} -{" "}
                               {new Date(r.created_at).toLocaleTimeString()}
                             </div>
                           </li>
@@ -6980,7 +6995,7 @@ function App() {
             <input
               ref={commandPaletteInputRef}
               className="command-palette-input"
-              placeholder="Search actions…"
+              placeholder="Search actions..."
               value={commandPaletteQuery}
               onChange={(e) => {
                 setCommandPaletteQuery(e.target.value);

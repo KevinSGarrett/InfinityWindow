@@ -763,6 +763,8 @@ In the **Usage** tab:
   - Filters are keyboard/screen-reader friendly (action/group/model/time plus “Usage time range” and “Usage records window” selectors).
   - Charts cover task action types, calls per model, confidence buckets, and auto-mode routes.
   - If clipboard copy fails, the export preview still appears inline; usage/telemetry fetch errors are shown inline without collapsing the tab.
+- **Context-aware TODO hint**:
+  - When both project instructions and a pinned note are present, the Usage tab shows a subtle “context-aware TODO extraction enabled” hint to confirm that automation prompts include the project context block.
 
 Backend:
 
