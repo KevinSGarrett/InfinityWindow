@@ -797,6 +797,46 @@ def _extract_ai_file_edits(reply_text: str) -> tuple[str, List[Dict[str, object]
     return cleaned, edits
 
 
+# ---------- Retrieval telemetry ----------
+
+
+_RETRIEVAL_TELEMETRY: Dict[str, int] = {
+    "chat_messages_hits": 0,
+    "chat_docs_hits": 0,
+    "chat_memory_hits": 0,
+    "chat_tasks_hits": 0,
+    "search_messages_hits": 0,
+    "search_docs_hits": 0,
+    "search_memory_hits": 0,
+    "search_tasks_hits": 0,
+}
+
+
+def record_retrieval_event(
+    *,
+    surface: Literal["chat", "search"],
+    kind: Literal["messages", "docs", "memory", "tasks"],
+    hits: int,
+) -> None:
+    key = f"{surface}_{kind}_hits"
+    if key not in _RETRIEVAL_TELEMETRY:
+        return
+    _RETRIEVAL_TELEMETRY[key] = _RETRIEVAL_TELEMETRY.get(key, 0) + max(int(hits or 0), 0)
+
+
+def get_retrieval_telemetry(reset: bool = False) -> Dict[str, int]:
+    snapshot: Dict[str, int] = dict(_RETRIEVAL_TELEMETRY)
+    if reset:
+        reset_retrieval_telemetry()
+        snapshot = dict(_RETRIEVAL_TELEMETRY)
+    return snapshot
+
+
+def reset_retrieval_telemetry() -> None:
+    for key in _RETRIEVAL_TELEMETRY:
+        _RETRIEVAL_TELEMETRY[key] = 0
+
+
 # ---------- Helper: AI‑assisted task extraction ----------
 
 
@@ -1434,6 +1474,7 @@ def auto_update_tasks_from_conversation(
         )
         .all()
     )
+    record_retrieval_event(surface="chat", kind="tasks", hits=len(open_tasks))
     open_task_map: Dict[int, Dict[str, object]] = {
         task.id: {"task": task, "normalized": _normalize_task_text(task.description)}
         for task in open_tasks
@@ -3300,10 +3341,12 @@ def read_telemetry(reset: bool = False) -> Dict[str, Any]:
         task_snapshot["suggestions_error"] = str(e)
 
     ingestion_snapshot = get_ingest_telemetry(reset=reset)
+    retrieval_snapshot = get_retrieval_telemetry(reset=reset)
     return {
         "llm": llm_snapshot,
         "tasks": task_snapshot,
         "ingestion": ingestion_snapshot,
+        "retrieval": retrieval_snapshot,
     }
 
 
@@ -4182,6 +4225,7 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
         msg_metas_nested = msg_results.get("metadatas", [[]])
         msg_docs = msg_docs_nested[0] if msg_docs_nested else []
         msg_metas = msg_metas_nested[0] if msg_metas_nested else []
+        record_retrieval_event(surface="chat", kind="messages", hits=len(msg_docs))
 
         msg_snippets: List[str] = []
         for doc, meta in zip(msg_docs, msg_metas):
@@ -4200,6 +4244,7 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
         doc_metas_nested = doc_results.get("metadatas", [[]])
         doc_docs = doc_docs_nested[0] if doc_docs_nested else []
         doc_metas = doc_metas_nested[0] if doc_metas_nested else []
+        record_retrieval_event(surface="chat", kind="docs", hits=len(doc_docs))
 
         # Resolve document titles for the retrieved chunks so responses can
         # surface doc names (not just ids).
@@ -4248,6 +4293,7 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
         mem_ids = mem_ids_nested[0] if mem_ids_nested else []
         mem_docs = mem_docs_nested[0] if mem_docs_nested else []
         mem_metas = mem_metas_nested[0] if mem_metas_nested else []
+        record_retrieval_event(surface="chat", kind="memory", hits=len(mem_docs))
 
         mem_id_ints = [
             int(meta.get("memory_id", mid))
