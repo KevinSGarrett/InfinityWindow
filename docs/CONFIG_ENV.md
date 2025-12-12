@@ -104,6 +104,35 @@ Defaults and wiring for these variables are specified in `docs/MODEL_MATRIX.md`.
   uvicorn app.api.main:app --reload --host 127.0.0.1 --port 8000
   ```
 
+### 1.5 Retrieval profiles (chat/search/doc/memory/tasks)
+
+Retrieval fan-out uses a tunable “profile” that controls how many hits we keep from each surface. You can override the defaults with these integer env vars (all values are **clamped between 1 and 50** to avoid runaway queries):
+
+- **`IW_RETRIEVAL_MESSAGES_K`**  
+  - Type: int  
+  - Default: `6` (keeps up to six recent chat message snippets).  
+  - Applies to: chat + search message retrieval.
+
+- **`IW_RETRIEVAL_DOCS_K`**  
+  - Type: int  
+  - Default: `6` (doc chunks per retrieval cycle).  
+  - Applies to: chat doc injection + `/search/docs`.
+
+- **`IW_RETRIEVAL_MEMORY_K`**  
+  - Type: int  
+  - Default: `4` (memory items surfaced).  
+  - Applies to: chat memory injection + `/search/memory`.
+
+- **`IW_RETRIEVAL_TASKS_K`**  
+  - Type: int  
+  - Default: `4` (recent open tasks appended to retrieval context).  
+  - Applies to: chat/task context shaping and telemetry.
+
+Helpers:
+
+- **`/debug/retrieval_config`** echoes the active profile (defaults + overrides) so you can confirm what the backend is using after editing `.env`.
+- Retrieval telemetry (`/debug/telemetry` → `retrieval` section + Usage tab “Retrieval stats”) makes it easy to validate whether a profile is too low/high in real conversations.
+
 ---
 
 ## 2. Frontend configuration

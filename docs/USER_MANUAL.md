@@ -748,6 +748,10 @@ In the **Usage** tab:
   - Displays aggregate tokens-in/tokens-out per model so you can spot expensive routes.
 - **Recent assistant calls**:
   - Last 10 usage records (model, tokens, timestamp, message ID).
+- **Retrieval config & stats**:
+  - The card titled “Retrieval stats” mirrors `/debug/telemetry -> retrieval`. It lists chat/search hit counts for messages, docs, memory, and tasks so you can see which surfaces actually contributed context.
+  - Click **Refresh** (or **Refresh & reset**) to pull the latest counters; the block hides automatically if telemetry isn’t exposed in the backend you’re testing.
+  - Use `/debug/retrieval_config` (linked beside the block) when you need to confirm which `IW_RETRIEVAL_*` K values produced the observed counts—handy when tweaking profiles via `.env`.
 - **Routing & tasks telemetry** (shared with §5.3):
   - Shows auto-mode routing counts, fallback attempts/successes, and autonomous task stats.
   - “Refresh & reset” lets you zero the counters after capturing a snapshot.
@@ -767,6 +771,7 @@ Use this panel to:
 - Track how “expensive” a conversation is.
 - Spot outlier calls (e.g., deep analysis with many tokens) and which model handled them.
 - Combine with the telemetry drawer to understand how auto-mode routing is behaving and whether autonomous tasks are firing as expected.
+- Treat Retrieval stats as a diagnostics panel: if hits stay at zero even after chatting/searching, revisit `IW_RETRIEVAL_*` or confirm that docs/memory actually exist for that project.
 
 ---
 
