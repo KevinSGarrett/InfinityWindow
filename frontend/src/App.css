@@ -2729,6 +2729,46 @@ body {
   margin-top: 2px;
 }
 
+.retrieval-stats {
+  margin-top: 0.45rem;
+  padding: 0.25rem 0.35rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.35rem;
+  background: #f9fafb;
+  color: #4b5563;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.retrieval-stats-title {
+  font-weight: 500;
+  color: #374151;
+}
+
+.retrieval-stats-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.retrieval-stats-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: baseline;
+}
+
+.retrieval-stats-surface {
+  font-weight: 600;
+  color: #111827;
+}
+
+.retrieval-stats-counts {
+  color: #374151;
+  font-variant-numeric: tabular-nums;
+}
+
 .usage-export {
   margin-top: 0.5rem;
   display: flex;

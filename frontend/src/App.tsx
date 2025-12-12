@@ -186,6 +186,14 @@ type ConversationUsage = {
   records: UsageRecord[];
 };
 
+type RetrievalCounterKey = "messages" | "docs" | "memory" | "tasks";
+
+type RetrievalTelemetry = Record<string, number>;
+type RetrievalSurfaceSummary = Record<
+  string,
+  Partial<Record<RetrievalCounterKey, number>>
+>;
+
 type TelemetrySnapshot = {
   llm: {
     auto_routes: Record<string, number>;
@@ -212,6 +220,59 @@ type TelemetrySnapshot = {
     suggestions?: TaskSuggestion[];
   };
   ingestion: Record<string, unknown>;
+  retrieval?: RetrievalTelemetry;
+};
+
+const RETRIEVAL_COUNTER_KEYS: RetrievalCounterKey[] = [
+  "messages",
+  "docs",
+  "memory",
+  "tasks",
+];
+const RETRIEVAL_KEY_PATTERN =
+  /^(chat|search)_(messages|docs|memory|tasks)_hits$/;
+
+const groupRetrievalTelemetry = (
+  snapshot?: RetrievalTelemetry
+): [string, Partial<Record<RetrievalCounterKey, number>>][] => {
+  if (!snapshot) {
+    return [];
+  }
+  const grouped: RetrievalSurfaceSummary = {};
+  Object.entries(snapshot).forEach(([key, value]) => {
+    const match = key.match(RETRIEVAL_KEY_PATTERN);
+    if (!match) {
+      return;
+    }
+    const [, surface, kind] = match;
+    if (!grouped[surface]) {
+      grouped[surface] = {};
+    }
+    const surfaceCounts = grouped[surface];
+    if (!surfaceCounts) {
+      return;
+    }
+    surfaceCounts[kind as RetrievalCounterKey] = value ?? 0;
+  });
+  return Object.entries(grouped);
+};
+
+const formatRetrievalSurfaceLabel = (surface: string): string => {
+  if (!surface) {
+    return "Unknown surface";
+  }
+  return surface
+    .split(/[_-]/)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
+};
+
+const formatRetrievalCount = (value?: number): string => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return "0";
 };
 
 type ProjectDecision = {
@@ -1163,6 +1224,11 @@ function App() {
     return `mini-bar-fill width-${clamped}`;
   };
 
+  const groupedRetrievalHits = useMemo(
+    () => groupRetrievalTelemetry(telemetry?.retrieval),
+    [telemetry?.retrieval]
+  );
+
   const telemetryPanel = (
     <div className="usage-telemetry">
       <div className="usage-telemetry-header">
@@ -1199,6 +1265,45 @@ function App() {
         </div>
       ) : (
         <div className="usage-telemetry-body">
+          {telemetry.retrieval && (
+            <div
+              className="usage-telemetry-sub retrieval-stats"
+              data-testid="retrieval-stats"
+            >
+              <div className="retrieval-stats-title">Retrieval hits</div>
+              <div className="retrieval-stats-list">
+                {groupedRetrievalHits.length === 0 ? (
+                  <div className="retrieval-stats-row">
+                    <span className="retrieval-stats-counts">
+                      No retrieval telemetry yet.
+                    </span>
+                  </div>
+                ) : (
+                  groupedRetrievalHits.map(([surface, counters]) => {
+                    const formattedCounts = RETRIEVAL_COUNTER_KEYS.map(
+                      (key) =>
+                        `${key.charAt(0).toUpperCase() + key.slice(1)}: ${formatRetrievalCount(
+                          counters?.[key]
+                        )}`
+                    ).join(" · ");
+                    return (
+                      <div
+                        className="retrieval-stats-row"
+                        key={`retrieval-${surface}`}
+                      >
+                        <span className="retrieval-stats-surface">
+                          {formatRetrievalSurfaceLabel(surface)}
+                        </span>
+                        <span className="retrieval-stats-counts">
+                          {formattedCounts}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
           <div className="usage-telemetry-section">
             <div className="usage-telemetry-title">Auto-mode routes</div>
             {Object.keys(telemetry.llm.auto_routes).length === 0 ? (
