@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -19,6 +19,21 @@ router = APIRouter(
     prefix="/search",
     tags=["search"],
 )
+
+
+def _record_retrieval(
+    surface: Literal["chat", "search"],
+    kind: Literal["messages", "docs", "memory", "tasks"],
+    hits: int,
+) -> None:
+    try:
+        from app.api import main as main_api
+
+        main_api.record_retrieval_event(surface=surface, kind=kind, hits=hits)
+    except Exception:
+        # Telemetry should never block search endpoints.
+        return
+
 
 # ---------------------------------------------------------------------------
 # Message search
@@ -171,6 +186,7 @@ def search_messages(
             )
         )
 
+    _record_retrieval(surface="search", kind="messages", hits=len(hits))
     return MessageSearchResponse(hits=hits)
 
 
@@ -266,6 +282,7 @@ def search_docs(
             )
         )
 
+    _record_retrieval(surface="search", kind="docs", hits=len(hits))
     return DocSearchResponse(hits=hits)
 
 
@@ -356,4 +373,5 @@ def search_memory(
             )
         )
 
+    _record_retrieval(surface="search", kind="memory", hits=len(hits))
     return MemorySearchResponse(hits=hits)
