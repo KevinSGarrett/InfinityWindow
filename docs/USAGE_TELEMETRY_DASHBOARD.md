@@ -31,6 +31,14 @@ Status: Phase 1 shipped; Phase 2 shipped (filters, time filter, JSON/CSV export,
    - Optional: export last N minutes/hours as JSON/CSV (beyond recent actions).
    - Optional: persist telemetry snapshots per reset for comparison.
 
+## Retrieval telemetry (Phase v1)
+
+- `backend/app/api/main.py` records retrieval hits through `record_retrieval_event` (chat surfaces) and `_record_retrieval` helpers in `app/api/search.py` (search surfaces). Counters live under `_RETRIEVAL_TELEMETRY`.
+- `/debug/telemetry` returns a `retrieval` object with keys such as `chat_messages_hits`, `chat_docs_hits`, `chat_memory_hits`, `chat_tasks_hits`, plus their `search_*` peers. Passing `reset=true` zeroes the counters after capturing evidence.
+- `/debug/retrieval_config` echoes the active `IW_RETRIEVAL_*` profile so QA can cross-check the Usage UI with the backend’s current top‑K values.
+- The Usage tab renders a **Retrieval stats** block (data-testid `retrieval-stats`) beside the telemetry cards. Each row highlights the surface (“Chat messages”, “Search docs”, etc.) and the observed hit counts. The block hides on legacy builds and shows “No retrieval telemetry yet” until data flows in a session.
+- Future phases: feed these counters into tuning flows (auto profile recommendations, alerts when search hits stay at zero) and extend dashboard exports so retrieval stats share the same filter/export pipeline as task telemetry.
+
 ## API / Data
 - Reuse `/debug/telemetry` for task automation counters/stats/actions.
 - Reuse `/conversations/{id}/usage` for per-conversation usage totals.

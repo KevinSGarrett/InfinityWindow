@@ -57,9 +57,10 @@ These items are described conceptually in `PROGRESS.md` under v3/v4+. This check
   - [ ] Context-aware extraction prompts (feed project goals, sprint focus, blockers).  
   - [x] Additional QA around noisy projects and long histories.  
 
-- [ ] **Enhanced retrieval & context shaping**  
-  - [ ] Per‑feature retrieval tuning (tasks vs docs vs memory).  
-  - [ ] Configurable retrieval strategies via `CONFIG_ENV.md`.  
+- [~] **Enhanced retrieval & context shaping**  
+  - [x] Configurable retrieval via `CONFIG_ENV.md` (`IW_RETRIEVAL_*`, `/debug/retrieval_config`).  
+  - [x] Retrieval telemetry v1 (chat/search/messages/docs/memory/tasks counters + Usage tab retrieval stats).  
+  - [ ] Telemetry-driven tuning + advanced strategy shaping (multi-profile routing, long-window analytics).  
 
 ---
 

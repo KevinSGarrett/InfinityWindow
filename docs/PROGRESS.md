@@ -370,6 +370,13 @@ These phases are intentionally high‑level. When we decide to start on one, we 
   - Streaming progress + resume for blueprint ingestion jobs (similar to repo flow but with section summaries).
   - Blueprint-specific telemetry entries (Batch N/M, section anchors, token budgets) surfaced in UI + `/ingestion_jobs`.
 
+## 2025-12-11 – Retrieval telemetry v1
+
+- Backend counters now cover chat/search hits for messages, docs, memory, and tasks via `record_retrieval_event` in `backend/app/api/main.py` plus `_record_retrieval` helpers in `app/api/search.py`. `/debug/telemetry` exposes a `retrieval` object (with `reset=true` parity) and `/debug/retrieval_config` echoes the active `IW_RETRIEVAL_*` profile for QA snapshots.
+- Usage tab ships a **Retrieval stats** block (data-testid `retrieval-stats`) that summarizes hit counts per surface and links back to the env-driven profile summary so operators can compare UI vs. backend without leaving the app; the block hides automatically if telemetry is absent for older builds.
+- Branches/PRs: `feature/retrieval-telemetry-v1` (Agent A – backend counters/config endpoint) and `feature/retrieval-telemetry-frontend-v1` (Agent B – Usage block + filters).
+- Test coverage: `qa/tests_api/test_retrieval_telemetry.py` exercises chat/search/reset flows; `frontend/tests/usage-retrieval-telemetry.spec.ts` drives chat + search interactions and asserts the Usage block updates after a `/debug/telemetry` refresh.
+
 ## 2025-12-11 – Usage telemetry UI verification
 
 - Usage telemetry now renders on tab entry and when project/usage conversation changes; errors surface inline.

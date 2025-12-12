@@ -27,6 +27,12 @@ This is a skim-friendly entry point for alignment and requirement tracking. For 
 - Code: `frontend/src/App.tsx` (Usage tab charts/exports), `backend/app/api/main.py` (`/debug/telemetry`, `/conversations/{id}/usage`), `backend/app/llm/openai_client.py` (telemetry counters).
 - Tests: `qa/tests_api/test_usage_telemetry_dashboard.py`, `frontend/tests/usage-dashboard.spec.ts`, smoke `qa/run_smoke.py` (telemetry reset).
 
+### Retrieval profiles & telemetry — Status: Partial (v1)
+- Scope: Env-driven retrieval profiles (`IW_RETRIEVAL_*` + `/debug/retrieval_config`) plus per-surface telemetry counters and a Usage tab “Retrieval stats” block are live; telemetry-driven tuning, multi-profile routing, and long-window analytics remain.
+- Docs: `docs/REQUIREMENTS_CRM.md`, `docs/TODO_CHECKLIST.md` (§2), `docs/USAGE_TELEMETRY_DASHBOARD.md` (retrieval section), `docs/CONFIG_ENV.md` (§1.5), `docs/PROGRESS.md` (2025-12-11 entry), `docs/USER_MANUAL.md` (§11).
+- Code: `backend/app/retrieval_config.py` (profiles + clamped env parsing), `backend/app/api/main.py` (`record_retrieval_event`, `/debug/telemetry`), `backend/app/api/search.py` (`_record_retrieval`), `frontend/src/App.tsx` (Usage retrieval component).
+- Tests: `qa/tests_api/test_retrieval_telemetry.py`, `frontend/tests/usage-retrieval-telemetry.spec.ts`; telemetry presence also checked indirectly in `qa/tests_api/test_docs_status.py`.
+
 ### Ingestion & vector store (T-phase ingestion) — Status: Complete for repo ingestion; blueprint ingestion TBD
 - Scope: Repo ingestion batching, hash-skipping, and progress/audit endpoints are live with stubbed vector store support; blueprint/plan ingestion remains design-only.
 - Docs: `docs/TODO_CHECKLIST.md` (§1), `docs/PROGRESS.md` (2025-12-04 ingestion batching), `docs/SYSTEM_OVERVIEW.md` (§3.7), `docs/CONFIG_ENV.md` (embedding/batch knobs).
