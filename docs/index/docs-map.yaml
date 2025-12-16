@@ -1,0 +1,188 @@
+metadata:
+  doc_id: DOC-INDEX-002
+  title: InfinityWindow docs map
+  status: active
+  last_verified: 2025-12-16
+  applies_to: ca88fca949670ef863e64f8061829df67a584dde
+  scope: >
+    Machine-readable inventory of canonical governance docs plus legacy bundles
+    retained for reference during the documentation renovation.
+  canonical: true
+  related_docs:
+    - docs/index/INDEX.md
+    - docs/index/RENOVATION_STATUS.md
+  related_code: []
+  related_tests: []
+
+documents:
+  - doc_id: DOC-INDEX-001
+    path: docs/index/INDEX.md
+    title: InfinityWindow Project Library
+    status: active
+    canonical: true
+    tags: [index, navigation]
+    notes: Primary entrypoint for humans.
+  - doc_id: DOC-INDEX-003
+    path: docs/index/GLOSSARY.md
+    title: Project glossary
+    status: active
+    canonical: true
+    tags: [glossary, reference]
+    notes: Shared vocabulary + abbreviations.
+  - doc_id: DOC-INDEX-004
+    path: docs/index/RENOVATION_PLAN.md
+    title: Documentation renovation plan
+    status: active
+    canonical: true
+    tags: [plan, governance]
+    notes: Multi-wave objectives + acceptance criteria.
+  - doc_id: DOC-INDEX-005
+    path: docs/index/RENOVATION_STATUS.md
+    title: Documentation renovation status
+    status: active
+    canonical: true
+    tags: [status, tracker]
+    notes: Progress tracker + backlog.
+  - doc_id: DOC-INDEX-006
+    path: docs/index/PROJECT_CONTEXT.md
+    title: Project context & canonical paths
+    status: active
+    canonical: true
+    tags: [index, governance]
+    notes: Canonical repo path, host environment, and GitHub origin reference.
+  - doc_id: DOC-RMAP-001
+    path: docs/roadmap/ROADMAP.md
+    title: InfinityWindow roadmap
+    status: active
+    canonical: true
+    tags: [roadmap, strategy]
+    notes: Sequenced plan across UX, docs, and automation.
+  - doc_id: DOC-RMAP-002
+    path: docs/roadmap/BACKLOG.md
+    title: InfinityWindow backlog
+    status: active
+    canonical: true
+    tags: [backlog, planning]
+    notes: Groomed backlog feeding upcoming waves.
+  - doc_id: DOC-RISK-001
+    path: docs/risks/RISK_REGISTER.md
+    title: Risk register
+    status: active
+    canonical: true
+    tags: [risk, governance]
+    notes: Active risks with mitigation owners.
+  - doc_id: DOC-RISK-002
+    path: docs/risks/KNOWN_ISSUES.md
+    title: Known issues
+    status: active
+    canonical: true
+    tags: [issues, qa]
+    notes: Accepted issues pending future work.
+  - doc_id: DOC-DEC-001
+    path: docs/decisions/README.md
+    title: Decisions hub
+    status: active
+    canonical: true
+    tags: [adr, governance]
+    notes: Explains ADR workflow + index.
+  - doc_id: DOC-DEC-002
+    path: docs/decisions/ADR-0001-template.md
+    title: ADR template
+    status: active
+    canonical: true
+    tags: [template, adr]
+    notes: Structured template for new decisions.
+  - doc_id: DOC-ARCH-001
+    path: docs/_archive/README.md
+    title: Archive and deprecation policy
+    status: active
+    canonical: true
+    tags: [archive, policy]
+    notes: Rules for moving docs into `_archive`.
+  - doc_id: DOC-CORE-001
+    path: docs/ProjectPlans/INDEX.md
+    title: Project plan library
+    status: active
+    canonical: true
+    tags: [plans, reference]
+    notes: Indexed bundle of imported project plan documents.
+  - doc_id: DOC-CORE-002
+    path: docs/TODO_CHECKLIST/INDEX.md
+    title: TODO master checklist
+    status: active
+    canonical: true
+    tags: [todo, backlog]
+    notes: Chunked canonical TODO ledger with coverage table.
+  - doc_id: AGENT-GOV-010
+    path: docs/agent/FRONTMATTER_SCHEMA.md
+    title: Metadata frontmatter schema (stub)
+    status: active
+    canonical: false
+    tags: [governance, metadata]
+    notes: Points to DOC_STANDARDS metadata header section.
+  - doc_id: AGENT-GOV-011
+    path: docs/agent/CITATION_STANDARD.md
+    title: Citation standard (stub)
+    status: active
+    canonical: false
+    tags: [governance, citations]
+    notes: Points to DOC_STANDARDS citation requirements.
+  - doc_id: AGENT-GOV-012
+    path: docs/agent/CHUNKING_STANDARD.md
+    title: Chunking standard (stub)
+    status: active
+    canonical: false
+    tags: [governance, chunking]
+    notes: Points to DOC_STANDARDS chunking policy.
+  - doc_id: AGENT-GOV-013
+    path: docs/agent/LARGE_FILE_POLICY.md
+    title: Large file policy (stub)
+    status: active
+    canonical: false
+    tags: [governance, limits]
+    notes: References CODE_SIZE_POLICY for canonical thresholds.
+  - doc_id: AGENT-GOV-014
+    path: docs/agent/SEVERITY_TRIAGE.md
+    title: Severity & triage policy (stub)
+    status: active
+    canonical: false
+    tags: [governance, qa]
+    notes: References AGENT_GUIDE severity definitions.
+
+legacy_bundles:
+  - doc_id: DOC-LEGACY-001
+    path: docs/README.md
+    title: Legacy docs landing
+    status: deprecated
+    canonical: false
+    tags: [legacy, index]
+    notes: Pre-renovation index retained for context.
+  - doc_id: DOC-LEGACY-004
+    path: docs/tasks/README.md
+    title: Legacy tasks program
+    status: deprecated
+    canonical: false
+    tags: [legacy, tasks]
+    notes: Tasks bundle awaiting modernization.
+  - doc_id: DOC-LEGACY-005
+    path: docs/alignment/README.md
+    title: Alignment bundle (v1)
+    status: deprecated
+    canonical: false
+    tags: [legacy, alignment]
+    notes: Entry to the Alignment 001 evidence set.
+  - doc_id: DOC-LEGACY-006
+    path: docs/alignment_002/README.md
+    title: Alignment bundle (v2)
+    status: deprecated
+    canonical: false
+    tags: [legacy, alignment]
+    notes: Entry to Alignment 002 artifacts.
+  - doc_id: DOC-LEGACY-007
+    path: docs/design-references/README.md
+    title: Design references
+    status: deprecated
+    canonical: false
+    tags: [legacy, design]
+    notes: Image/reference archive for historical inspiration.
+
