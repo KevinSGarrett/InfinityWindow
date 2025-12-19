@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import difflib
 import re
@@ -3997,6 +3998,8 @@ def legacy_ingest(payload: dict, db: Session = Depends(get_db)):
 
 # ---------- Terminal ----------
 
+UNSAFE_TERMINAL_COMMAND_DETAIL = "Command rejected: contains unsafe shell characters or newlines."
+
 
 @app.post("/terminal/run")
 def run_terminal_command(
@@ -4035,10 +4038,26 @@ def run_terminal_command(
 
     timeout = payload.timeout_seconds or 120
 
+    command_raw = (payload.command or "").strip()
+    if not command_raw:
+        raise HTTPException(status_code=400, detail="Command cannot be empty.")
+
+    prohibited_chars = {"&", "|", ";", ">", "<"}
+    if any(char in command_raw for char in prohibited_chars) or "\n" in command_raw or "\r" in command_raw:
+        raise HTTPException(status_code=400, detail=UNSAFE_TERMINAL_COMMAND_DETAIL)
+
+    try:
+        command_args = shlex.split(command_raw, posix=os.name != "nt")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Command rejected: {exc}") from exc
+
+    if not command_args:
+        raise HTTPException(status_code=400, detail="Command cannot be empty.")
+
     try:
         result = subprocess.run(
-            payload.command,
-            shell=True,
+            command_args,
+            shell=False,
             cwd=str(workdir),
             capture_output=True,
             text=True,
@@ -4079,7 +4098,7 @@ def run_terminal_command(
     return {
         "project_id": project.id,
         "cwd": str(workdir.relative_to(root)) if workdir != root else "",
-        "command": payload.command,
+        "command": command_raw,
         "exit_code": exit_code,
         "stdout": stdout,
         "stderr": stderr,

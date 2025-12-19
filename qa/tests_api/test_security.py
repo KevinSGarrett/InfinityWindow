@@ -20,7 +20,6 @@ def test_safe_join_blocks_parent_segments(bad_path: str):
         api_main._safe_join(root, bad_path)
 
 
-@pytest.mark.xfail(reason="Terminal endpoint currently runs raw shell commands (no guard)")
 def test_terminal_injection_rejected(client, project):
     """K-SEC-TERM-01: Commands with injection characters should be rejected."""
     resp = client.post(
@@ -32,4 +31,5 @@ def test_terminal_injection_rejected(client, project):
         },
     )
     assert resp.status_code == 400
+    assert resp.json()["detail"] == api_main.UNSAFE_TERMINAL_COMMAND_DETAIL
 
